@@ -1,9 +1,11 @@
 # CurrencyCapPortal
+
 CurrencyCap project backend
 
 ### Made with Python Flask framework
 
-Flask is a web framework that allows developers to build lightweight web applications quickly and easily with Flask Libraries. It is basically based on the WSGI toolkit and Jinja2 templating engine.
+Flask is a web framework that allows developers to build lightweight web applications quickly and easily with Flask
+Libraries. It is basically based on the WSGI toolkit and Jinja2 templating engine.
 
 ## Quick start
 
@@ -22,7 +24,5 @@ Flask is a web framework that allows developers to build lightweight web applica
   pip install -r requirements.txt
   ```
 
-4. To run the app in the debug mode
-  ```
-  flask --app app run --port=5000 --debug
-  ```
+4. To run the app open the project in PyCharm and set the .venv file as the interpreter and the run.py file as the
+   starter file

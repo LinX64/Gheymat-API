@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint
+from .helper import aggregator
 
 
 main = Blueprint('main', __name__)
@@ -10,9 +11,9 @@ def index():
 
 
 @main.route('/get_currencies')
-def get_currencies():
-    
-    return 'Test'
+async def get_currencies():
+    data = await aggregator()
+    return jsonify(data)
 
 
 @main.route('/timeframe', methods=['POST'])
