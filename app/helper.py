@@ -77,7 +77,6 @@ def combine_data(results):
 
 
 async def aggregator():
-    data = {}
     async with ClientSession() as session:
         urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_COMPARE]
         tasks = [fetch(url, session) for url in urls]
