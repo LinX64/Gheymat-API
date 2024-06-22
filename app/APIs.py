@@ -4,7 +4,7 @@ from enum import Enum
 class APIs(Enum):
     COINCAP_MARKETS = {
         'title': 'Coincap Markets',
-        'url': 'https://api.coincap.io/v2/markets?exchangeId=binance'
+        'url': 'https://api.coincap.io/v2/markets?exchangeId=kraken'
     }
     COINCAP_RATES = {
         'title': 'Coincap Rates',
