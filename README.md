@@ -26,3 +26,8 @@ Libraries. It is basically based on the WSGI toolkit and Jinja2 templating engin
 
 4. To run the app open the project in PyCharm and set the .venv file as the interpreter and the run.py file as the
    starter file
+
+## Used APIs in this project
+
+### Bonbast
+Library's Github repo: https://github.com/SamadiPour/bonbast
