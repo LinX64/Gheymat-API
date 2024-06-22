@@ -14,6 +14,10 @@ class APIs(Enum):
         'title': 'Crypto Compare Top Coins',
         'url': 'https://min-api.cryptocompare.com/data/top/mktcapfull?limit=10&tsym=USD'
     }
+    BONBAST = {
+        'title': 'Bonbast Currency',
+        'url': 'bonbast export'
+    }
 
     @property
     def title(self):
