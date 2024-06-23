@@ -1,9 +1,12 @@
 version: 1.0
-runtime: Python 3.11 (python311)
+runtime: Python3
 build:
   commands:
+    - python3 -m venv .venv
+    - source .venv/bin/activate
     - pip install -r requirements.txt
 run:
+  runtime-version: 3.11
   command: python run.py
   network:
     port: 8000
