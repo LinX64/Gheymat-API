@@ -1,9 +1,12 @@
-from flask import Flask, jsonify
+from flask import jsonify
 
-app = Flask(__name__)
+from app import create_app
+from app.helper import aggregator
+
+app = create_app()
 
 
 @app.route('/get_currencies')
-def get_currencies():
-    currencies = ["USD", "EUR", "JPY", "GBP", "AUD"]
-    return jsonify(currencies)
+async def get_currencies():
+    data = await aggregator()
+    return jsonify(data)
