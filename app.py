@@ -1,13 +1,15 @@
-from flask import Flask, jsonify
+from flask import jsonify
+
+from app import create_app
 from app.helper import aggregator
 
-app = Flask(__name__)
+myCurrencyApp = create_app()
 
 
-@app.route('/get_currencies')
-def get_currencies():
-    data = aggregator()
+@myCurrencyApp.route('/get_currencies')
+async def get_currencies():
+    data = await aggregator()
     return jsonify(data)
 
-
-app = app
+if __name__ == '__main__':
+    myCurrencyApp.run(debug=False, host='localhost', port=5050)
