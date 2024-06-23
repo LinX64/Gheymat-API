@@ -1,20 +1,26 @@
 import asyncio
-from aiohttp import ClientSession
-from .APIs import APIs
-import subprocess
 import json
+import subprocess
+
+import requests
+from flask import Flask, jsonify
+
+from .APIs import APIs
+
+app = Flask(__name__)
 
 
-# Asynchronous function to fetch a single URL
-async def fetch(url, session):
-    async with session.get(url.url) as response:
-        if response.status == 200:
-            return await response.json()
-        else:
-            return {
-                "error": f'{url.title} API request failed',
-                "status_code": response.status
-            }
+# Function to fetch a single URL
+def fetch(url):
+    try:
+        response = requests.get(url.url)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        return {
+            "error": f'{url.title} API request failed: {str(e)}',
+            "status_code": response.status_code if response else 500
+        }
 
 
 async def run_bonbast():
@@ -77,22 +83,30 @@ def combine_data(results):
 
 
 async def aggregator():
-    async with ClientSession() as session:
-        urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_COMPARE]
-        tasks = [fetch(url, session) for url in urls]
-        results = await asyncio.gather(*tasks)
+    loop = asyncio.get_event_loop()
+    urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_COMPARE]
 
-        # Check for errors in the API responses
-        for result in results:
-            if result.get('error'):
-                return result, result.get('status_code')
+    # Schedule the fetching tasks concurrently
+    tasks = [loop.run_in_executor(None, fetch, url) for url in urls]
+    results = await asyncio.gather(*tasks)
 
-        bonbast_result_str = await run_bonbast()
-        bonbast_result_json = json.loads(bonbast_result_str)
-        results.append(bonbast_result_json)
+    # Check for errors in the API responses
+    for result in results:
+        if result.get('error'):
+            return result, result.get('status_code')
 
-        # combine all fetched data into one json object
-        combined_data = combine_data(results)
-        data = combined_data
+    bonbast_result_str = await run_bonbast()
+    bonbast_result_json = json.loads(bonbast_result_str)
+    results.append(bonbast_result_json)
 
-        return data
+    # Combine all fetched data into one json object
+    combined_data = combine_data(results)
+    data = combined_data
+
+    return data
+
+
+@app.route('/aggregate', methods=['GET'])
+async def aggregate():
+    data = await aggregator()
+    return jsonify(data)
