@@ -28,13 +28,16 @@ jobs:
       run: |
         source .venv/bin/activate
         python -m pip install --upgrade pip
-        pip install Flask requests
+        pip install Flask requests aiohttp
 
-    - name: Run the app and get currencies
+    - name: Run the app
       run: |
         source .venv/bin/activate
-        python run.py &
-        sleep 5
+        nohup python run.py &
+        sleep 10
+
+    - name: Get currencies
+      run: |
         curl http://localhost:5000/get_currencies > currencies.json
 
     - name: Display the file content
