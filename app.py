@@ -1,7 +1,9 @@
-from flask import Flask
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
+
 @app.route('/get_currencies')
 def get_currencies():
-    return "Hello, World!"
+    currencies = ["USD", "EUR", "JPY", "GBP", "AUD"]
+    return jsonify(currencies)
