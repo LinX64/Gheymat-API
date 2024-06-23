@@ -21,24 +21,27 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
+    - name: Create virtual environment
+      run: python3 -m venv .venv
+
+    - name: Activate virtual environment and install dependencies
       run: |
+        source .venv/bin/activate
         python -m pip install --upgrade pip
         pip install Flask requests
 
     - name: Run the app and get currencies
       run: |
-        python3 -m venv .venv
         source .venv/bin/activate
-        python3 run.py
+        python run.py &
         sleep 5
         curl http://localhost:5000/get_currencies > currencies.json
 
     - name: Display the file content
-      run: cat currencies.txt
+      run: cat currencies.json
 
     - name: Upload file
       uses: actions/upload-artifact@v2
       with:
         name: currencies
-        path: currencies.txt
+        path: currencies.json
