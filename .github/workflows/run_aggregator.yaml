@@ -1,9 +1,8 @@
 name: Run Aggregator
 
 on:
-  push:
-    branches:
-      - master
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   update-currencies:
