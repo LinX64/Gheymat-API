@@ -1,0 +1,40 @@
+name: Get Currencies
+
+# This workflow is triggered on cron schedule
+# every 5 minutes
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+
+jobs:
+  update-currencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Export Currencies Data to JSON
+        run: |
+          python run.py > currencies.json && break || sleep 10
+          cat currencies.json
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add currencies.json
+          git commit -m "Update currencies data"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
