@@ -22,7 +22,7 @@ jobs:
 
       - name: Export Currencies Data to JSON
         run: |
-          python run.py > currencies.json && break || sleep 10
+          python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
           cat currencies.json
 
       - name: Commit and Push
