@@ -1,7 +1,5 @@
 name: Run Aggregator
 
-# This workflow is triggered on cron schedule
-# every 5 minutes
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -13,8 +11,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          ref: master
 
       - name: Set up Python
         uses: actions/setup-python@v5
