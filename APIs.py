@@ -19,12 +19,12 @@ class APIs(Enum):
         'title': 'Bonbast Currency',
         'url': 'bonbast export'
     }
-
-    news_api_key = os.getenv('NEWS_API_KEY')
-    NEWS_API = {
-        'title': 'Blockchain News',
-        'url': 'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}'
-    }
+    #
+    # news_api_key = os.getenv('NEWS_API_KEY')
+    # NEWS_API = {
+    #     'title': 'Blockchain News',
+    #     'url': 'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}'
+    # }
 
     @property
     def title(self):
