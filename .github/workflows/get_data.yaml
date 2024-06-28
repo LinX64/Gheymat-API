@@ -1,9 +1,8 @@
 name: Get Data
 
 on:
-  push:
-    branches:
-      - master
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   update-currencies:
