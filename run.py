@@ -1,8 +1,11 @@
+import asyncio
+
 from flask import json
 
-from helper import aggregator
-import asyncio
+from helper import aggregator, getBlockchainNews
 
 if __name__ == '__main__':
     data = asyncio.run(aggregator())
+    blockchainNews = asyncio.run(getBlockchainNews())
+
     print(json.dumps(data))

@@ -1,4 +1,7 @@
 import asyncio
+
+import aiohttp
+import requests
 from aiohttp import ClientSession
 from APIs import APIs
 import subprocess
@@ -96,3 +99,18 @@ async def aggregator():
         data = combined_data
 
         return data
+
+
+async def getBlockchainNews():
+    url = APIs.NEWS_API.url
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                try:
+                    news = await response.json()
+                    return news
+                except Exception as e:
+                    print(f"Error parsing JSON: {e}")
+                    return None
+            else:
+                response.raise_for_status()

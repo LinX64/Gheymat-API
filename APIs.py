@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 
@@ -17,6 +18,12 @@ class APIs(Enum):
     BONBAST = {
         'title': 'Bonbast Currency',
         'url': 'bonbast export'
+    }
+
+    news_api_key = os.getenv('NEWS_API_KEY')
+    NEWS_API = {
+        'title': 'Blockchain News',
+        'url': f'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}'
     }
 
     @property
