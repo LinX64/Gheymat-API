@@ -30,6 +30,8 @@ jobs:
           python news.py >> news.json
           cat currencies.json
           cat news.json
+        env:
+            API_KEY_NEWS: ${{ secrets.API_KEY_NEWS }}
 
       - name: Commit and Push
         run: |
