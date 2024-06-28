@@ -21,10 +21,10 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-#      - name: Update Currencies Data
-#        run: |
-#          python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
-#          cat currencies.json
+      - name: Update Currencies Data
+        run: |
+          python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
+          cat currencies.json
 
       - name: Update News Data
         run: |
