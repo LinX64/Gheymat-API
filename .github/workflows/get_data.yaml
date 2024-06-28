@@ -1,11 +1,8 @@
-name: Run Aggregator
+name: Get Data
 
 on:
-  pull_request:
-    branches:
-      - master
-#  schedule:
-#    - cron: '*/5 * * * *'
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   update-currencies:
@@ -31,7 +28,7 @@ jobs:
           cat currencies.json
           cat news.json
         env:
-            NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
 
       - name: Commit and Push
         run: |
