@@ -1,14 +1,13 @@
 import asyncio
+import json
 import os
+import subprocess
 
 import aiohttp
-import requests
 from aiohttp import ClientSession
 from dotenv import load_dotenv
 
 from APIs import APIs
-import subprocess
-import json
 
 load_dotenv()
 
@@ -123,4 +122,7 @@ async def getBlockchainNews():
                     print(f"Error parsing JSON: {e}")
                     return None
             else:
-                response.raise_for_status()
+                return {
+                    "error": "Blockchain news API request failed",
+                    "status_code": response.status
+                }
