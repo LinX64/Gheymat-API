@@ -20,12 +20,17 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-      - name: Export Currencies & News Data to JSON
+      - name: Update Currencies Data
         run: |
           python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
+          cat currencies.json
+
+      - name: Update News Data
+        run: |
           python news.py > news.json || { sleep 10 && python news.py > news.json; }
+          cat news.json
         env:
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit and Push
         run: |
