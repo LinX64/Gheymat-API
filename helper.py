@@ -1,8 +1,16 @@
 import asyncio
+import os
+
+import aiohttp
+import requests
 from aiohttp import ClientSession
+from dotenv import load_dotenv
+
 from APIs import APIs
 import subprocess
 import json
+
+load_dotenv()
 
 
 # Asynchronous function to fetch a single URL
@@ -96,3 +104,23 @@ async def aggregator():
         data = combined_data
 
         return data
+
+
+async def getBlockchainNews():
+    news_api_key = os.getenv('NEWS_API_KEY')
+    if not news_api_key:
+        raise ValueError("NEWS_API_KEY environment variable is not set")
+
+    url = f'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}'
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                try:
+                    news = await response.json()
+                    return news
+                except Exception as e:
+                    print(f"Error parsing JSON: {e}")
+                    return None
+            else:
+                response.raise_for_status()

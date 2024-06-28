@@ -1,4 +1,4 @@
-name: Run Aggregator
+name: Get Data
 
 on:
   schedule:
@@ -20,10 +20,15 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
+      # This runs the script and exports the data to JSON files
       - name: Export Currencies Data to JSON
         run: |
           python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
+          python news.py >> news.json
           cat currencies.json
+          cat news.json
+        env:
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
 
       - name: Commit and Push
         run: |
