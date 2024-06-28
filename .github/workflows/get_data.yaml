@@ -33,12 +33,22 @@ jobs:
         env:
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
 
-      - name: Commit and Push
+      - name: Commit and Push Currency Data
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add currencies.json
           git commit -m "Update currencies data"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit and Push News
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add news.json
+          git commit -m "Update News data"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
