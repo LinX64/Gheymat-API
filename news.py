@@ -1,7 +1,6 @@
 import asyncio
 
 from flask import json
-from pygments.lexers import data
 
 from helper import getBlockchainNews
 

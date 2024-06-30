@@ -50,55 +50,36 @@ def combine_data(results):
     data = {}
     markets = results[0]['data']
     rates = results[1]['data']
-    cryptos = results[2]['Data']
+    cryptos = results[2]
     bonbast = results[3]
 
-    data['markets'] = []
-    for market in markets:
-        obj = {}
-        for attribute in market:
-            obj[attribute] = market[attribute]
-        data['markets'].append(obj)
-
-    data['rates'] = []
-    for rate in rates:
-        obj = {}
-        for attribute in rate:
-            obj[attribute] = rate[attribute]
-        data['rates'].append(obj)
-
-    data['crypto'] = []
-    for crypto in cryptos:
-        obj = {}
-        for attribute in crypto['CoinInfo']:
-            obj[attribute] = crypto['CoinInfo'][attribute]
-        obj['ImageUrl'] = 'https://www.cryptocompare.com' + obj['ImageUrl']
-        data['crypto'].append(obj)
-
-    data['bonbast'] = []
-    for attribute in bonbast:
-        obj = {attribute: bonbast[attribute]}
-        data['bonbast'].append(obj)
+    data['markets'] = markets
+    data['rates'] = rates
+    data['crypto'] = [crypto.copy() for crypto in cryptos]
+    data['bonbast'] = [{k: v} for k, v in bonbast.items()]
 
     return data
 
 
 async def aggregator():
     async with ClientSession() as session:
-        urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_COMPARE]
+        urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_Rates]
         tasks = [fetch(url, session) for url in urls]
         results = await asyncio.gather(*tasks)
 
-        # Check for errors in the API responses
         for result in results:
-            if result.get('error'):
-                return result, result.get('status_code')
+            if isinstance(result, dict):
+                if result.get('error'):
+                    return result, result.get('status_code')
+            elif isinstance(result, list):
+                continue
+            else:
+                return {"error": f"Unexpected data type: {type(result)}"}, 400
 
         bonbast_result_str = await run_bonbast()
         bonbast_result_json = json.loads(bonbast_result_str)
         results.append(bonbast_result_json)
 
-        # combine all fetched data into one json object
         combined_data = combine_data(results)
         data = combined_data
 
