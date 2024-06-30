@@ -1,8 +1,9 @@
 name: Get Data
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
+  pull_request:
+    branches:
+      - master
 
 jobs:
   update-currencies:
