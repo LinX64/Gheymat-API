@@ -12,16 +12,24 @@ from APIs import APIs
 load_dotenv()
 
 
-# Asynchronous function to fetch a single URL
-async def fetch(url, session):
-    async with session.get(url.url) as response:
-        if response.status == 200:
-            return await response.json()
-        else:
-            return {
-                "error": f'{url.title} API request failed',
-                "status_code": response.status
-            }
+async def fetch(url, session, retries=3):
+    if not isinstance(url, str):
+        return {"error": "URL must be a string", "status_code": 400}
+
+    for attempt in range(retries):
+        async with session.get(url) as response:
+            if response.status == 404:
+                print(f"Attempt {attempt + 1}: {url} returned 404. Retrying...")
+                await asyncio.sleep(1)  # Wait before retrying
+                continue  # Retry the request
+            elif response.status != 200:
+                return {"error": f"Error {response.status} from {url}", "status_code": response.status}
+            try:
+                data = await response.json()
+                return data
+            except aiohttp.ContentTypeError:
+                return {"error": "Invalid response format", "status_code": response.status}
+    return {"error": f"Failed to fetch from {url} after {retries} retries", "status_code": 404}
 
 
 async def run_bonbast():
@@ -63,7 +71,7 @@ def combine_data(results):
 
 async def aggregator():
     async with ClientSession() as session:
-        urls = [APIs.COINCAP_MARKETS, APIs.COINCAP_RATES, APIs.CRYPTO_Rates]
+        urls = [APIs.COINCAP_MARKETS.url, APIs.COINCAP_RATES.url, APIs.CRYPTO_RATES.url]
         tasks = [fetch(url, session) for url in urls]
         results = await asyncio.gather(*tasks)
 
