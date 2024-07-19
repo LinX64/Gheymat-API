@@ -12,16 +12,15 @@ from APIs import APIs
 load_dotenv()
 
 
-async def fetch(url, session, retries=3):
+async def fetch(url, session, retries=3, delay=10):
     if not isinstance(url, str):
         return {"error": "URL must be a string", "status_code": 400}
 
     for attempt in range(retries):
         async with session.get(url) as response:
             if response.status == 404:
-                print(f"Attempt {attempt + 1}: {url} returned 404. Retrying...")
-                await asyncio.sleep(1)  # Wait before retrying
-                continue  # Retry the request
+                await asyncio.sleep(delay)
+                continue
             elif response.status != 200:
                 return {"error": f"Error {response.status} from {url}", "status_code": response.status}
             try:
@@ -34,14 +33,12 @@ async def fetch(url, session, retries=3):
 
 async def run_bonbast():
     try:
-        # Run the 'bonbast export' command asynchronously
         process = await asyncio.create_subprocess_exec(
             'bonbast', 'export',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
 
-        # Wait for the command to complete and capture the output
         stdout, stderr = await process.communicate()
 
         if process.returncode != 0:
