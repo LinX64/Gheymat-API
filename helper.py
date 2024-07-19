@@ -19,9 +19,8 @@ async def fetch(url, session, retries=3, delay=10):
     for attempt in range(retries):
         async with session.get(url) as response:
             if response.status == 404:
-                print(f"Attempt {attempt + 1}: {url} returned 404. Retrying...")
-                await asyncio.sleep(delay)  # Wait longer before retrying
-                continue  # Retry the request
+                await asyncio.sleep(delay)
+                continue
             elif response.status != 200:
                 return {"error": f"Error {response.status} from {url}", "status_code": response.status}
             try:
