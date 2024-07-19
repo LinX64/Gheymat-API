@@ -12,7 +12,7 @@ from APIs import APIs
 load_dotenv()
 
 
-async def fetch(url, session, retries=3, delay=10):
+async def fetch(url, session, retries=15, delay=10):
     if not isinstance(url, str):
         return {"error": "URL must be a string", "status_code": 400}
 
