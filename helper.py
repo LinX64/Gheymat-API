@@ -2,8 +2,10 @@ import asyncio
 import json
 import os
 import subprocess
+from datetime import datetime
 
 import aiohttp
+import pytz
 from aiohttp import ClientSession
 from dotenv import load_dotenv
 
@@ -53,11 +55,14 @@ async def run_bonbast():
 
 def combine_data(results):
     data = {}
+    current_time = int(datetime.now(pytz.utc).timestamp())
+
     markets = results[0]['data']
     rates = results[1]['data']
     cryptos = results[2]
     bonbast = results[3]
 
+    data['timestamp'] = current_time
     data['markets'] = markets
     data['rates'] = rates
     data['crypto'] = [crypto.copy() for crypto in cryptos]
