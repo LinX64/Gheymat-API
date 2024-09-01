@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: '*/15 * * * *'
 
+  workflow_dispatch:
+    inputs:
+      should-publish:
+        type: boolean
+        description: "Do you want to publish the data?"
+        default: false
+
 jobs:
   update-currencies:
     runs-on: ubuntu-latest
