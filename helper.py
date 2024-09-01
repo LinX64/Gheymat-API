@@ -18,7 +18,10 @@ async def fetch(url, session, retries=15, delay=10):
 
     for attempt in range(retries):
         async with session.get(url) as response:
-            if response.status == 404:
+            if response.status == 429:
+                await asyncio.sleep(delay)
+                continue
+            elif response.status == 404:
                 await asyncio.sleep(delay)
                 continue
             elif response.status != 200:
