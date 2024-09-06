@@ -28,13 +28,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Update Currencies Data
-        if: ${{ github.event.inputs.should-publish == 'true' }}
         run: |
           python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
           cat currencies.json
 
       - name: Update News Data
-        if: ${{ github.event.inputs.should-publish == 'true' }}
         run: |
           python news.py > news.json || { sleep 10 && python news.py > news.json; }
           cat news.json
