@@ -29,8 +29,7 @@ jobs:
 
       - name: Update Currencies & News Data
         if: ${{ github.event.inputs.should-publish == 'true' }}
-        run: |
-          python run.py currencies > currencies.json && python run.py news > news.json
+        run: python run.py currencies > currencies.json && python run.py news > news.json
 
       - name: Commit and Push Currency Data
         run: |
