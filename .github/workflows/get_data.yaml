@@ -30,6 +30,8 @@ jobs:
       - name: Update Currencies & News Data
         if: ${{ github.event.inputs.should-publish == 'true' }}
         run: python run.py currencies > currencies.json && python run.py news > news.json
+        env:
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
 
       - name: Commit and Push Currency Data
         run: |
