@@ -27,10 +27,14 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-      - name: Update Currencies & News Data
-        run: python run.py currencies > currencies.json && python run.py news > news.json
-        env:
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+      - name: Update Currencies Data
+        run: |
+          python run.py > currencies.json || { sleep 10 && python run.py > currencies.json; }
+          cat currencies.json
+      - name: Update News Data
+        run: |
+          python news.py > news.json || { sleep 10 && python news.py > news.json; }
+          cat news.json
 
       - name: Commit and Push Currency Data
         run: |
