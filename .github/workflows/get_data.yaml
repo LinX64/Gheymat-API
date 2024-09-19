@@ -35,6 +35,8 @@ jobs:
         run: |
           python news.py > news.json || { sleep 10 && python news.py > news.json; }
           cat news.json
+        env:
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
 
       - name: Commit and Push Currency Data
         run: |
