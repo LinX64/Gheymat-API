@@ -2,13 +2,9 @@ from enum import Enum
 
 
 class APIs(Enum):
-    COINCAP_MARKETS = {
-        'title': 'Coincap Markets',
-        'url': 'https://api.coincap.io/v3/markets?exchangeId=kraken'
-    }
-    COINCAP_RATES = {
-        'title': 'Coincap Rates',
-        'url': 'https://api.coincap.io/v3/rates'
+    HANSHA_LATEST = {
+        'title': 'Hansha Latest Rates',
+        'url': 'https://hansha.online/latest'
     }
     CRYPTO_RATES = {
         'title': 'CoinGecko Crypto Rates',
