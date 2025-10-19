@@ -154,34 +154,34 @@ def main():
             <div class="endpoint">
                 <h3>GET /latest.json</h3>
                 <p>Iranian currency exchange rates</p>
-                <div class="url">https://YOUR_USERNAME.github.io/CurrencyCapPortal/latest.json</div>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/latest.json</div>
             </div>
 
             <div class="endpoint">
                 <h3>GET /crypto.json</h3>
                 <p>Top 100 cryptocurrencies by market cap</p>
-                <div class="url">https://YOUR_USERNAME.github.io/CurrencyCapPortal/crypto.json</div>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/crypto.json</div>
             </div>
 
             <div class="endpoint">
                 <h3>GET /news.json</h3>
                 <p>Latest blockchain news articles</p>
-                <div class="url">https://YOUR_USERNAME.github.io/CurrencyCapPortal/news.json</div>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/news.json</div>
             </div>
 
             <h2>💡 Usage</h2>
 
             <p><strong>JavaScript:</strong></p>
-            <pre>const res = await fetch('https://YOUR_USERNAME.github.io/CurrencyCapPortal/latest.json');
+            <pre>const res = await fetch('https://linx64.github.io/CurrencyCapPortal/latest.json');
 const rates = await res.json();
 console.log(rates);</pre>
 
             <p><strong>Python:</strong></p>
             <pre>import requests
-rates = requests.get('https://YOUR_USERNAME.github.io/CurrencyCapPortal/latest.json').json()</pre>
+rates = requests.get('https://linx64.github.io/CurrencyCapPortal/latest.json').json()</pre>
 
             <p><strong>cURL:</strong></p>
-            <pre>curl https://YOUR_USERNAME.github.io/CurrencyCapPortal/latest.json</pre>
+            <pre>curl https://linx64.github.io/CurrencyCapPortal/latest.json</pre>
 
             <h2>✨ Features</h2>
             <p>✅ Auto-updates every 6 hours<br>
