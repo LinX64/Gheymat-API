@@ -2,14 +2,14 @@ import asyncio
 import json
 import os
 import subprocess
-
 import aiohttp
+
 from aiohttp import ClientSession
 from dotenv import load_dotenv
-
 from APIs import APIs
 
 load_dotenv()
+news_api_key = os.getenv('NEWS_API_KEY')
 
 
 async def fetch(url, session, retries=15, delay=10):
@@ -17,20 +17,28 @@ async def fetch(url, session, retries=15, delay=10):
         return {"error": "URL must be a string", "status_code": 400}
 
     for attempt in range(retries):
-        async with session.get(url) as response:
-            if response.status == 429:
+        try:
+            async with session.get(url) as response:
+                if response.status == 429:
+                    await asyncio.sleep(delay)
+                    continue
+                elif response.status == 404:
+                    await asyncio.sleep(delay)
+                    continue
+                elif response.status != 200:
+                    return {"error": f"Error {response.status} from {url}", "status_code": response.status}
+                try:
+                    data = await response.json()
+                    return data
+                except aiohttp.ContentTypeError:
+                    return {"error": "Invalid response format", "status_code": response.status}
+        except (aiohttp.ClientConnectorError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            print(f"Network error on attempt {attempt + 1}/{retries} for {url}: {str(e)}")
+            if attempt < retries - 1:
                 await asyncio.sleep(delay)
                 continue
-            elif response.status == 404:
-                await asyncio.sleep(delay)
-                continue
-            elif response.status != 200:
-                return {"error": f"Error {response.status} from {url}", "status_code": response.status}
-            try:
-                data = await response.json()
-                return data
-            except aiohttp.ContentTypeError:
-                return {"error": "Invalid response format", "status_code": response.status}
+            else:
+                return {"error": f"Network error: {str(e)}", "status_code": 503}
     return {"error": f"Failed to fetch from {url} after {retries} retries", "status_code": 404}
 
 
@@ -56,13 +64,11 @@ async def run_bonbast():
 
 def combine_data(results):
     data = {}
-    markets = results[0]['data']
-    rates = results[1]['data']
-    cryptos = results[2]
-    bonbast = results[3]
+    hansha_rates = results[0]
+    cryptos = results[1]
+    bonbast = results[2]
 
-    data['markets'] = markets
-    data['rates'] = rates
+    data['hansha_rates'] = hansha_rates
     data['crypto'] = [crypto.copy() for crypto in cryptos]
     data['bonbast'] = [{k: v} for k, v in bonbast.items()]
 
@@ -70,8 +76,9 @@ def combine_data(results):
 
 
 async def aggregator():
-    async with ClientSession() as session:
-        urls = [APIs.COINCAP_MARKETS.url, APIs.COINCAP_RATES.url, APIs.CRYPTO_RATES.url]
+    timeout = aiohttp.ClientTimeout(total=60, connect=30, sock_read=30)
+    async with ClientSession(timeout=timeout) as session:
+        urls = [APIs.HANSHA_LATEST.url, APIs.CRYPTO_RATES.url]
         tasks = [fetch(url, session) for url in urls]
         results = await asyncio.gather(*tasks)
 
@@ -95,23 +102,30 @@ async def aggregator():
 
 
 async def getBlockchainNews():
-    news_api_key = os.getenv('NEWS_API_KEY')
     if not news_api_key:
         raise ValueError("NEWS_API_KEY environment variable is not set")
 
     url = f'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}'
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                try:
-                    news = await response.json()
-                    return news
-                except Exception as e:
-                    print(f"Error parsing JSON: {e}")
-                    return None
-            else:
-                return {
-                    "error": "Blockchain news API request failed",
-                    "status_code": response.status
-                }
+    timeout = aiohttp.ClientTimeout(total=60, connect=30, sock_read=30)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    try:
+                        news = await response.json()
+                        return news
+                    except Exception as e:
+                        print(f"Error parsing JSON: {e}")
+                        return None
+                else:
+                    return {
+                        "error": "Blockchain news API request failed",
+                        "status_code": response.status
+                    }
+        except (aiohttp.ClientConnectorError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            print(f"Network error fetching blockchain news: {str(e)}")
+            return {
+                "error": f"Network error: {str(e)}",
+                "status_code": 503
+            }
