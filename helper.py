@@ -3,6 +3,8 @@ import json
 import os
 import subprocess
 import aiohttp
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 
 from aiohttp import ClientSession
 from dotenv import load_dotenv
@@ -10,6 +12,9 @@ from APIs import APIs
 
 load_dotenv()
 news_api_key = os.getenv('NEWS_API_KEY')
+
+CACHE_FILE = 'data/currencies_cache.json'
+CACHE_EXPIRY_HOURS = 24  # Use cache if data is less than 24 hours old
 
 
 async def fetch(url, session, retries=15, delay=10):
@@ -57,48 +62,171 @@ async def run_bonbast():
             return None
 
         return stdout.decode()
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         print(f"Error occurred in running bonbast command: {e}")
         return None
 
 
-def combine_data(results):
-    data = {}
-    hansha_rates = results[0]
-    cryptos = results[1]
-    bonbast = results[2]
+def save_cache(data: Dict[str, Any]) -> None:
+    """Save data to cache file with timestamp"""
+    try:
+        os.makedirs('data', exist_ok=True)
+        cache_data = {
+            'timestamp': datetime.now().isoformat(),
+            'data': data
+        }
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, indent=2, ensure_ascii=False)
+        print(f"Cache saved successfully at {cache_data['timestamp']}")
+    except Exception as e:
+        print(f"Failed to save cache: {e}")
 
-    data['hansha_rates'] = hansha_rates
-    data['crypto'] = [crypto.copy() for crypto in cryptos]
-    data['bonbast'] = [{k: v} for k, v in bonbast.items()]
 
+def load_cache() -> Optional[Dict[str, Any]]:
+    """Load data from cache if it exists and is not too old"""
+    try:
+        if not os.path.exists(CACHE_FILE):
+            print("No cache file found")
+            return None
+
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        cache_time = datetime.fromisoformat(cache_data['timestamp'])
+        age = datetime.now() - cache_time
+
+        if age > timedelta(hours=CACHE_EXPIRY_HOURS):
+            print(f"Cache is too old ({age.total_seconds() / 3600:.1f} hours), ignoring")
+            return None
+
+        print(f"Using cache from {cache_time} ({age.total_seconds() / 60:.1f} minutes ago)")
+        return cache_data['data']
+    except Exception as e:
+        print(f"Failed to load cache: {e}")
+        return None
+
+
+def combine_data(hansha_rates, cryptos, bonbast, sources_status):
+    """Combine data from all sources with status tracking"""
+    data = {
+        'sources_status': sources_status,
+        'last_updated': datetime.now().isoformat(),
+        'hansha_rates': hansha_rates,
+        'crypto': cryptos,
+        'bonbast': bonbast
+    }
     return data
 
 
 async def aggregator():
+    """
+    Aggregate data from multiple sources with resilience:
+    - Continues even if some sources fail
+    - Uses cache as fallback when all sources fail
+    - Tracks health status of each source
+    """
+    sources_status = {
+        'hansha': {'status': 'unknown', 'error': None},
+        'crypto': {'status': 'unknown', 'error': None},
+        'bonbast': {'status': 'unknown', 'error': None}
+    }
+
+    hansha_rates = None
+    cryptos = []
+    bonbast = []
+
     timeout = aiohttp.ClientTimeout(total=60, connect=30, sock_read=30)
-    async with ClientSession(timeout=timeout) as session:
-        urls = [APIs.HANSHA_LATEST.url, APIs.CRYPTO_RATES.url]
-        tasks = [fetch(url, session) for url in urls]
-        results = await asyncio.gather(*tasks)
 
-        for result in results:
-            if isinstance(result, dict):
-                if result.get('error'):
-                    return result, result.get('status_code')
-            elif isinstance(result, list):
-                continue
+    try:
+        async with ClientSession(timeout=timeout) as session:
+            # Fetch Hansha rates
+            print("Fetching Hansha rates...")
+            hansha_result = await fetch(APIs.HANSHA_LATEST.url, session)
+            if isinstance(hansha_result, dict) and hansha_result.get('error'):
+                sources_status['hansha']['status'] = 'failed'
+                sources_status['hansha']['error'] = hansha_result.get('error')
+                print(f"Hansha failed: {hansha_result.get('error')}")
             else:
-                return {"error": f"Unexpected data type: {type(result)}"}, 400
+                hansha_rates = hansha_result
+                sources_status['hansha']['status'] = 'success'
+                print("Hansha rates fetched successfully")
 
+            # Fetch Crypto rates
+            print("Fetching Crypto rates...")
+            crypto_result = await fetch(APIs.CRYPTO_RATES.url, session)
+            if isinstance(crypto_result, dict) and crypto_result.get('error'):
+                sources_status['crypto']['status'] = 'failed'
+                sources_status['crypto']['error'] = crypto_result.get('error')
+                print(f"Crypto failed: {crypto_result.get('error')}")
+            elif isinstance(crypto_result, list):
+                cryptos = [crypto.copy() for crypto in crypto_result]
+                sources_status['crypto']['status'] = 'success'
+                print(f"Crypto rates fetched successfully ({len(cryptos)} currencies)")
+            else:
+                sources_status['crypto']['status'] = 'failed'
+                sources_status['crypto']['error'] = 'Unexpected data format'
+                print("Crypto returned unexpected data format")
+
+        # Fetch Bonbast rates
+        print("Fetching Bonbast rates...")
         bonbast_result_str = await run_bonbast()
-        bonbast_result_json = json.loads(bonbast_result_str)
-        results.append(bonbast_result_json)
+        if bonbast_result_str:
+            try:
+                bonbast_result_json = json.loads(bonbast_result_str)
+                bonbast = [{k: v} for k, v in bonbast_result_json.items()]
+                sources_status['bonbast']['status'] = 'success'
+                print(f"Bonbast rates fetched successfully ({len(bonbast)} currencies)")
+            except json.JSONDecodeError as e:
+                sources_status['bonbast']['status'] = 'failed'
+                sources_status['bonbast']['error'] = f'JSON decode error: {str(e)}'
+                print(f"Bonbast JSON decode failed: {e}")
+        else:
+            sources_status['bonbast']['status'] = 'failed'
+            sources_status['bonbast']['error'] = 'Command execution failed'
+            print("Bonbast command execution failed")
 
-        combined_data = combine_data(results)
-        data = combined_data
+        # Check if we have any successful data
+        successful_sources = sum(1 for s in sources_status.values() if s['status'] == 'success')
 
-        return data
+        if successful_sources == 0:
+            # All sources failed - try to use cache
+            print("All sources failed. Attempting to use cached data...")
+            cached_data = load_cache()
+            if cached_data:
+                print("Serving data from cache (all sources unavailable)")
+                cached_data['sources_status']['serving_from_cache'] = True
+                cached_data['sources_status']['cache_reason'] = 'All sources failed'
+                return cached_data
+            else:
+                # No cache available - return error
+                return {
+                    "error": "All data sources are unavailable and no cache is available",
+                    "sources_status": sources_status
+                }, 503
+
+        # Combine available data (even if partial)
+        combined_data = combine_data(hansha_rates, cryptos, bonbast, sources_status)
+
+        # Save to cache for future use
+        save_cache(combined_data)
+
+        print(f"Data aggregation complete: {successful_sources}/3 sources successful")
+        return combined_data
+
+    except Exception as e:
+        print(f"Unexpected error in aggregator: {e}")
+        # Try to use cache on unexpected errors
+        cached_data = load_cache()
+        if cached_data:
+            print("Serving data from cache due to unexpected error")
+            cached_data['sources_status']['serving_from_cache'] = True
+            cached_data['sources_status']['cache_reason'] = f'Unexpected error: {str(e)}'
+            return cached_data
+        else:
+            return {
+                "error": f"Unexpected error: {str(e)}",
+                "sources_status": sources_status
+            }, 500
 
 
 async def getBlockchainNews():

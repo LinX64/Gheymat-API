@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Currency Cap Portal API</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        header p { font-size: 1.1em; opacity: 0.9; }
+        .content { padding: 40px; }
+        h2 {
+            color: #667eea;
+            margin: 30px 0 20px 0;
+            font-size: 1.5em;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 6px;
+        }
+        .endpoint h3 {
+            color: #2c3e50;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .endpoint p { color: #666; margin-bottom: 10px; }
+        code {
+            background: #2c3e50;
+            color: #61affe;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-family: 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.85em;
+            margin: 10px 0;
+        }
+        .url {
+            background: #e8e8e8;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.85em;
+            word-break: break-all;
+            color: #667eea;
+        }
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 25px;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💱 Currency Cap Portal</h1>
+            <p>Free Currency & Crypto API</p>
+        </header>
+
+        <div class="content">
+            <h2>📍 Endpoints</h2>
+
+            <div class="endpoint">
+                <h3>GET /latest.json</h3>
+                <p>Iranian currency exchange rates</p>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/latest.json</div>
+            </div>
+
+            <div class="endpoint">
+                <h3>GET /crypto.json</h3>
+                <p>Top 100 cryptocurrencies by market cap</p>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/crypto.json</div>
+            </div>
+
+            <div class="endpoint">
+                <h3>GET /news.json</h3>
+                <p>Latest blockchain news articles</p>
+                <div class="url">https://linx64.github.io/CurrencyCapPortal/news.json</div>
+            </div>
+
+            <h2>💡 Usage</h2>
+
+            <p><strong>JavaScript:</strong></p>
+            <pre>const res = await fetch('https://linx64.github.io/CurrencyCapPortal/latest.json');
+const rates = await res.json();
+console.log(rates);</pre>
+
+            <p><strong>Python:</strong></p>
+            <pre>import requests
+rates = requests.get('https://linx64.github.io/CurrencyCapPortal/latest.json').json()</pre>
+
+            <p><strong>cURL:</strong></p>
+            <pre>curl https://linx64.github.io/CurrencyCapPortal/latest.json</pre>
+
+            <h2>✨ Features</h2>
+            <p>✅ Auto-updates every 6 hours<br>
+            ✅ 100% Free, no rate limits<br>
+            ✅ CORS enabled<br>
+            ✅ Global CDN</p>
+        </div>
+
+        <footer>
+            <p>Built with GitHub Actions + Pages</p>
+        </footer>
+    </div>
+</body>
+</html>
