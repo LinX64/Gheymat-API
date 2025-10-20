@@ -6,6 +6,10 @@ class APIs(Enum):
         'title': 'Hansha Latest Rates',
         'url': 'https://hansha.online/latest'
     }
+    HANSHA_HISTORY = {
+        'title': 'Hansha History',
+        'url': 'https://hansha.online/history'
+    }
     CRYPTO_RATES = {
         'title': 'CoinGecko Crypto Rates',
         'url': 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100'
