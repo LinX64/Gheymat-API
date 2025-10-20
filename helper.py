@@ -67,10 +67,24 @@ async def run_bonbast():
         return None
 
 
-async def run_bonbast_history():
+async def run_bonbast_history(date: Optional[str] = None):
+    """
+    Run bonbast history command.
+
+    Args:
+        date: Optional date in format YYYY-MM-DD or YYYY/MM/DD.
+              Valid from 2012-10-09 to one day before current date.
+
+    Returns:
+        JSON string of history data or None on error
+    """
     try:
+        cmd = ['bonbast', 'history', '--json']
+        if date:
+            cmd.extend(['--date', date])
+
         process = await asyncio.create_subprocess_exec(
-            'bonbast', 'history', '--json',
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
