@@ -43,7 +43,6 @@ async def fetch_history_for_date(date_str: str) -> Dict[str, Any]:
         Dictionary with date and rates, or None on error
     """
     try:
-        # Import here to avoid circular imports
         from helper import run_bonbast_history
 
         history_json = await run_bonbast_history(date=date_str)
@@ -72,7 +71,7 @@ async def generate_date_range(days: int) -> List[Dict[str, Any]]:
         List of date/rates dictionaries
     """
     history_list = []
-    start_date = datetime.now() - timedelta(days=1)  # Start from yesterday
+    start_date = datetime.now() - timedelta(days=1)
 
     for i in range(days):
         date_obj = start_date - timedelta(days=i)
@@ -82,7 +81,6 @@ async def generate_date_range(days: int) -> List[Dict[str, Any]]:
         if data:
             history_list.append(data)
 
-    # Sort by date (newest first)
     history_list.sort(key=lambda x: x['date'], reverse=True)
 
     return history_list
@@ -125,7 +123,7 @@ async def generate_bonbast_period_fallback(days: int) -> List[Dict[str, Any]]:
     Returns:
         List of historical data
     """
-    return await generate_date_range(min(days, 90))  # Limit to 90 days max
+    return await generate_date_range(min(days, 90))  
 
 
 async def generate_period_endpoint(history_dir: Path, period_key: str, period_name: str, days_fallback: int):
@@ -140,7 +138,6 @@ async def generate_period_endpoint(history_dir: Path, period_key: str, period_na
     """
     print(f"   • Creating /history/{period_key}.json (Hansha: {period_name})")
 
-    # Try Hansha first
     hansha_data = await fetch_hansha_historical(period_name, item='usd')
 
     if hansha_data:
@@ -187,7 +184,8 @@ async def async_main():
     currencies = load_json('data/currencies.json')
 
     print("   ✓ Creating /latest.json")
-    save_json(currencies.get('bonbast', []), api_dir / 'latest.json')
+    latest_data = currencies.get('hansha_rates') or currencies.get('bonbast', [])
+    save_json(latest_data, api_dir / 'latest.json')
 
     print("   ✓ Creating /crypto.json")
     save_json(currencies.get('crypto', []), api_dir / 'crypto.json')
@@ -301,7 +299,7 @@ async def async_main():
 
         <div class="endpoint">
             <h3>GET /latest.json</h3>
-            <p>Current Iranian currency exchange rates (Bonbast)</p>
+            <p>Current Iranian currency exchange rates (Hansha with icons and full details)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/latest.json</div>
         </div>
 
