@@ -177,6 +177,29 @@ async def generate_bonbast_period_fallback(days: int) -> List[Dict[str, Any]]:
     return await generate_date_range(min(days, 90))  
 
 
+async def fetch_hansha_latest() -> List[Dict[str, Any]]:
+    """
+    Fetch latest data (24-hour history) from Hansha API for all currencies.
+
+    Returns:
+        List of currency data with 24-hour historical prices
+    """
+    import aiohttp
+
+    try:
+        url = 'https://hansha.online/latest'
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    print(f"   ⚠️  Hansha /latest API returned status {response.status}")
+                    return None
+    except Exception as e:
+        print(f"   ⚠️  Hansha /latest API failed: {e}")
+        return None
+
+
 async def generate_period_endpoint(history_dir: Path, period_key: str, period_name: str, days_fallback: int, currencies: List[str]):
     """
     Generate a period-based history endpoint with Hansha primary and bonbast fallback.
@@ -184,13 +207,17 @@ async def generate_period_endpoint(history_dir: Path, period_key: str, period_na
     Args:
         history_dir: Directory to save the file
         period_key: Short key (e.g., '1w', '1m', '1y')
-        period_name: Hansha API period name (e.g., 'oneWeek', 'oneMonth')
+        period_name: Hansha API period name (e.g., 'oneWeek', 'oneMonth', or 'latest' for 1d)
         days_fallback: Number of days to use for bonbast fallback
         currencies: List of currency codes to fetch
     """
     print(f"   • Creating /history/{period_key}.json (Hansha: {period_name}, {len(currencies)} currencies)")
 
-    hansha_data = await fetch_all_currencies_historical(period_name, currencies)
+    # Special handling for 1d - use /latest endpoint which has 24h data
+    if period_name == 'latest':
+        hansha_data = await fetch_hansha_latest()
+    else:
+        hansha_data = await fetch_all_currencies_historical(period_name, currencies)
 
     if hansha_data and len(hansha_data) > 0:
         save_json(hansha_data, history_dir / f'{period_key}.json')
@@ -233,7 +260,7 @@ async def generate_history_endpoints(api_dir: Path):
     # Period-based endpoints (Hansha primary, bonbast fallback)
     # Only keep periods where fallback makes sense
     periods = [
-        ('1d', 'oneDay', 1),      # Yesterday
+        ('1d', 'latest', 1),      # Last 24 hours (use /latest endpoint)
         ('1w', 'oneWeek', 7),     # Last week
         ('1m', 'oneMonth', 30),   # Last month
         ('1y', 'oneYear', 90),    # Last year (limit fallback to 90 days)
