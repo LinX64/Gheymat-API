@@ -88,7 +88,7 @@ async def generate_date_range(days: int) -> List[Dict[str, Any]]:
 
 async def fetch_hansha_historical(period: str, item: str = 'usd') -> Dict[str, Any]:
     """
-    Fetch historical data from Hansha API for a specific period.
+    Fetch historical data from Hansha API for a specific period and currency.
 
     Args:
         period: Period name from Hansha API (e.g., 'oneWeek', 'oneMonth', 'all')
@@ -106,10 +106,61 @@ async def fetch_hansha_historical(period: str, item: str = 'usd') -> Dict[str, A
                 if response.status == 200:
                     return await response.json()
                 else:
-                    print(f"   ⚠️  Hansha API returned status {response.status} for {period}")
+                    print(f"   ⚠️  Hansha API returned status {response.status} for {period}/{item}")
                     return None
     except Exception as e:
-        print(f"   ⚠️  Hansha API failed for {period}: {e}")
+        print(f"   ⚠️  Hansha API failed for {period}/{item}: {e}")
+        return None
+
+
+async def fetch_all_currencies_historical(period: str, currencies: List[str]) -> List[Dict[str, Any]]:
+    """
+    Fetch historical data for all currencies from Hansha API.
+
+    Args:
+        period: Period name from Hansha API (e.g., 'oneWeek', 'oneMonth', 'all')
+        currencies: List of currency codes to fetch
+
+    Returns:
+        List of historical data dictionaries for all currencies
+    """
+    import aiohttp
+
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for currency_code in currencies:
+            url = f'https://hansha.online/historical?period={period}&item={currency_code}'
+            tasks.append(fetch_single_currency(session, url, period, currency_code))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Filter out None values and exceptions
+        return [r for r in results if r is not None and not isinstance(r, Exception)]
+
+
+async def fetch_single_currency(session, url: str, period: str, currency_code: str) -> Dict[str, Any]:
+    """
+    Fetch historical data for a single currency.
+
+    Args:
+        session: aiohttp ClientSession
+        url: API URL to fetch
+        period: Period name for logging
+        currency_code: Currency code for logging
+
+    Returns:
+        Historical data dictionary or None on error
+    """
+    import aiohttp
+
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                print(f"   ⚠️  Hansha API returned status {response.status} for {period}/{currency_code}")
+                return None
+    except Exception as e:
+        print(f"   ⚠️  Hansha API failed for {period}/{currency_code}: {e}")
         return None
 
 
@@ -126,7 +177,7 @@ async def generate_bonbast_period_fallback(days: int) -> List[Dict[str, Any]]:
     return await generate_date_range(min(days, 90))  
 
 
-async def generate_period_endpoint(history_dir: Path, period_key: str, period_name: str, days_fallback: int):
+async def generate_period_endpoint(history_dir: Path, period_key: str, period_name: str, days_fallback: int, currencies: List[str]):
     """
     Generate a period-based history endpoint with Hansha primary and bonbast fallback.
 
@@ -135,14 +186,15 @@ async def generate_period_endpoint(history_dir: Path, period_key: str, period_na
         period_key: Short key (e.g., '1w', '1m', '1y')
         period_name: Hansha API period name (e.g., 'oneWeek', 'oneMonth')
         days_fallback: Number of days to use for bonbast fallback
+        currencies: List of currency codes to fetch
     """
-    print(f"   • Creating /history/{period_key}.json (Hansha: {period_name})")
+    print(f"   • Creating /history/{period_key}.json (Hansha: {period_name}, {len(currencies)} currencies)")
 
-    hansha_data = await fetch_hansha_historical(period_name, item='usd')
+    hansha_data = await fetch_all_currencies_historical(period_name, currencies)
 
-    if hansha_data:
+    if hansha_data and len(hansha_data) > 0:
         save_json(hansha_data, history_dir / f'{period_key}.json')
-        print(f"     ✓ Success (Hansha)")
+        print(f"     ✓ Success (Hansha, fetched {len(hansha_data)}/{len(currencies)} currencies)")
     else:
         # Fallback to bonbast
         print(f"     ⚠️  Hansha failed, using bonbast fallback...")
@@ -161,6 +213,23 @@ async def generate_history_endpoints(api_dir: Path):
     history_dir = api_dir / 'history'
     history_dir.mkdir(exist_ok=True)
 
+    # Get available currencies from the currencies.json data
+    currencies_file = Path('data/currencies.json')
+    currency_codes = []
+
+    if currencies_file.exists():
+        currencies_data = load_json(currencies_file)
+        hansha_rates = currencies_data.get('hansha_rates', [])
+        if hansha_rates:
+            # Extract currency codes (ab field) from hansha_rates
+            currency_codes = [item.get('ab') for item in hansha_rates if item.get('ab')]
+            print(f"   Found {len(currency_codes)} currencies in hansha_rates")
+
+    # Fallback to common currencies if we couldn't get them from the file
+    if not currency_codes:
+        print("   ⚠️  Could not load currencies from data file, using default list")
+        currency_codes = ['usd', 'eur', 'gbp', 'chf', 'cad', 'aud', 'jpy', 'cny']
+
     # Period-based endpoints (Hansha primary, bonbast fallback)
     # Only keep periods where fallback makes sense
     periods = [
@@ -171,7 +240,7 @@ async def generate_history_endpoints(api_dir: Path):
     ]
 
     for period_key, period_name, days_fallback in periods:
-        await generate_period_endpoint(history_dir, period_key, period_name, days_fallback)
+        await generate_period_endpoint(history_dir, period_key, period_name, days_fallback, currency_codes)
 
 
 async def async_main():
