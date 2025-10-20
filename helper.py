@@ -67,6 +67,40 @@ async def run_bonbast():
         return None
 
 
+async def run_bonbast_history(date: Optional[str] = None):
+    """
+    Run bonbast history command.
+
+    Args:
+        date: Optional date in format YYYY-MM-DD or YYYY/MM/DD.
+              Valid from 2012-10-09 to one day before current date.
+
+    Returns:
+        JSON string of history data or None on error
+    """
+    try:
+        cmd = ['bonbast', 'history', '--json']
+        if date:
+            cmd.extend(['--date', date])
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            print(f"Error occurred in running bonbast history command: {stderr.decode()}")
+            return None
+
+        return stdout.decode()
+    except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
+        print(f"Error occurred in running bonbast history command: {e}")
+        return None
+
+
 def save_cache(data: Dict[str, Any]) -> None:
     """Save data to cache file with timestamp"""
     try:
@@ -106,12 +140,14 @@ def load_cache() -> Optional[Dict[str, Any]]:
         return None
 
 
-def combine_data(hansha_rates, cryptos, bonbast, sources_status):
+def combine_data(hansha_rates, cryptos, bonbast, hansha_history, bonbast_history, sources_status):
     """Combine data from all sources with status tracking"""
     data = {
         'sources_status': sources_status,
         'last_updated': datetime.now().isoformat(),
         'hansha_rates': hansha_rates,
+        'hansha_history': hansha_history,
+        'bonbast_history': bonbast_history,
         'crypto': cryptos,
         'bonbast': bonbast
     }
@@ -127,11 +163,15 @@ async def aggregator():
     """
     sources_status = {
         'hansha': {'status': 'unknown', 'error': None},
+        'hansha_history': {'status': 'unknown', 'error': None},
         'crypto': {'status': 'unknown', 'error': None},
-        'bonbast': {'status': 'unknown', 'error': None}
+        'bonbast': {'status': 'unknown', 'error': None},
+        'bonbast_history': {'status': 'unknown', 'error': None}
     }
 
     hansha_rates = None
+    hansha_history = None
+    bonbast_history = None
     cryptos = []
     bonbast = []
 
@@ -150,6 +190,38 @@ async def aggregator():
                 hansha_rates = hansha_result
                 sources_status['hansha']['status'] = 'success'
                 print("Hansha rates fetched successfully")
+
+            # Fetch Hansha history
+            print("Fetching Hansha history...")
+            hansha_history_result = await fetch(APIs.HANSHA_HISTORY.url, session)
+            if isinstance(hansha_history_result, dict) and hansha_history_result.get('error'):
+                sources_status['hansha_history']['status'] = 'failed'
+                sources_status['hansha_history']['error'] = hansha_history_result.get('error')
+                print(f"Hansha history failed: {hansha_history_result.get('error')}")
+
+                # Fallback to bonbast history
+                print("Attempting to fetch Bonbast history as fallback...")
+                bonbast_history_result_str = await run_bonbast_history()
+                if bonbast_history_result_str:
+                    try:
+                        bonbast_history = json.loads(bonbast_history_result_str)
+                        sources_status['bonbast_history']['status'] = 'success'
+                        print(f"Bonbast history fetched successfully as fallback")
+                    except json.JSONDecodeError as e:
+                        sources_status['bonbast_history']['status'] = 'failed'
+                        sources_status['bonbast_history']['error'] = f'JSON decode error: {str(e)}'
+                        print(f"Bonbast history JSON decode failed: {e}")
+                else:
+                    sources_status['bonbast_history']['status'] = 'failed'
+                    sources_status['bonbast_history']['error'] = 'Command execution failed'
+                    print("Bonbast history command execution failed")
+            else:
+                hansha_history = hansha_history_result
+                sources_status['hansha_history']['status'] = 'success'
+                print("Hansha history fetched successfully")
+                # Mark bonbast_history as skipped since hansha succeeded
+                sources_status['bonbast_history']['status'] = 'skipped'
+                sources_status['bonbast_history']['error'] = 'Not needed - hansha_history succeeded'
 
             # Fetch Crypto rates
             print("Fetching Crypto rates...")
@@ -205,7 +277,7 @@ async def aggregator():
                 }, 503
 
         # Combine available data (even if partial)
-        combined_data = combine_data(hansha_rates, cryptos, bonbast, sources_status)
+        combined_data = combine_data(hansha_rates, cryptos, bonbast, hansha_history, bonbast_history, sources_status)
 
         # Save to cache for future use
         save_cache(combined_data)
