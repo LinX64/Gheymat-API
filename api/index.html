@@ -59,6 +59,11 @@
             word-break: break-all;
             color: #333;
         }
+        .meta {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #999;
+        }
         pre {
             background: #f5f5f5;
             padding: 16px;
@@ -93,42 +98,49 @@
             <h3>GET /latest.json</h3>
             <p>Current Iranian currency exchange rates (Hansha with icons and full details)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/latest.json</div>
+            <div class="meta">Cache: 5 minutes | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /history/1d.json</h3>
             <p>Yesterday's rates (Hansha → Bonbast fallback)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/history/1d.json</div>
+            <div class="meta">Cache: 1 hour | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /history/1w.json</h3>
             <p>Last week's rates (Hansha → Bonbast fallback)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/history/1w.json</div>
+            <div class="meta">Cache: 6 hours | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /history/1m.json</h3>
             <p>Last month's rates (Hansha → Bonbast fallback)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/history/1m.json</div>
+            <div class="meta">Cache: 12 hours | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /history/1y.json</h3>
             <p>Last year's rates (Hansha → Bonbast fallback)</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/history/1y.json</div>
+            <div class="meta">Cache: 24 hours | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /crypto.json</h3>
             <p>Top 100 cryptocurrencies by market cap</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/crypto.json</div>
+            <div class="meta">Cache: 5 minutes | Updates: Every 5 minutes</div>
         </div>
 
         <div class="endpoint">
             <h3>GET /news.json</h3>
             <p>Latest blockchain news articles</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/news.json</div>
+            <div class="meta">Cache: 1 hour | Updates: Every 5 minutes</div>
         </div>
 
         <h2>Usage Examples</h2>
@@ -152,16 +164,24 @@ const yearData = await fetch('https://linx64.github.io/CurrencyCapPortal/history
 
 // Available periods: 1d, 1w, 1m, 1y</pre>
 
+        <p><strong>Perfect for Mobile Apps</strong></p>
+        <pre>✓ No date calculations needed
+✓ Simple, clean URLs (1d, 1w, 1m, 1y)
+✓ Hansha → Bonbast auto-fallback
+✓ Auto-updated every 5 minutes
+✓ Works with React Native, Flutter, Swift, Kotlin</pre>
+
         <h2>Features</h2>
         <div class="features">
-        • Auto-updates every 6 hours<br>
+        • Auto-updates every 5 minutes<br>
+        • Smart caching (different expiry for each endpoint)<br>
         • Free, no rate limits<br>
         • CORS enabled<br>
         • Powered by GitHub Pages
         </div>
 
         <footer>
-            Built with GitHub Actions
+            Built with GitHub Actions | Updated every 5 minutes
         </footer>
     </div>
 </body>
