@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose test-coverage test-fast install clean lint format security
+.PHONY: help test test-verbose test-fast install clean lint format security
 
 help:
 	@echo "Currency Cap Portal - Development Commands"
@@ -7,9 +7,7 @@ help:
 	@echo "  make install        - Install all dependencies including test dependencies"
 	@echo "  make test          - Run all tests"
 	@echo "  make test-verbose  - Run tests with verbose output"
-	@echo "  make test-coverage - Run tests with coverage report"
 	@echo "  make test-fast     - Run tests without slow tests"
-	@echo "  make test-html     - Run tests and generate HTML coverage report"
 	@echo "  make lint          - Run code linting"
 	@echo "  make format        - Format code with black and isort"
 	@echo "  make security      - Run security checks"
@@ -26,13 +24,6 @@ test:
 test-verbose:
 	pytest -v
 
-test-coverage:
-	pytest --cov=. --cov-report=term-missing
-
-test-html:
-	pytest --cov=. --cov-report=html
-	@echo "Coverage report generated in htmlcov/index.html"
-
 test-fast:
 	pytest -m "not slow"
 
@@ -44,13 +35,13 @@ lint:
 	flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=tests,venv,.venv,env,.env
 	flake8 . --count --max-complexity=10 --max-line-length=120 --statistics --exclude=tests,venv,.venv,env,.env
 	@echo "Running black check..."
-	black --check --exclude='/(\.git|\.venv|venv|env|\.env|__pycache__|\.pytest_cache|htmlcov)/' .
+	black --check --exclude='/(\.git|\.venv|venv|env|\.env|__pycache__|\.pytest_cache)/' .
 	@echo "Running isort check..."
 	isort --check-only --skip .venv --skip venv --skip env --skip .env .
 
 format:
 	@echo "Formatting with black..."
-	black --exclude='/(\.git|\.venv|venv|env|\.env|__pycache__|\.pytest_cache|htmlcov)/' .
+	black --exclude='/(\.git|\.venv|venv|env|\.env|__pycache__|\.pytest_cache)/' .
 	@echo "Sorting imports with isort..."
 	isort --skip .venv --skip venv --skip env --skip .env .
 
@@ -67,10 +58,6 @@ clean:
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
-	find . -type f -name ".coverage" -delete
-	rm -rf htmlcov/
-	rm -rf .coverage
-	rm -rf coverage.xml
 	rm -rf .pytest_cache/
 	@echo "Clean complete!"
 
