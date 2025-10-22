@@ -149,6 +149,13 @@
         </div>
 
         <div class="endpoint">
+            <h3>GET /history/5y.json</h3>
+            <p>Last 5 years rates - All historical data (Hansha → Bonbast fallback)</p>
+            <div class="url">https://linx64.github.io/CurrencyCapPortal/history/5y.json</div>
+            <div class="meta">Cache: 24 hours | Updates: Every 5 minutes</div>
+        </div>
+
+        <div class="endpoint">
             <h3>GET /crypto.json</h3>
             <p>Top 100 cryptocurrencies by market cap</p>
             <div class="url">https://linx64.github.io/CurrencyCapPortal/crypto.json</div>
@@ -181,7 +188,11 @@ const monthData = await fetch('https://linx64.github.io/CurrencyCapPortal/histor
 const yearData = await fetch('https://linx64.github.io/CurrencyCapPortal/history/1y.json')
   .then(res => res.json());
 
-// Available periods: 1d, 1w, 1m, 1y</pre>
+// Get all historical data (5 years)
+const allData = await fetch('https://linx64.github.io/CurrencyCapPortal/history/5y.json')
+  .then(res => res.json());
+
+// Available periods: 1d, 1w, 1m, 1y, 5y</pre>
 
         <footer>
             Built with GitHub Actions | Updated every 5 minutes

@@ -29,6 +29,7 @@ async def main():
         update_history_period('1w', 'oneWeek', 7, currencies),
         update_history_period('1m', 'oneMonth', 30, currencies),
         update_history_period('1y', 'oneYear', 90, currencies),
+        update_history_period('5y', 'fiveYear', 90, currencies),
     )
 
     print("\n" + "=" * 60)
