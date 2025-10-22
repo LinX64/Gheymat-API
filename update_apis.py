@@ -8,7 +8,7 @@ from updaters import (
     update_crypto,
     update_news,
     update_history_period,
-    get_currency_list
+    get_currency_list,
 )
 
 
@@ -25,10 +25,12 @@ async def main():
         update_latest(),
         update_crypto(),
         update_news(),
-        update_history_period('1d', 'latest', 1, currencies),
-        update_history_period('1w', 'oneWeek', 7, currencies),
-        update_history_period('1m', 'oneMonth', 30, currencies),
-        update_history_period('1y', 'oneYear', 90, currencies),
+        update_history_period("1d", "latest", 1, currencies),
+        update_history_period("1w", "oneWeek", 7, currencies),
+        update_history_period("1m", "oneMonth", 30, currencies),
+        update_history_period("1y", "oneYear", 90, currencies),
+        update_history_period("5y", "fiveYears", 90, currencies),
+        update_history_period("all", "all", 90, currencies),
     )
 
     print("\n" + "=" * 60)
@@ -37,5 +39,5 @@ async def main():
     print("=" * 60 + "\n")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

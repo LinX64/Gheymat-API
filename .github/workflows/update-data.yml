@@ -3,6 +3,9 @@ name: Update Currency Data
 on:
   schedule:
     # Run every 5 minutes
+    # NOTE: GitHub Actions scheduled workflows are subject to delays and may not run exactly every 5 minutes.
+    # Typical delays range from 3-60+ minutes during high load periods.
+    # See: https://github.com/orgs/community/discussions/147369
     - cron: '*/5 * * * *'
 
   workflow_dispatch:
