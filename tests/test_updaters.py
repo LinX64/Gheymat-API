@@ -1,7 +1,7 @@
 """Unit tests for updaters.py module."""
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, call
+from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
 import aiohttp
 
 from updaters import (
@@ -25,19 +25,25 @@ class TestFetchNews:
             {"title": "Article 2", "description": "Description 2"}
         ]
 
-        with patch('os.getenv', return_value='test_api_key'):
+        with patch('updaters.news_api_key', 'test_api_key'):
             with patch('aiohttp.ClientSession') as mock_session_class:
-                mock_session = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status = 200
                 mock_response.json = AsyncMock(return_value={"articles": mock_articles})
 
-                mock_session.get = AsyncMock(return_value=mock_response)
-                mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-                mock_session.get.return_value.__aexit__ = AsyncMock()
+                # Create proper async context manager mocks
+                mock_get_cm = AsyncMock()
+                mock_get_cm.__aenter__.return_value = mock_response
+                mock_get_cm.__aexit__.return_value = None
 
-                mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-                mock_session_class.return_value.__aexit__ = AsyncMock()
+                mock_session = MagicMock()
+                mock_session.get = MagicMock(return_value=mock_get_cm)
+
+                mock_session_cm = AsyncMock()
+                mock_session_cm.__aenter__.return_value = mock_session
+                mock_session_cm.__aexit__.return_value = None
+
+                mock_session_class.return_value = mock_session_cm
 
                 result = await fetch_news()
                 assert result == mock_articles
@@ -46,7 +52,7 @@ class TestFetchNews:
     @pytest.mark.asyncio
     async def test_fetch_news_no_api_key(self):
         """Test news fetch without API key."""
-        with patch('os.getenv', return_value=None):
+        with patch('updaters.news_api_key', None):
             result = await fetch_news()
             assert result is None
 

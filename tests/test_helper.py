@@ -30,10 +30,13 @@ class TestFetch:
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"data": "test"})
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aexit__ = AsyncMock()
+        # Create a proper async context manager mock
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_cm.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
 
         result = await fetch("https://example.com", mock_session)
         assert result == {"data": "test"}
@@ -51,10 +54,13 @@ class TestFetch:
         mock_response = AsyncMock()
         mock_response.status = 404
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aexit__ = AsyncMock()
+        # Create a proper async context manager mock
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_cm.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
 
         result = await fetch("https://example.com", mock_session, retries=2, delay=0.1)
         assert "error" in result
@@ -70,17 +76,18 @@ class TestFetch:
         mock_response_200.status = 200
         mock_response_200.json = AsyncMock(return_value={"data": "success"})
 
-        mock_session = AsyncMock()
+        # Create context managers for each response
+        mock_cm_429 = AsyncMock()
+        mock_cm_429.__aenter__.return_value = mock_response_429
+        mock_cm_429.__aexit__.return_value = None
+
+        mock_cm_200 = AsyncMock()
+        mock_cm_200.__aenter__.return_value = mock_response_200
+        mock_cm_200.__aexit__.return_value = None
+
+        mock_session = MagicMock()
         # First call returns 429, second returns 200
-        mock_session.get = AsyncMock(side_effect=[
-            mock_response_429,
-            mock_response_200
-        ])
-        mock_session.get.return_value.__aenter__ = AsyncMock(side_effect=[
-            mock_response_429,
-            mock_response_200
-        ])
-        mock_session.get.return_value.__aexit__ = AsyncMock()
+        mock_session.get.side_effect = [mock_cm_429, mock_cm_200]
 
         result = await fetch("https://example.com", mock_session, retries=2, delay=0.1)
         assert result == {"data": "success"}
@@ -94,10 +101,13 @@ class TestFetch:
             Mock(), Mock()
         ))
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aexit__ = AsyncMock()
+        # Create a proper async context manager mock
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_cm.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
 
         result = await fetch("https://example.com", mock_session)
         assert result["error"] == "Invalid response format"
@@ -168,17 +178,23 @@ class TestHanshaAPI:
         mock_data = [{"ab": "usd", "price": 50000}]
 
         with patch('aiohttp.ClientSession') as mock_session_class:
-            mock_session = AsyncMock()
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=mock_data)
 
-            mock_session.get = AsyncMock(return_value=mock_response)
-            mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-            mock_session.get.return_value.__aexit__ = AsyncMock()
+            # Create proper async context manager mocks
+            mock_get_cm = AsyncMock()
+            mock_get_cm.__aenter__.return_value = mock_response
+            mock_get_cm.__aexit__.return_value = None
 
-            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_class.return_value.__aexit__ = AsyncMock()
+            mock_session = MagicMock()
+            mock_session.get = MagicMock(return_value=mock_get_cm)
+
+            mock_session_cm = AsyncMock()
+            mock_session_cm.__aenter__.return_value = mock_session
+            mock_session_cm.__aexit__.return_value = None
+
+            mock_session_class.return_value = mock_session_cm
 
             result = await fetch_hansha_latest()
             assert result == mock_data
@@ -205,14 +221,17 @@ class TestHanshaAPI:
     async def test_fetch_single_currency_success(self):
         """Test successful single currency fetch."""
         mock_data = {"ab": "usd", "history": []}
-        mock_session = AsyncMock()
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value=mock_data)
 
-        mock_session.get = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_session.get.return_value.__aexit__ = AsyncMock()
+        # Create proper async context manager mock
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_response
+        mock_cm.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
 
         result = await fetch_single_currency(
             mock_session,
