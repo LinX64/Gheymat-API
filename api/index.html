@@ -15,8 +15,8 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.8;
-            color: #1a1a1a;
-            background: #fafafa;
+            color: #e0e0e0;
+            background: #0d1117;
             padding: 40px 20px;
         }
 
@@ -32,7 +32,7 @@
         }
 
         .subtitle {
-            color: #666;
+            color: #8b949e;
             margin-bottom: 40px;
             font-size: 1.1em;
         }
@@ -44,8 +44,8 @@
         }
 
         .endpoint {
-            background: white;
-            border: 1px solid #e0e0e0;
+            background: #161b22;
+            border: 1px solid #30363d;
             padding: 20px;
             margin: 12px 0;
             border-radius: 6px;
@@ -55,52 +55,54 @@
             font-size: 1em;
             margin-bottom: 6px;
             font-weight: 600;
-            color: #0066cc;
+            color: #58a6ff;
         }
 
         .endpoint p {
-            color: #666;
+            color: #8b949e;
             font-size: 0.95em;
             margin-bottom: 12px;
         }
 
         .url {
-            background: #f5f5f5;
+            background: #0d1117;
             padding: 10px;
             border-radius: 4px;
             font-family: 'Monaco', 'Courier New', monospace;
             font-size: 0.85em;
             word-break: break-all;
-            color: #333;
+            color: #79c0ff;
+            border: 1px solid #30363d;
         }
 
         .meta {
             margin-top: 10px;
             font-size: 0.8em;
-            color: #999;
+            color: #6e7681;
         }
 
         pre {
-            background: #f5f5f5;
+            background: #161b22;
             padding: 16px;
             border-radius: 4px;
             overflow-x: auto;
             font-size: 0.85em;
             margin: 12px 0;
-            border: 1px solid #e0e0e0;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
         }
 
         .features {
-            color: #666;
+            color: #8b949e;
             line-height: 2;
         }
 
         footer {
             margin-top: 60px;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid #30363d;
             text-align: center;
-            color: #999;
+            color: #6e7681;
             font-size: 0.9em;
         }
     </style>
@@ -169,6 +171,40 @@
             <div class="meta">Cache: 1 hour | Updates: Every 5 minutes</div>
         </div>
 
+        <h2>AI Predictions (NEW!)</h2>
+
+        <div class="endpoint">
+            <h3>GET /predictions/index.json</h3>
+            <p>Prediction metadata and available configurations</p>
+            <div class="url">https://linx64.github.io/CurrencyCapPortal/predictions/index.json</div>
+            <div class="meta">Updates: Every hour | Contains: Stats and configuration info</div>
+        </div>
+
+        <div class="endpoint">
+            <h3>GET /predictions/short.json</h3>
+            <p>7-day AI predictions for all currencies (42 currencies)</p>
+            <div class="url">https://linx64.github.io/CurrencyCapPortal/predictions/short.json</div>
+            <div class="meta">Updates: Every hour | Historical data: 30 days | File size: ~97 KB
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <h3>GET /predictions/medium.json</h3>
+            <p>14-day AI predictions for all currencies (42 currencies)</p>
+            <div class="url">https://linx64.github.io/CurrencyCapPortal/predictions/medium.json
+            </div>
+            <div class="meta">Updates: Every hour | Historical data: 60 days | File size: ~173 KB
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <h3>GET /predictions/long.json</h3>
+            <p>30-day AI predictions for all currencies (42 currencies)</p>
+            <div class="url">https://linx64.github.io/CurrencyCapPortal/predictions/long.json</div>
+            <div class="meta">Updates: Every hour | Historical data: 90 days | File size: ~347 KB
+            </div>
+        </div>
+
         <h2>Usage Examples</h2>
 
         <p><strong>Latest Rates</strong></p>
@@ -194,8 +230,49 @@ const allData = await fetch('https://linx64.github.io/CurrencyCapPortal/history/
 
 // Available periods: 1d, 1w, 1m, 1y, 5y</pre>
 
+        <p><strong>AI Predictions</strong></p>
+        <pre>// Get short-term predictions (7 days)
+const predictions = await fetch('https://linx64.github.io/CurrencyCapPortal/predictions/short.json')
+  .then(res => res.json());
+
+// Find USD predictions
+const usdPrediction = predictions.predictions.find(p => p.currencyCode === 'usd');
+
+console.log('Currency:', usdPrediction.prediction.currencyName);
+console.log('Current Price:', usdPrediction.prediction.currentPrice.buy);
+console.log('Trend:', usdPrediction.prediction.trend); // BULLISH, BEARISH, NEUTRAL, VOLATILE
+console.log('Confidence:', usdPrediction.prediction.confidenceScore); // 0.5 to 0.95
+
+// Tomorrow's prediction
+const tomorrow = usdPrediction.prediction.predictions[0];
+console.log('Tomorrow:', tomorrow.date);
+console.log('Predicted Buy:', tomorrow.predictedBuy);
+console.log('Range:', tomorrow.lowerBound, '-', tomorrow.upperBound);</pre>
+
+        <p><strong>Get Prediction Metadata</strong></p>
+        <pre>// Check what predictions are available
+const meta = await fetch('https://linx64.github.io/CurrencyCapPortal/predictions/index.json')
+  .then(res => res.json());
+
+console.log('Available:', meta.availableConfigurations);
+console.log('Total currencies:', meta.stats.totalCurrencies);
+console.log('Success rate:', meta.stats.successfulPredictions);</pre>
+
+        <h2>Features</h2>
+        <div class="features">
+            ✅ Free REST API - No API key required<br>
+            ✅ CORS Enabled - Use from any domain<br>
+            ✅ GitHub Pages CDN - Fast global delivery<br>
+            ✅ Auto-updated - Fresh data every 5 minutes<br>
+            ✅ AI Predictions - ML-powered forecasts (NEW!)<br>
+            ✅ Historical Data - Up to 5 years of price history<br>
+            ✅ Multiple Sources - Hansha, Bonbast, CoinGecko<br>
+            ✅ 40+ Currencies - Fiat, crypto, and gold
+        </div>
+
         <footer>
-            Built with GitHub Actions | Updated every 5 minutes
+            Built with GitHub Actions | Currency data updates every 5 minutes | AI predictions
+            update hourly
         </footer>
     </div>
 </body>
