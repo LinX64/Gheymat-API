@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose test-fast install clean lint format security
+.PHONY: help test test-verbose test-fast install clean lint format security predictions
 
 help:
 	@echo "Currency Cap Portal - Development Commands"
@@ -13,6 +13,7 @@ help:
 	@echo "  make security      - Run security checks"
 	@echo "  make clean         - Clean up cache and temporary files"
 	@echo "  make update-apis   - Update all API data"
+	@echo "  make predictions   - Generate AI predictions for all currencies"
 
 install:
 	pip install --upgrade pip
@@ -64,6 +65,10 @@ clean:
 update-apis:
 	python update_apis.py
 
+predictions:
+	@echo "Generating AI predictions..."
+	python generate_predictions.py
+
 # Run specific test file
 test-helper:
 	pytest tests/test_helper.py -v
@@ -82,3 +87,6 @@ test-generate:
 
 test-update-apis:
 	pytest tests/test_update_apis.py -v
+
+test-predictions:
+	pytest tests/test_api_server.py -v

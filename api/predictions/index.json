@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2025-11-08T23:33:46.213983Z",
+  "availableConfigurations": [
+    {
+      "name": "short",
+      "daysAhead": 7,
+      "historicalDays": 30,
+      "endpoint": "predictions/short.json"
+    },
+    {
+      "name": "medium",
+      "daysAhead": 14,
+      "historicalDays": 60,
+      "endpoint": "predictions/medium.json"
+    },
+    {
+      "name": "long",
+      "daysAhead": 30,
+      "historicalDays": 90,
+      "endpoint": "predictions/long.json"
+    }
+  ],
+  "stats": {
+    "totalCurrencies": 43,
+    "successfulPredictions": 126,
+    "failedPredictions": 3
+  }
+}
