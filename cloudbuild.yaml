@@ -1,26 +1,32 @@
 steps:
-  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/gheymat-predictor', '.']
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/currencycap-portal'
+      - '.'
   
-  # Push to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/gheymat-predictor']
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/currencycap-portal'
   
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'gheymat-predictor'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/gheymat-predictor'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
+      - 'currencycap-portal'
+      - '--image=gcr.io/$PROJECT_ID/currencycap-portal'
+      - '--region=us-central1'
+      - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--max-instances=10'
 
 images:
-  - 'gcr.io/$PROJECT_ID/gheymat-predictor'
+  - 'gcr.io/$PROJECT_ID/currencycap-portal'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
