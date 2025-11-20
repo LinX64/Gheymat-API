@@ -1,0 +1,57 @@
+# Alternative Cloud Build config using Container Registry (gcr.io)
+# NOTE: Google is migrating to Artifact Registry. Use cloudbuild.yaml instead.
+# This file is provided for legacy support only.
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/currencycap-portal:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/currencycap-portal:latest'
+      - '.'
+
+  # Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/currencycap-portal'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'currencycap-portal'
+      - '--image=gcr.io/$PROJECT_ID/currencycap-portal:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--max-instances=10'
+      - '--port=8080'
+
+images:
+  - 'gcr.io/$PROJECT_ID/currencycap-portal'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# To use this file, run:
+# gcloud builds submit --config cloudbuild-gcr.yaml
+#
+# Prerequisites:
+# 1. Enable Container Registry API:
+#    gcloud services enable containerregistry.googleapis.com
+#
+# 2. Grant Cloud Build permissions:
+#    PROJECT_ID=$(gcloud config get-value project)
+#    gcloud projects add-iam-policy-binding $PROJECT_ID \
+#      --member="serviceAccount:${PROJECT_ID}@cloudbuild.gserviceaccount.com" \
+#      --role="roles/storage.admin"
