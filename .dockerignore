@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# GitHub
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Tests
+tests/
+test/
+*.test.js
+*.spec.js
+
+# CI/CD (these run in GitHub Actions, not needed in container)
+.github/
+
+# Node (if any)
+node_modules/
+npm-debug.log
+
+# Misc
+.env.local
+.env.*.local
+*.log
