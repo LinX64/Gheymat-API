@@ -1,32 +1,44 @@
 steps:
+  # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
+    args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/currencycap-portal'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/currencycap-repo/currencycap-portal:$SHORT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/currencycap-repo/currencycap-portal:latest'
       - '.'
-  
+
+  # Push to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
+    args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/currencycap-portal'
-  
+      - '--all-tags'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/currencycap-repo/currencycap-portal'
+
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
       - 'currencycap-portal'
-      - '--image=gcr.io/$PROJECT_ID/currencycap-portal'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/currencycap-repo/currencycap-portal:latest'
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--memory=1Gi'
       - '--cpu=1'
       - '--max-instances=10'
+      - '--port=8080'
 
 images:
-  - 'gcr.io/$PROJECT_ID/currencycap-portal'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/currencycap-repo/currencycap-portal'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Substitutions for versioning
+substitutions:
+  _REGION: 'us-central1'
