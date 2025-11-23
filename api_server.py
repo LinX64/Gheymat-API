@@ -538,7 +538,7 @@ class AdvancedPredictionEngine:
 @app.route('/swagger.json', methods=['GET'])
 def swagger_spec():
     """Serve OpenAPI/Swagger specification"""
-    spec = {
+    response = jsonify({
         "openapi": "3.0.0",
         "info": {
             "title": "CurrencyCapPortal API",
@@ -876,42 +876,19 @@ def swagger_spec():
                 }
             }
         }
-    }
-    return jsonify(spec), 200
+    })
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET')
+    return response, 200
 
 @app.route('/', methods=['GET'])
 def root():
-    """Root endpoint with API documentation"""
-    docs = {
-        'service': 'CurrencyCapPortal API',
-        'version': '2.0',
-        'description': 'Advanced AI-powered currency prediction and data API',
-        'interactiveDocumentation': '/docs',
-        'endpoints': {
-            'GET /': 'This documentation',
-            'GET /docs': 'Interactive Swagger UI documentation',
-            'GET /health': 'Health check',
-            'GET /api/latest': 'Latest currency prices',
-            'GET /api/news': 'Latest financial news',
-            'GET /api/history/<period>': 'Historical data (periods: 1d, 1w, 1m, 1y, 5y, all)',
-            'GET /api/predictions/<term>': 'Pre-generated predictions (terms: short, medium, long)',
-            'POST /api/v1/predict': 'Generate custom AI predictions',
-            'GET /api/v1/currencies': 'List all available currencies',
-            'GET /api/v1/sentiment': 'Current market sentiment analysis',
-            'GET /api/v1/aed/correlations': 'AED correlation with all currencies'
-        },
-        'features': [
-            'Advanced ML predictions using Random Forest and Gradient Boosting',
-            'News sentiment analysis',
-            'UAE Dirham (AED) correlation analysis',
-            '40-year historical data support',
-            'Technical indicators (RSI, Moving Averages, Momentum)',
-            'Real-time price data'
-        ],
-        'documentation': 'https://github.com/LinX64/CurrencyCapPortal',
-        'status': 'operational'
-    }
-    return jsonify(docs), 200
+    """Root endpoint"""
+    return jsonify({
+        'status': 'Server running',
+        'documentation': '/docs'
+    }), 200
 
 
 @app.route('/health', methods=['GET'])
