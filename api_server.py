@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from flask_swagger_ui import get_swaggerui_blueprint
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import json
@@ -22,6 +23,22 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+
+# Swagger UI configuration
+SWAGGER_URL = '/docs'
+API_URL = '/swagger.json'
+
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={
+        'app_name': "CurrencyCapPortal API",
+        'docExpansion': 'list',
+        'defaultModelsExpandDepth': 3
+    }
+)
+
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 class NewsSentimentAnalyzer:
     """Analyze news sentiment and its impact on currency predictions"""
@@ -518,6 +535,350 @@ class AdvancedPredictionEngine:
 # API Routes
 # ========================
 
+@app.route('/swagger.json', methods=['GET'])
+def swagger_spec():
+    """Serve OpenAPI/Swagger specification"""
+    spec = {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "CurrencyCapPortal API",
+            "description": "Advanced AI-powered currency prediction and data API with machine learning, news sentiment analysis, and AED correlation tracking. Features include:\n\n- **Machine Learning Models**: Gradient Boosting and Random Forest predictions\n- **News Sentiment Analysis**: Real-time market sentiment from financial news\n- **Technical Indicators**: RSI, Moving Averages, Volatility, Momentum\n- **AED Correlation Analysis**: Track UAE Dirham relationships\n- **40-Year Historical Data**: Comprehensive historical analysis",
+            "version": "2.0.0",
+            "contact": {
+                "name": "CurrencyCapPortal",
+                "url": "https://github.com/LinX64/CurrencyCapPortal"
+            }
+        },
+        "servers": [
+            {
+                "url": request.host_url.rstrip('/'),
+                "description": "Current server"
+            }
+        ],
+        "tags": [
+            {"name": "General", "description": "General API information and health checks"},
+            {"name": "Data", "description": "Currency data, news, and historical information"},
+            {"name": "Predictions", "description": "AI-powered currency predictions with ML models"},
+            {"name": "Analysis", "description": "Market sentiment and correlation analysis"}
+        ],
+        "paths": {
+            "/": {
+                "get": {
+                    "tags": ["General"],
+                    "summary": "Get API information",
+                    "description": "Returns basic API information and links to documentation",
+                    "responses": {
+                        "200": {
+                            "description": "API information",
+                            "content": {
+                                "application/json": {
+                                    "example": {
+                                        "service": "CurrencyCapPortal API",
+                                        "version": "2.0",
+                                        "interactiveDocumentation": "/docs",
+                                        "status": "operational"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/health": {
+                "get": {
+                    "tags": ["General"],
+                    "summary": "Health check",
+                    "description": "Check API server health and ML library availability",
+                    "responses": {
+                        "200": {
+                            "description": "Health status",
+                            "content": {
+                                "application/json": {
+                                    "example": {
+                                        "status": "healthy",
+                                        "timestamp": "2025-11-23T14:47:52.806503",
+                                        "mlAvailable": True
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/latest": {
+                "get": {
+                    "tags": ["Data"],
+                    "summary": "Get latest currency prices",
+                    "description": "Returns current exchange rates for all supported currencies",
+                    "responses": {
+                        "200": {
+                            "description": "List of currencies with latest prices"
+                        }
+                    }
+                }
+            },
+            "/api/news": {
+                "get": {
+                    "tags": ["Data"],
+                    "summary": "Get financial news",
+                    "description": "Returns recent financial news articles used for sentiment analysis",
+                    "responses": {
+                        "200": {
+                            "description": "List of news articles"
+                        }
+                    }
+                }
+            },
+            "/api/history/{period}": {
+                "get": {
+                    "tags": ["Data"],
+                    "summary": "Get historical data",
+                    "description": "Returns historical exchange rates for a specified time period (up to 40 years)",
+                    "parameters": [
+                        {
+                            "name": "period",
+                            "in": "path",
+                            "required": True,
+                            "schema": {
+                                "type": "string",
+                                "enum": ["1d", "1w", "1m", "1y", "5y", "all"]
+                            },
+                            "description": "Time period (1d=1 day, 1w=1 week, 1m=1 month, 1y=1 year, 5y=5 years, all=40 years)"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Historical data"
+                        },
+                        "400": {
+                            "description": "Invalid period"
+                        }
+                    }
+                }
+            },
+            "/api/predictions/{term}": {
+                "get": {
+                    "tags": ["Predictions"],
+                    "summary": "Get pre-generated predictions",
+                    "description": "Returns pre-generated prediction data",
+                    "parameters": [
+                        {
+                            "name": "term",
+                            "in": "path",
+                            "required": True,
+                            "schema": {
+                                "type": "string",
+                                "enum": ["short", "medium", "long", "index"]
+                            },
+                            "description": "Prediction term"
+                        }
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Pre-generated predictions"
+                        }
+                    }
+                }
+            },
+            "/api/v1/currencies": {
+                "get": {
+                    "tags": ["Data"],
+                    "summary": "List all currencies",
+                    "description": "Returns list of all 42 supported currencies with current prices",
+                    "responses": {
+                        "200": {
+                            "description": "Currency list",
+                            "content": {
+                                "application/json": {
+                                    "example": {
+                                        "total": 42,
+                                        "currencies": [
+                                            {
+                                                "code": "USD",
+                                                "name": "US Dollar",
+                                                "flag": "🇺🇸",
+                                                "currentPrice": {
+                                                    "buy": 113600,
+                                                    "sell": 113675
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/v1/sentiment": {
+                "get": {
+                    "tags": ["Analysis"],
+                    "summary": "Market sentiment analysis",
+                    "description": "Analyzes financial news to determine market sentiment (POSITIVE, NEGATIVE, or NEUTRAL)",
+                    "responses": {
+                        "200": {
+                            "description": "Sentiment analysis",
+                            "content": {
+                                "application/json": {
+                                    "example": {
+                                        "sentiment": "POSITIVE",
+                                        "score": 0.815,
+                                        "confidence": 0.907,
+                                        "articlesAnalyzed": 20,
+                                        "positiveIndicators": 49,
+                                        "negativeIndicators": 5
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/api/v1/aed/correlations": {
+                "get": {
+                    "tags": ["Analysis"],
+                    "summary": "AED correlation analysis",
+                    "description": "Calculates Pearson correlation between UAE Dirham (AED) and all other currencies",
+                    "responses": {
+                        "200": {
+                            "description": "Correlation matrix"
+                        }
+                    }
+                }
+            },
+            "/api/v1/predict": {
+                "post": {
+                    "tags": ["Predictions"],
+                    "summary": "Generate AI predictions",
+                    "description": "Generate custom AI-powered currency predictions using machine learning, news sentiment, and technical analysis",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["currencyCode"],
+                                    "properties": {
+                                        "currencyCode": {
+                                            "type": "string",
+                                            "description": "Currency code (USD, EUR, GBP, AED, etc.)",
+                                            "example": "USD"
+                                        },
+                                        "daysAhead": {
+                                            "type": "integer",
+                                            "description": "Number of days to predict (1-365)",
+                                            "default": 14,
+                                            "minimum": 1,
+                                            "maximum": 365,
+                                            "example": 14
+                                        },
+                                        "useFullHistory": {
+                                            "type": "boolean",
+                                            "description": "Use full 40-year historical data",
+                                            "default": True,
+                                            "example": True
+                                        },
+                                        "useML": {
+                                            "type": "boolean",
+                                            "description": "Enable ML models (requires sufficient data)",
+                                            "default": True,
+                                            "example": True
+                                        }
+                                    }
+                                },
+                                "examples": {
+                                    "usd_14_days": {
+                                        "summary": "USD 14-day forecast",
+                                        "value": {
+                                            "currencyCode": "USD",
+                                            "daysAhead": 14,
+                                            "useFullHistory": True,
+                                            "useML": True
+                                        }
+                                    },
+                                    "aed_30_days": {
+                                        "summary": "AED 30-day forecast",
+                                        "value": {
+                                            "currencyCode": "AED",
+                                            "daysAhead": 30,
+                                            "useFullHistory": True
+                                        }
+                                    },
+                                    "eur_7_days": {
+                                        "summary": "EUR 7-day forecast",
+                                        "value": {
+                                            "currencyCode": "EUR",
+                                            "daysAhead": 7
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Prediction results",
+                            "content": {
+                                "application/json": {
+                                    "example": {
+                                        "currencyCode": "USD",
+                                        "currencyName": "US Dollar",
+                                        "currentPrice": {
+                                            "buy": 113600,
+                                            "sell": 113675,
+                                            "timestamp": "2025-11-23T14:47:52Z"
+                                        },
+                                        "predictions": [
+                                            {
+                                                "date": "2025-11-24",
+                                                "predictedBuy": 113800,
+                                                "predictedSell": 113875,
+                                                "confidence": 0.635,
+                                                "lowerBound": 90272,
+                                                "upperBound": 136125
+                                            }
+                                        ],
+                                        "confidenceScore": 0.75,
+                                        "trend": "VOLATILE",
+                                        "technicalIndicators": {
+                                            "rsi": 50.0,
+                                            "volatility": 0.1841,
+                                            "momentum": -0.3229,
+                                            "movingAvg7Day": 82171,
+                                            "movingAvg30Day": 92200
+                                        },
+                                        "newsSentiment": {
+                                            "sentiment": "POSITIVE",
+                                            "score": 0.815,
+                                            "confidence": 0.907
+                                        },
+                                        "aedCorrelation": {
+                                            "correlation": 0.0,
+                                            "strength": "MINIMAL"
+                                        },
+                                        "modelInfo": {
+                                            "version": "v2.0-advanced-ml",
+                                            "mlEnabled": True,
+                                            "historicalDataPoints": 150,
+                                            "fullHistoryUsed": True
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Invalid parameters"
+                        },
+                        "404": {
+                            "description": "Currency not found"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return jsonify(spec), 200
+
 @app.route('/', methods=['GET'])
 def root():
     """Root endpoint with API documentation"""
@@ -525,8 +886,10 @@ def root():
         'service': 'CurrencyCapPortal API',
         'version': '2.0',
         'description': 'Advanced AI-powered currency prediction and data API',
+        'interactiveDocumentation': '/docs',
         'endpoints': {
             'GET /': 'This documentation',
+            'GET /docs': 'Interactive Swagger UI documentation',
             'GET /health': 'Health check',
             'GET /api/latest': 'Latest currency prices',
             'GET /api/news': 'Latest financial news',
@@ -563,7 +926,7 @@ def health():
 
 @app.route('/api/latest', methods=['GET'])
 def get_latest():
-    """Serve latest currency prices"""
+    """Get latest currency prices"""
     try:
         with open('api/latest.json', 'r') as f:
             data = json.load(f)
@@ -574,7 +937,7 @@ def get_latest():
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
-    """Serve latest news"""
+    """Get latest financial news"""
     try:
         with open('api/news.json', 'r') as f:
             data = json.load(f)
@@ -585,7 +948,7 @@ def get_news():
 
 @app.route('/api/history/<period>', methods=['GET'])
 def get_history(period):
-    """Serve historical data"""
+    """Get historical currency data"""
     valid_periods = ['1d', '1w', '1m', '1y', '5y', 'all']
     if period not in valid_periods:
         return jsonify({'error': f'Invalid period. Valid periods: {valid_periods}'}), 400
@@ -602,7 +965,7 @@ def get_history(period):
 
 @app.route('/api/predictions/<term>', methods=['GET'])
 def get_predictions(term):
-    """Serve pre-generated predictions"""
+    """Get pre-generated predictions"""
     valid_terms = ['short', 'medium', 'long', 'index']
     if term not in valid_terms:
         return jsonify({'error': f'Invalid term. Valid terms: {valid_terms}'}), 400
@@ -651,7 +1014,7 @@ def list_currencies():
 
 @app.route('/api/v1/sentiment', methods=['GET'])
 def get_sentiment():
-    """Get current market sentiment"""
+    """Get current market sentiment analysis"""
     try:
         sentiment = NewsSentimentAnalyzer.analyze_news()
         return jsonify(sentiment), 200
@@ -661,7 +1024,7 @@ def get_sentiment():
 
 @app.route('/api/v1/aed/correlations', methods=['GET'])
 def get_aed_correlations():
-    """Get AED correlations with all currencies"""
+    """Get AED correlation analysis"""
     try:
         with open('api/latest.json', 'r') as f:
             latest_data = json.load(f)
@@ -696,7 +1059,7 @@ def get_aed_correlations():
 
 @app.route('/api/v1/predict', methods=['POST'])
 def predict():
-    """AI prediction endpoint with advanced ML"""
+    """Generate AI predictions"""
     try:
         data = request.get_json()
 
