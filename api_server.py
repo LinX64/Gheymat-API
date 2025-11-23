@@ -1,38 +1,111 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import json
 import math
 import os
+import numpy as np
+from collections import defaultdict
+import re
+
+# ML/AI imports
+try:
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.preprocessing import StandardScaler
+    import tensorflow as tf
+    from tensorflow import keras
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+    print("Warning: ML libraries not available. Using fallback prediction methods.")
 
 app = Flask(__name__)
 CORS(app)
 
-class PredictionEngine:
-    """AI prediction engine using exponential smoothing and trend analysis"""
+class NewsSentimentAnalyzer:
+    """Analyze news sentiment and its impact on currency predictions"""
+
+    # Keywords for sentiment analysis
+    POSITIVE_KEYWORDS = ['growth', 'increase', 'rise', 'surge', 'gain', 'bull', 'rally',
+                         'strong', 'boost', 'recovery', 'positive', 'optimistic', 'improve']
+    NEGATIVE_KEYWORDS = ['fall', 'decline', 'drop', 'crash', 'bear', 'weak', 'crisis',
+                         'recession', 'negative', 'pessimistic', 'concern', 'worry', 'risk']
 
     @staticmethod
-    def load_historical_data(currency_code: str, historical_days: int) -> List[Dict]:
-        """Load historical data based on requested days"""
-        history_file = None
-
-        if historical_days <= 1:
-            history_file = 'api/history/1d.json'
-        elif historical_days <= 7:
-            history_file = 'api/history/1w.json'
-        elif historical_days <= 30:
-            history_file = 'api/history/1m.json'
-        elif historical_days <= 365:
-            history_file = 'api/history/1y.json'
-        else:
-            history_file = 'api/history/5y.json'
-
+    def analyze_news(currency_code: str = None) -> Dict:
+        """Analyze news sentiment for a currency or general market"""
         try:
+            with open('api/news.json', 'r') as f:
+                news_data = json.load(f)
+
+            if not news_data:
+                return {'sentiment': 'NEUTRAL', 'score': 0.0, 'confidence': 0.5}
+
+            positive_count = 0
+            negative_count = 0
+            total_articles = len(news_data)
+
+            for article in news_data:
+                text = f"{article.get('title', '')} {article.get('description', '')} {article.get('content', '')}".lower()
+
+                # Count positive and negative keywords
+                for keyword in NewsSentimentAnalyzer.POSITIVE_KEYWORDS:
+                    positive_count += text.count(keyword)
+
+                for keyword in NewsSentimentAnalyzer.NEGATIVE_KEYWORDS:
+                    negative_count += text.count(keyword)
+
+            # Calculate sentiment score (-1 to 1)
+            total_sentiment_indicators = positive_count + negative_count
+            if total_sentiment_indicators == 0:
+                sentiment_score = 0.0
+            else:
+                sentiment_score = (positive_count - negative_count) / total_sentiment_indicators
+
+            # Determine sentiment category
+            if sentiment_score > 0.2:
+                sentiment = 'POSITIVE'
+            elif sentiment_score < -0.2:
+                sentiment = 'NEGATIVE'
+            else:
+                sentiment = 'NEUTRAL'
+
+            confidence = min(0.95, 0.5 + (abs(sentiment_score) * 0.5))
+
+            return {
+                'sentiment': sentiment,
+                'score': round(sentiment_score, 3),
+                'confidence': round(confidence, 3),
+                'articlesAnalyzed': total_articles,
+                'positiveIndicators': positive_count,
+                'negativeIndicators': negative_count
+            }
+
+        except Exception as e:
+            print(f"Error analyzing news: {e}")
+            return {'sentiment': 'NEUTRAL', 'score': 0.0, 'confidence': 0.5}
+
+
+class AdvancedPredictionEngine:
+    """Enhanced AI prediction engine with ML models, news sentiment, and AED correlation"""
+
+    def __init__(self):
+        self.scaler = StandardScaler() if ML_AVAILABLE else None
+        self.models_cache = {}
+
+    @staticmethod
+    def load_historical_data(currency_code: str, use_full_history: bool = False) -> List[Dict]:
+        """Load historical data - use all.json for full 40-year history"""
+        try:
+            if use_full_history:
+                history_file = 'api/history/all.json'
+            else:
+                history_file = 'api/history/1y.json'
+
             with open(history_file, 'r') as f:
                 history_data = json.load(f)
 
-            # Find currency in history
             for currency in history_data:
                 if currency.get('ab', '').lower() == currency_code.lower():
                     return currency.get('ps', [])
@@ -56,7 +129,8 @@ class PredictionEngine:
                         return {
                             'buy': prices[0].get('bp', 0),
                             'sell': prices[0].get('sp', 0),
-                            'name': currency.get('en', currency_code.upper())
+                            'name': currency.get('en', currency_code.upper()),
+                            'flag': currency.get('av', '')
                         }
             return None
         except Exception as e:
@@ -64,61 +138,232 @@ class PredictionEngine:
             return None
 
     @staticmethod
-    def calculate_trend(prices: List[float]) -> float:
-        """Calculate trend using linear regression"""
-        if len(prices) < 2:
-            return 0.0
+    def calculate_advanced_features(prices: List[float]) -> Dict:
+        """Calculate advanced technical indicators"""
+        if not prices or len(prices) < 2:
+            return {
+                'trend': 0.0,
+                'volatility': 0.0,
+                'momentum': 0.0,
+                'rsi': 50.0,
+                'moving_avg_7': 0.0,
+                'moving_avg_30': 0.0
+            }
 
         n = len(prices)
+
+        # Linear regression trend
         sum_x = sum(range(n))
         sum_y = sum(prices)
         sum_xy = sum(i * price for i, price in enumerate(prices))
         sum_xx = sum(i * i for i in range(n))
 
         if n * sum_xx - sum_x * sum_x == 0:
-            return 0.0
+            trend = 0.0
+        else:
+            slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+            avg = sum_y / n if n > 0 else 0
+            trend = slope / avg if avg != 0 else 0.0
 
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
-        avg = sum_y / n if n > 0 else 0
-
-        return slope / avg if avg != 0 else 0.0
-
-    @staticmethod
-    def calculate_volatility(prices: List[float]) -> float:
-        """Calculate volatility using standard deviation"""
-        if not prices:
-            return 0.0
-
+        # Volatility
         mean = sum(prices) / len(prices)
         variance = sum((p - mean) ** 2 for p in prices) / len(prices)
         std_dev = math.sqrt(variance)
+        volatility = std_dev / mean if mean != 0 else 0.0
 
-        return std_dev / mean if mean != 0 else 0.0
+        # Momentum
+        recent_size = min(len(prices) // 4, 7)
+        if recent_size > 0:
+            recent_prices = prices[-recent_size:]
+            older_prices = prices[:-recent_size]
+
+            if older_prices:
+                recent_avg = sum(recent_prices) / len(recent_prices)
+                older_avg = sum(older_prices) / len(older_prices)
+                momentum = (recent_avg - older_avg) / older_avg if older_avg != 0 else 0.0
+            else:
+                momentum = 0.0
+        else:
+            momentum = 0.0
+
+        # RSI (Relative Strength Index)
+        if len(prices) >= 14:
+            changes = [prices[i] - prices[i-1] for i in range(1, min(15, len(prices)))]
+            gains = [c for c in changes if c > 0]
+            losses = [-c for c in changes if c < 0]
+
+            avg_gain = sum(gains) / 14 if gains else 0
+            avg_loss = sum(losses) / 14 if losses else 0
+
+            if avg_loss == 0:
+                rsi = 100.0
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+        else:
+            rsi = 50.0
+
+        # Moving averages
+        ma_7 = sum(prices[-7:]) / min(7, len(prices)) if prices else 0
+        ma_30 = sum(prices[-30:]) / min(30, len(prices)) if prices else 0
+
+        return {
+            'trend': trend,
+            'volatility': volatility,
+            'momentum': momentum,
+            'rsi': rsi,
+            'moving_avg_7': ma_7,
+            'moving_avg_30': ma_30
+        }
 
     @staticmethod
-    def calculate_momentum(prices: List[float]) -> float:
-        """Calculate momentum (recent vs historical average)"""
-        if len(prices) < 4:
-            return 0.0
+    def analyze_aed_correlation(target_currency: str, historical_data: List[Dict]) -> Dict:
+        """Analyze correlation between target currency and AED (UAE Dirham)"""
+        if target_currency.lower() == 'aed':
+            return {'correlation': 1.0, 'strength': 'PERFECT'}
 
-        recent_size = min(len(prices) // 4, 7)
-        recent_prices = prices[-recent_size:]
-        older_prices = prices[:-recent_size]
+        try:
+            # Load AED historical data
+            aed_data = AdvancedPredictionEngine.load_historical_data('aed', use_full_history=True)
 
-        if not older_prices:
-            return 0.0
+            if not aed_data or not historical_data:
+                return {'correlation': 0.0, 'strength': 'UNKNOWN'}
 
-        recent_avg = sum(recent_prices) / len(recent_prices)
-        older_avg = sum(older_prices) / len(older_prices)
+            # Match timestamps and calculate correlation
+            aed_prices = {p['ts']: p['bp'] for p in aed_data}
+            target_prices = []
+            matched_aed_prices = []
 
-        return (recent_avg - older_avg) / older_avg if older_avg != 0 else 0.0
+            for point in historical_data:
+                ts = point.get('ts')
+                if ts in aed_prices and point.get('bp'):
+                    target_prices.append(point['bp'])
+                    matched_aed_prices.append(aed_prices[ts])
+
+            if len(target_prices) < 10:
+                return {'correlation': 0.0, 'strength': 'INSUFFICIENT_DATA'}
+
+            # Calculate Pearson correlation
+            n = len(target_prices)
+            sum_target = sum(target_prices)
+            sum_aed = sum(matched_aed_prices)
+            sum_target_sq = sum(x**2 for x in target_prices)
+            sum_aed_sq = sum(x**2 for x in matched_aed_prices)
+            sum_product = sum(t * a for t, a in zip(target_prices, matched_aed_prices))
+
+            numerator = n * sum_product - sum_target * sum_aed
+            denominator = math.sqrt((n * sum_target_sq - sum_target**2) * (n * sum_aed_sq - sum_aed**2))
+
+            if denominator == 0:
+                correlation = 0.0
+            else:
+                correlation = numerator / denominator
+
+            # Determine strength
+            abs_corr = abs(correlation)
+            if abs_corr > 0.7:
+                strength = 'STRONG'
+            elif abs_corr > 0.4:
+                strength = 'MODERATE'
+            elif abs_corr > 0.2:
+                strength = 'WEAK'
+            else:
+                strength = 'MINIMAL'
+
+            return {
+                'correlation': round(correlation, 3),
+                'strength': strength,
+                'dataPoints': n
+            }
+
+        except Exception as e:
+            print(f"Error analyzing AED correlation: {e}")
+            return {'correlation': 0.0, 'strength': 'ERROR'}
+
+    def train_ml_model(self, prices: List[float], model_type: str = 'random_forest') -> Optional[object]:
+        """Train ML model on historical data"""
+        if not ML_AVAILABLE or len(prices) < 30:
+            return None
+
+        try:
+            # Prepare training data with features
+            X = []
+            y = []
+
+            window_size = 10
+            for i in range(window_size, len(prices)):
+                # Features: last N prices, moving averages, momentum
+                window = prices[i-window_size:i]
+                ma_short = sum(window[-5:]) / 5
+                ma_long = sum(window) / window_size
+                momentum = (window[-1] - window[0]) / window[0] if window[0] != 0 else 0
+
+                features = window + [ma_short, ma_long, momentum]
+                X.append(features)
+                y.append(prices[i])
+
+            if len(X) < 10:
+                return None
+
+            X = np.array(X)
+            y = np.array(y)
+
+            # Train model
+            if model_type == 'random_forest':
+                model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42)
+            else:
+                model = GradientBoostingRegressor(n_estimators=100, max_depth=5, random_state=42)
+
+            model.fit(X, y)
+            return model
+
+        except Exception as e:
+            print(f"Error training ML model: {e}")
+            return None
+
+    def generate_ml_predictions(self, model, recent_prices: List[float], days_ahead: int) -> List[float]:
+        """Generate predictions using trained ML model"""
+        if not model or len(recent_prices) < 10:
+            return []
+
+        try:
+            predictions = []
+            current_window = recent_prices[-10:].copy()
+
+            for _ in range(days_ahead):
+                # Prepare features
+                ma_short = sum(current_window[-5:]) / 5
+                ma_long = sum(current_window) / 10
+                momentum = (current_window[-1] - current_window[0]) / current_window[0] if current_window[0] != 0 else 0
+
+                features = current_window + [ma_short, ma_long, momentum]
+                features_array = np.array([features])
+
+                # Predict next value
+                next_price = model.predict(features_array)[0]
+                predictions.append(next_price)
+
+                # Update window
+                current_window = current_window[1:] + [next_price]
+
+            return predictions
+
+        except Exception as e:
+            print(f"Error generating ML predictions: {e}")
+            return []
 
     @classmethod
-    def generate_predictions(cls, currency_code: str, days_ahead: int, historical_days: int) -> Dict:
-        """Generate AI predictions for a currency"""
+    def generate_predictions(cls,
+                           currency_code: str,
+                           days_ahead: int,
+                           use_full_history: bool = True,
+                           use_ml: bool = True) -> Dict:
+        """Generate comprehensive AI predictions with news sentiment and AED correlation"""
+
+        engine = cls()
 
         # Load data
-        historical_data = cls.load_historical_data(currency_code, historical_days)
+        historical_data = cls.load_historical_data(currency_code, use_full_history)
         current_price_data = cls.get_current_price(currency_code)
 
         if not current_price_data:
@@ -128,36 +373,72 @@ class PredictionEngine:
         current_sell = current_price_data['sell']
         currency_name = current_price_data['name']
 
-        # Analyze historical data
+        # Analyze news sentiment
+        news_sentiment = NewsSentimentAnalyzer.analyze_news(currency_code)
+
+        # Analyze AED correlation
+        aed_correlation = cls.analyze_aed_correlation(currency_code, historical_data)
+
+        # Extract buy prices
         buy_prices = [p.get('bp', 0) for p in historical_data if p.get('bp')]
 
-        trend = cls.calculate_trend(buy_prices) if buy_prices else 0.0
-        volatility = cls.calculate_volatility(buy_prices) if buy_prices else 0.0
-        momentum = cls.calculate_momentum(buy_prices) if buy_prices else 0.0
+        if not buy_prices:
+            buy_prices = [current_buy]
+
+        # Calculate advanced features
+        features = cls.calculate_advanced_features(buy_prices)
+
+        # Train ML model if available
+        ml_model = None
+        ml_predictions = []
+        if use_ml and ML_AVAILABLE and len(buy_prices) >= 30:
+            ml_model = engine.train_ml_model(buy_prices, 'gradient_boosting')
+            if ml_model:
+                ml_predictions = engine.generate_ml_predictions(ml_model, buy_prices, days_ahead)
 
         # Generate predictions
-        alpha = 0.3
-        trend_adjustment = (trend + momentum) / 2.0
-
         predictions = []
         last_buy = current_buy
         last_sell = current_sell
 
+        # Sentiment adjustment factor
+        sentiment_factor = news_sentiment['score'] * 0.1  # Max ±10% influence
+
+        # Enhanced trend calculation incorporating sentiment
+        base_trend = features['trend']
+        momentum = features['momentum']
+        trend_adjustment = (base_trend + momentum) / 2.0 + sentiment_factor
+
         for day_offset in range(1, days_ahead + 1):
             prediction_date = datetime.now() + timedelta(days=day_offset)
 
-            # Apply exponential smoothing with trend
-            trend_factor = 1.0 + (trend_adjustment * (day_offset / 30.0))
-            predicted_buy = last_buy * trend_factor
-            predicted_sell = last_sell * trend_factor
+            # Combine traditional and ML predictions
+            if ml_predictions and day_offset <= len(ml_predictions):
+                ml_predicted_buy = ml_predictions[day_offset - 1]
+                # Blend ML prediction with trend-based prediction
+                trend_factor = 1.0 + (trend_adjustment * (day_offset / 30.0))
+                traditional_predicted_buy = last_buy * trend_factor
+                predicted_buy = (ml_predicted_buy * 0.6) + (traditional_predicted_buy * 0.4)
+            else:
+                # Fallback to trend-based prediction
+                trend_factor = 1.0 + (trend_adjustment * (day_offset / 30.0))
+                predicted_buy = last_buy * trend_factor
+
+            # Calculate sell price
+            spread_ratio = current_sell / current_buy if current_buy != 0 else 1.0
+            predicted_sell = predicted_buy * spread_ratio
 
             # Calculate confidence
             time_decay = 1.0 - (day_offset / (days_ahead * 1.5))
-            volatility_penalty = 1.0 - min(volatility, 0.5)
-            confidence = max(0.5, min(0.95, 0.85 * time_decay * volatility_penalty))
+            volatility_penalty = 1.0 - min(features['volatility'], 0.5)
+            news_confidence_boost = news_sentiment['confidence'] * 0.1
+            ml_boost = 0.15 if ml_model else 0.0
+
+            confidence = max(0.5, min(0.95,
+                0.70 * time_decay * volatility_penalty + news_confidence_boost + ml_boost))
 
             # Calculate bounds
-            bound_range = predicted_buy * volatility * (1.0 + day_offset * 0.1)
+            bound_range = predicted_buy * features['volatility'] * (1.0 + day_offset * 0.1)
             lower_bound = predicted_buy - bound_range
             upper_bound = predicted_buy + bound_range
 
@@ -167,17 +448,18 @@ class PredictionEngine:
                 'predictedBuy': int(predicted_buy),
                 'predictedSell': int(predicted_sell),
                 'confidence': round(confidence, 3),
-                'lowerBound': int(lower_bound),
+                'lowerBound': int(max(0, lower_bound)),
                 'upperBound': int(upper_bound)
             })
 
-            # Update for next iteration
+            # Update for next iteration with exponential smoothing
+            alpha = 0.3
             last_buy = alpha * predicted_buy + (1 - alpha) * last_buy
             last_sell = alpha * predicted_sell + (1 - alpha) * last_sell
 
-        # Determine trend
-        combined_trend = trend + momentum
-        if volatility > 0.15:
+        # Determine overall trend
+        combined_trend = base_trend + momentum + sentiment_factor
+        if features['volatility'] > 0.15:
             prediction_trend = 'VOLATILE'
         elif combined_trend > 0.01:
             prediction_trend = 'BULLISH'
@@ -188,13 +470,22 @@ class PredictionEngine:
 
         # Calculate overall confidence
         data_confidence = min(1.0, len(buy_prices) / 100.0) if buy_prices else 0.5
-        volatility_confidence = 1.0 - min(volatility, 0.5)
+        volatility_confidence = 1.0 - min(features['volatility'], 0.5)
         time_confidence = 1.0 - min(0.5, days_ahead / 100.0)
-        overall_confidence = (data_confidence * 0.3 + volatility_confidence * 0.4 + time_confidence * 0.3)
+        news_confidence = news_sentiment['confidence'] * 0.2
+        ml_confidence = 0.1 if ml_model else 0.0
+
+        overall_confidence = (
+            data_confidence * 0.25 +
+            volatility_confidence * 0.30 +
+            time_confidence * 0.20 +
+            news_confidence * 0.15 +
+            ml_confidence * 0.10
+        )
         overall_confidence = max(0.5, min(0.95, overall_confidence))
 
         return {
-            'currencyCode': currency_code,
+            'currencyCode': currency_code.upper(),
             'currencyName': currency_name,
             'currentPrice': {
                 'buy': current_buy,
@@ -204,14 +495,208 @@ class PredictionEngine:
             'predictions': predictions,
             'confidenceScore': round(overall_confidence, 3),
             'trend': prediction_trend,
-            'generatedAt': datetime.now().isoformat() + 'Z',
-            'modelVersion': 'v1.0-exponential-smoothing'
+            'technicalIndicators': {
+                'rsi': round(features['rsi'], 2),
+                'volatility': round(features['volatility'], 4),
+                'momentum': round(features['momentum'], 4),
+                'movingAvg7Day': int(features['moving_avg_7']),
+                'movingAvg30Day': int(features['moving_avg_30'])
+            },
+            'newsSentiment': news_sentiment,
+            'aedCorrelation': aed_correlation,
+            'modelInfo': {
+                'version': 'v2.0-advanced-ml',
+                'mlEnabled': ml_model is not None,
+                'historicalDataPoints': len(buy_prices),
+                'fullHistoryUsed': use_full_history
+            },
+            'generatedAt': datetime.now().isoformat() + 'Z'
         }
+
+
+# ========================
+# API Routes
+# ========================
+
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint with API documentation"""
+    docs = {
+        'service': 'CurrencyCapPortal API',
+        'version': '2.0',
+        'description': 'Advanced AI-powered currency prediction and data API',
+        'endpoints': {
+            'GET /': 'This documentation',
+            'GET /health': 'Health check',
+            'GET /api/latest': 'Latest currency prices',
+            'GET /api/news': 'Latest financial news',
+            'GET /api/history/<period>': 'Historical data (periods: 1d, 1w, 1m, 1y, 5y, all)',
+            'GET /api/predictions/<term>': 'Pre-generated predictions (terms: short, medium, long)',
+            'POST /api/v1/predict': 'Generate custom AI predictions',
+            'GET /api/v1/currencies': 'List all available currencies',
+            'GET /api/v1/sentiment': 'Current market sentiment analysis',
+            'GET /api/v1/aed/correlations': 'AED correlation with all currencies'
+        },
+        'features': [
+            'Advanced ML predictions using Random Forest and Gradient Boosting',
+            'News sentiment analysis',
+            'UAE Dirham (AED) correlation analysis',
+            '40-year historical data support',
+            'Technical indicators (RSI, Moving Averages, Momentum)',
+            'Real-time price data'
+        ],
+        'documentation': 'https://github.com/LinX64/CurrencyCapPortal',
+        'status': 'operational'
+    }
+    return jsonify(docs), 200
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'mlAvailable': ML_AVAILABLE
+    }), 200
+
+
+@app.route('/api/latest', methods=['GET'])
+def get_latest():
+    """Serve latest currency prices"""
+    try:
+        with open('api/latest.json', 'r') as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/news', methods=['GET'])
+def get_news():
+    """Serve latest news"""
+    try:
+        with open('api/news.json', 'r') as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/history/<period>', methods=['GET'])
+def get_history(period):
+    """Serve historical data"""
+    valid_periods = ['1d', '1w', '1m', '1y', '5y', 'all']
+    if period not in valid_periods:
+        return jsonify({'error': f'Invalid period. Valid periods: {valid_periods}'}), 400
+
+    try:
+        with open(f'api/history/{period}.json', 'r') as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    except FileNotFoundError:
+        return jsonify({'error': f'History data for period {period} not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/predictions/<term>', methods=['GET'])
+def get_predictions(term):
+    """Serve pre-generated predictions"""
+    valid_terms = ['short', 'medium', 'long', 'index']
+    if term not in valid_terms:
+        return jsonify({'error': f'Invalid term. Valid terms: {valid_terms}'}), 400
+
+    try:
+        with open(f'api/predictions/{term}.json', 'r') as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    except FileNotFoundError:
+        return jsonify({'error': f'Predictions for term {term} not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/currencies', methods=['GET'])
+def list_currencies():
+    """List all available currencies"""
+    try:
+        with open('api/latest.json', 'r') as f:
+            data = json.load(f)
+
+        currencies = []
+        for currency in data:
+            current_price = None
+            if currency.get('ps') and len(currency['ps']) > 0:
+                current_price = {
+                    'buy': currency['ps'][0].get('bp', 0),
+                    'sell': currency['ps'][0].get('sp', 0)
+                }
+
+            currencies.append({
+                'code': currency.get('ab', '').upper(),
+                'name': currency.get('en', ''),
+                'flag': currency.get('av', ''),
+                'currentPrice': current_price
+            })
+
+        return jsonify({
+            'total': len(currencies),
+            'currencies': currencies
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/sentiment', methods=['GET'])
+def get_sentiment():
+    """Get current market sentiment"""
+    try:
+        sentiment = NewsSentimentAnalyzer.analyze_news()
+        return jsonify(sentiment), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v1/aed/correlations', methods=['GET'])
+def get_aed_correlations():
+    """Get AED correlations with all currencies"""
+    try:
+        with open('api/latest.json', 'r') as f:
+            latest_data = json.load(f)
+
+        correlations = []
+        for currency in latest_data:
+            code = currency.get('ab', '').lower()
+            if code and code != 'aed':
+                historical = AdvancedPredictionEngine.load_historical_data(code, use_full_history=True)
+                correlation = AdvancedPredictionEngine.analyze_aed_correlation(code, historical)
+
+                correlations.append({
+                    'currency': code.upper(),
+                    'name': currency.get('en', ''),
+                    'correlation': correlation['correlation'],
+                    'strength': correlation['strength']
+                })
+
+        # Sort by absolute correlation value
+        correlations.sort(key=lambda x: abs(x['correlation']), reverse=True)
+
+        return jsonify({
+            'baseCurrency': 'AED',
+            'baseCurrencyName': 'UAE Dirham',
+            'correlations': correlations,
+            'generatedAt': datetime.now().isoformat() + 'Z'
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/v1/predict', methods=['POST'])
 def predict():
-    """AI prediction endpoint for paid users"""
+    """AI prediction endpoint with advanced ML"""
     try:
         data = request.get_json()
 
@@ -220,19 +705,21 @@ def predict():
 
         currency_code = data.get('currencyCode')
         days_ahead = data.get('daysAhead', 14)
-        historical_days = data.get('historicalDays', 30)
+        use_full_history = data.get('useFullHistory', True)
+        use_ml = data.get('useML', True)
 
         if not currency_code:
             return jsonify({'error': 'currencyCode is required'}), 400
 
-        if days_ahead < 1 or days_ahead > 90:
-            return jsonify({'error': 'daysAhead must be between 1 and 90'}), 400
+        if days_ahead < 1 or days_ahead > 365:
+            return jsonify({'error': 'daysAhead must be between 1 and 365'}), 400
 
         # Generate predictions
-        result = PredictionEngine.generate_predictions(
+        result = AdvancedPredictionEngine.generate_predictions(
             currency_code=currency_code,
             days_ahead=days_ahead,
-            historical_days=historical_days
+            use_full_history=use_full_history,
+            use_ml=use_ml
         )
 
         return jsonify(result), 200
@@ -241,15 +728,13 @@ def predict():
         return jsonify({'error': str(e)}), 404
     except Exception as e:
         print(f"Prediction error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()}), 200
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
+    print(f"Starting CurrencyCapPortal API server on port {port}")
+    print(f"ML libraries available: {ML_AVAILABLE}")
     app.run(host='0.0.0.0', port=port, debug=False)
