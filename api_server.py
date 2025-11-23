@@ -551,7 +551,7 @@ def swagger_spec():
         },
         "servers": [
             {
-                "url": request.host_url.rstrip('/'),
+                "url": request.host_url.replace('http://', 'https://').rstrip('/'),
                 "description": "Current server"
             }
         ],
