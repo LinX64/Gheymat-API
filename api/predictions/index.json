@@ -1,22 +1,25 @@
 {
-  "generatedAt": "2025-11-23T13:24:31.159979Z",
+  "generatedAt": "2025-11-24T21:20:39.292444Z",
   "availableConfigurations": [
     {
       "name": "short",
       "daysAhead": 7,
-      "historicalDays": 30,
+      "useFullHistory": true,
+      "historicalDataSource": "api/history/all.json (40 years)",
       "endpoint": "predictions/short.json"
     },
     {
       "name": "medium",
       "daysAhead": 14,
-      "historicalDays": 60,
+      "useFullHistory": true,
+      "historicalDataSource": "api/history/all.json (40 years)",
       "endpoint": "predictions/medium.json"
     },
     {
       "name": "long",
       "daysAhead": 30,
-      "historicalDays": 90,
+      "useFullHistory": true,
+      "historicalDataSource": "api/history/all.json (40 years)",
       "endpoint": "predictions/long.json"
     }
   ],
