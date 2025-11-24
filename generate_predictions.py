@@ -23,13 +23,14 @@ def get_available_currencies() -> List[Dict]:
 
 
 def generate_prediction_for_currency(currency_code: str, days_ahead: int, use_full_history: bool = True) -> Dict:
-    """Generate prediction for a single currency using full 40-year history."""
+    """Generate prediction for a single currency using full 40-year history with hybrid LSTM + Ensemble models."""
     try:
+        # ALWAYS use full history and ML for maximum accuracy (95-98% target)
         prediction = AdvancedPredictionEngine.generate_predictions(
             currency_code=currency_code,
             days_ahead=days_ahead,
-            use_full_history=use_full_history,
-            use_ml=True
+            use_full_history=True,  # Always use full 40-year history
+            use_ml=True  # Always use ML models for best accuracy
         )
         return {
             'success': True,
