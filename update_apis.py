@@ -7,6 +7,7 @@ from updaters import (
     update_latest,
     update_crypto,
     update_news,
+    update_economic_indicators,
     update_history_period,
     get_currency_list,
 )
@@ -25,6 +26,7 @@ async def main():
         update_latest(),
         update_crypto(),
         update_news(),
+        update_economic_indicators(),
         update_history_period("1d", "latest", 1, currencies),
         update_history_period("1w", "oneWeek", 7, currencies),
         update_history_period("1m", "oneMonth", 30, currencies),

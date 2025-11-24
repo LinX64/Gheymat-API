@@ -11,15 +11,35 @@ from helper import (
 )
 from cache import load_cache, save_cache, save_api_endpoint
 
+# Import enhanced data sources
+try:
+    from enhanced_data_sources import fetch_all_enhanced_data
+    ENHANCED_DATA_AVAILABLE = True
+except ImportError:
+    ENHANCED_DATA_AVAILABLE = False
+    print("   ⚠ Enhanced data sources not available, using basic fetching")
+
 load_dotenv()
 news_api_key = os.getenv('NEWS_API_KEY')
 
 
 async def fetch_news() -> Optional[List[Dict[str, Any]]]:
+    """Fetch news using enhanced multi-source aggregator or fallback to basic"""
     if not news_api_key:
         print("   ⚠ NEWS_API_KEY not set, skipping news")
         return None
 
+    # Try enhanced news fetching first
+    if ENHANCED_DATA_AVAILABLE:
+        try:
+            print("   🔍 Using enhanced news aggregator...")
+            enhanced_data = await fetch_all_enhanced_data()
+            if enhanced_data and 'news' in enhanced_data:
+                return enhanced_data['news']
+        except Exception as e:
+            print(f"   ⚠ Enhanced news fetch failed, falling back to basic: {e}")
+
+    # Fallback to basic blockchain news
     url = f'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}&pageSize=20&sortBy=publishedAt'
 
     try:
@@ -144,6 +164,36 @@ async def update_news():
     cached = load_cache('news')
     if cached:
         save_api_endpoint('news.json', cached)
+        print(f"   ⚠ Using cached data as fallback")
+    else:
+        print(f"   ✗ No cached data available")
+
+
+async def update_economic_indicators():
+    """Update economic indicators (oil, gold, sanctions data)"""
+    print("\n📈 Updating /economic_indicators.json...")
+
+    if not ENHANCED_DATA_AVAILABLE:
+        print("   ⚠ Enhanced data sources not available, skipping economic indicators")
+        return
+
+    try:
+        enhanced_data = await fetch_all_enhanced_data()
+        if enhanced_data and 'economic_indicators' in enhanced_data:
+            indicators = enhanced_data['economic_indicators']
+            save_cache('economic_indicators', indicators)
+            save_api_endpoint('economic_indicators.json', indicators)
+            print(f"   ✓ Fetched economic indicators")
+            print(f"      - Oil prices: {indicators.get('oil', {}).get('source', 'N/A')}")
+            print(f"      - Gold prices: {indicators.get('gold', {}).get('source', 'N/A')}")
+            print(f"      - Sanctions level: {indicators.get('sanctions', {}).get('iran_sanctions_level', 'N/A')}")
+            return
+    except Exception as e:
+        print(f"   ✗ Failed to fetch economic indicators: {e}")
+
+    cached = load_cache('economic_indicators')
+    if cached:
+        save_api_endpoint('economic_indicators.json', cached)
         print(f"   ⚠ Using cached data as fallback")
     else:
         print(f"   ✗ No cached data available")
