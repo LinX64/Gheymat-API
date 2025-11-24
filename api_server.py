@@ -10,7 +10,6 @@ import numpy as np
 from collections import defaultdict
 import re
 
-# ML/AI imports
 try:
     from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
     from sklearn.preprocessing import StandardScaler, MinMaxScaler
@@ -27,7 +26,6 @@ except ImportError:
     ML_AVAILABLE = False
     print("Warning: ML libraries not available. Using fallback prediction methods.")
 
-# Import enhanced modules
 try:
     from enhanced_sentiment import EnhancedSentimentAnalyzer
     ENHANCED_SENTIMENT_AVAILABLE = True
@@ -38,7 +36,6 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
-# Swagger UI configuration
 SWAGGER_URL = '/docs'
 API_URL = '/swagger.json'
 
@@ -55,9 +52,6 @@ swaggerui_blueprint = get_swaggerui_blueprint(
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 class NewsSentimentAnalyzer:
-    """Analyze news sentiment and its impact on currency predictions"""
-
-    # Keywords for sentiment analysis (kept for backward compatibility)
     POSITIVE_KEYWORDS = ['growth', 'increase', 'rise', 'surge', 'gain', 'bull', 'rally',
                          'strong', 'boost', 'recovery', 'positive', 'optimistic', 'improve']
     NEGATIVE_KEYWORDS = ['fall', 'decline', 'drop', 'crash', 'bear', 'weak', 'crisis',
@@ -65,9 +59,6 @@ class NewsSentimentAnalyzer:
 
     @staticmethod
     def analyze_news(currency_code: str = None) -> Dict:
-        """Analyze news sentiment for a currency or general market"""
-
-        # Use enhanced sentiment analyzer if available
         if ENHANCED_SENTIMENT_AVAILABLE:
             try:
                 result = EnhancedSentimentAnalyzer.get_combined_sentiment()
@@ -87,7 +78,6 @@ class NewsSentimentAnalyzer:
             except Exception as e:
                 print(f"Enhanced sentiment failed, falling back to basic: {e}")
 
-        # Fallback to basic sentiment analysis
         try:
             with open('api/news.json', 'r') as f:
                 news_data = json.load(f)
@@ -102,21 +92,18 @@ class NewsSentimentAnalyzer:
             for article in news_data:
                 text = f"{article.get('title', '')} {article.get('description', '')} {article.get('content', '')}".lower()
 
-                # Count positive and negative keywords
                 for keyword in NewsSentimentAnalyzer.POSITIVE_KEYWORDS:
                     positive_count += text.count(keyword)
 
                 for keyword in NewsSentimentAnalyzer.NEGATIVE_KEYWORDS:
                     negative_count += text.count(keyword)
 
-            # Calculate sentiment score (-1 to 1)
             total_sentiment_indicators = positive_count + negative_count
             if total_sentiment_indicators == 0:
                 sentiment_score = 0.0
             else:
                 sentiment_score = (positive_count - negative_count) / total_sentiment_indicators
 
-            # Determine sentiment category
             if sentiment_score > 0.2:
                 sentiment = 'POSITIVE'
             elif sentiment_score < -0.2:
@@ -143,15 +130,12 @@ class NewsSentimentAnalyzer:
 
 
 class AdvancedPredictionEngine:
-    """Enhanced AI prediction engine with ML models, news sentiment, and AED correlation"""
-
     def __init__(self):
         self.scaler = StandardScaler() if ML_AVAILABLE else None
         self.models_cache = {}
 
     @staticmethod
     def load_historical_data(currency_code: str, use_full_history: bool = False) -> List[Dict]:
-        """Load historical data - use all.json for full 40-year history"""
         try:
             if use_full_history:
                 history_file = 'api/history/all.json'
@@ -172,7 +156,6 @@ class AdvancedPredictionEngine:
 
     @staticmethod
     def get_current_price(currency_code: str) -> Optional[Dict]:
-        """Get current price from latest.json"""
         try:
             with open('api/latest.json', 'r') as f:
                 latest_data = json.load(f)
@@ -194,7 +177,6 @@ class AdvancedPredictionEngine:
 
     @staticmethod
     def calculate_advanced_features(prices: List[float]) -> Dict:
-        """Calculate advanced technical indicators with enhanced features"""
         if not prices or len(prices) < 2:
             return {
                 'trend': 0.0,
@@ -215,7 +197,6 @@ class AdvancedPredictionEngine:
 
         n = len(prices)
 
-        # Linear regression trend
         sum_x = sum(range(n))
         sum_y = sum(prices)
         sum_xy = sum(i * price for i, price in enumerate(prices))
@@ -228,13 +209,11 @@ class AdvancedPredictionEngine:
             avg = sum_y / n if n > 0 else 0
             trend = slope / avg if avg != 0 else 0.0
 
-        # Volatility (Standard Deviation)
         mean = sum(prices) / len(prices)
         variance = sum((p - mean) ** 2 for p in prices) / len(prices)
         std_dev = math.sqrt(variance)
         volatility = std_dev / mean if mean != 0 else 0.0
 
-        # Momentum
         recent_size = min(len(prices) // 4, 14)
         if recent_size > 0:
             recent_prices = prices[-recent_size:]
@@ -249,7 +228,6 @@ class AdvancedPredictionEngine:
         else:
             momentum = 0.0
 
-        # RSI (Relative Strength Index) - Enhanced
         if len(prices) >= 14:
             changes = [prices[i] - prices[i-1] for i in range(1, min(15, len(prices)))]
             gains = [c for c in changes if c > 0]
@@ -266,13 +244,11 @@ class AdvancedPredictionEngine:
         else:
             rsi = 50.0
 
-        # Moving averages (Simple)
         ma_7 = sum(prices[-7:]) / min(7, len(prices)) if prices else 0
         ma_30 = sum(prices[-30:]) / min(30, len(prices)) if prices else 0
         ma_90 = sum(prices[-90:]) / min(90, len(prices)) if len(prices) >= 90 else ma_30
         ma_200 = sum(prices[-200:]) / min(200, len(prices)) if len(prices) >= 200 else ma_90
 
-        # Exponential Moving Averages (EMA)
         def calculate_ema(data, period):
             if len(data) < period:
                 return sum(data) / len(data) if data else 0
@@ -285,14 +261,11 @@ class AdvancedPredictionEngine:
         ema_12 = calculate_ema(prices, 12)
         ema_26 = calculate_ema(prices, 26)
 
-        # MACD (Moving Average Convergence Divergence)
         macd = ema_12 - ema_26
 
-        # Bollinger Bands
         bollinger_upper = mean + (2 * std_dev)
         bollinger_lower = mean - (2 * std_dev)
 
-        # Rate of Change (ROC)
         roc_period = min(10, len(prices) - 1)
         if roc_period > 0 and prices[-roc_period-1] != 0:
             rate_of_change = ((prices[-1] - prices[-roc_period-1]) / prices[-roc_period-1]) * 100
@@ -323,13 +296,11 @@ class AdvancedPredictionEngine:
             return {'correlation': 1.0, 'strength': 'PERFECT'}
 
         try:
-            # Load AED historical data
             aed_data = AdvancedPredictionEngine.load_historical_data('aed', use_full_history=True)
 
             if not aed_data or not historical_data:
                 return {'correlation': 0.0, 'strength': 'UNKNOWN'}
 
-            # Match timestamps and calculate correlation
             aed_prices = {p['ts']: p['bp'] for p in aed_data}
             target_prices = []
             matched_aed_prices = []
@@ -343,7 +314,6 @@ class AdvancedPredictionEngine:
             if len(target_prices) < 10:
                 return {'correlation': 0.0, 'strength': 'INSUFFICIENT_DATA'}
 
-            # Calculate Pearson correlation
             n = len(target_prices)
             sum_target = sum(target_prices)
             sum_aed = sum(matched_aed_prices)
@@ -359,7 +329,6 @@ class AdvancedPredictionEngine:
             else:
                 correlation = numerator / denominator
 
-            # Determine strength
             abs_corr = abs(correlation)
             if abs_corr > 0.7:
                 strength = 'STRONG'
@@ -386,11 +355,9 @@ class AdvancedPredictionEngine:
             return None
 
         try:
-            # Prepare data for LSTM (requires scaling)
             scaler = MinMaxScaler(feature_range=(0, 1))
             scaled_prices = scaler.fit_transform(np.array(prices).reshape(-1, 1))
 
-            # Create sequences
             X, y = [], []
             for i in range(lookback, len(scaled_prices)):
                 X.append(scaled_prices[i-lookback:i, 0])
@@ -402,33 +369,33 @@ class AdvancedPredictionEngine:
             X = np.array(X)
             y = np.array(y)
 
-            # Reshape for LSTM [samples, time steps, features]
             X = np.reshape(X, (X.shape[0], X.shape[1], 1))
 
-            # Build LSTM model with improved architecture
             model = Sequential([
-                Bidirectional(LSTM(128, return_sequences=True, input_shape=(lookback, 1))),
-                Dropout(0.2),
+                Bidirectional(LSTM(256, return_sequences=True, input_shape=(lookback, 1))),
+                Dropout(0.3),
+                Bidirectional(LSTM(128, return_sequences=True)),
+                Dropout(0.3),
                 Bidirectional(LSTM(64, return_sequences=True)),
                 Dropout(0.2),
                 LSTM(32),
                 Dropout(0.2),
+                Dense(32, activation='relu'),
                 Dense(16, activation='relu'),
                 Dense(1)
             ])
 
-            model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+            model.compile(optimizer=Adam(learning_rate=0.0005), loss='huber', metrics=['mae'])
 
-            # Early stopping to prevent overfitting
             early_stop = EarlyStopping(monitor='loss', patience=10, restore_best_weights=True)
 
-            # Train model
             model.fit(
                 X, y,
-                epochs=epochs,
-                batch_size=32,
+                epochs=50,
+                batch_size=16,
                 verbose=0,
-                callbacks=[early_stop]
+                callbacks=[early_stop],
+                validation_split=0.1
             )
 
             return {
@@ -450,35 +417,27 @@ class AdvancedPredictionEngine:
             return None
 
         try:
-            # Prepare training data with enhanced features
             X = []
             y = []
 
-            # Use larger window for more data
             window_size = 30 if len(prices) >= 100 else 14
 
             for i in range(window_size, len(prices)):
-                # Features: last N prices, multiple moving averages, momentum indicators
                 window = prices[i-window_size:i]
 
-                # Basic features
                 ma_7 = sum(window[-7:]) / min(7, len(window))
                 ma_14 = sum(window[-14:]) / min(14, len(window))
                 ma_30 = sum(window) / len(window)
 
-                # Momentum indicators
                 momentum_short = (window[-1] - window[-7]) / window[-7] if window[-7] != 0 else 0
                 momentum_long = (window[-1] - window[0]) / window[0] if window[0] != 0 else 0
 
-                # Volatility
                 mean_price = sum(window) / len(window)
                 variance = sum((p - mean_price) ** 2 for p in window) / len(window)
                 volatility = math.sqrt(variance) / mean_price if mean_price != 0 else 0
 
-                # Rate of change
                 roc = (window[-1] - window[-min(10, len(window))]) / window[-min(10, len(window))] if window[-min(10, len(window))] != 0 else 0
 
-                # RSI-like indicator
                 changes = [window[j] - window[j-1] for j in range(1, len(window))]
                 gains = [c for c in changes if c > 0]
                 losses = [-c for c in changes if c < 0]
@@ -486,10 +445,8 @@ class AdvancedPredictionEngine:
                 avg_loss = sum(losses) / len(window) if losses else 0
                 rs_indicator = avg_gain / (avg_loss + 1e-10)
 
-                # Price position indicators
                 price_position = (window[-1] - min(window)) / (max(window) - min(window) + 1e-10)
 
-                # Trend strength
                 x_vals = list(range(len(window)))
                 sum_x = sum(x_vals)
                 sum_y = sum(window)
@@ -501,16 +458,15 @@ class AdvancedPredictionEngine:
                 else:
                     trend_slope = 0
 
-                # Combine all features
                 features = [
-                    window[-1],  # Current price
-                    ma_7, ma_14, ma_30,  # Moving averages
-                    momentum_short, momentum_long,  # Momentum
-                    volatility,  # Volatility
-                    roc,  # Rate of change
-                    rs_indicator,  # RSI-like
-                    price_position,  # Price position
-                    trend_slope  # Trend
+                    window[-1],
+                    ma_7, ma_14, ma_30,
+                    momentum_short, momentum_long,
+                    volatility,
+                    roc,
+                    rs_indicator,
+                    price_position,
+                    trend_slope
                 ]
 
                 X.append(features)
@@ -522,26 +478,31 @@ class AdvancedPredictionEngine:
             X = np.array(X)
             y = np.array(y)
 
-            # Train ensemble of models for better accuracy
             if model_type == 'ensemble':
                 models = {
                     'xgboost': xgb.XGBRegressor(
-                        n_estimators=200,
-                        max_depth=6,
-                        learning_rate=0.05,
-                        subsample=0.8,
-                        colsample_bytree=0.8,
+                        n_estimators=300,
+                        max_depth=8,
+                        learning_rate=0.03,
+                        subsample=0.85,
+                        colsample_bytree=0.85,
+                        min_child_weight=2,
+                        gamma=0.1,
                         random_state=42
                     ),
                     'gradient_boosting': GradientBoostingRegressor(
-                        n_estimators=150,
-                        max_depth=5,
-                        learning_rate=0.05,
+                        n_estimators=250,
+                        max_depth=6,
+                        learning_rate=0.03,
+                        min_samples_split=4,
+                        min_samples_leaf=2,
                         random_state=42
                     ),
                     'random_forest': RandomForestRegressor(
-                        n_estimators=150,
-                        max_depth=12,
+                        n_estimators=200,
+                        max_depth=15,
+                        min_samples_split=3,
+                        min_samples_leaf=2,
                         random_state=42
                     )
                 }
@@ -585,24 +546,19 @@ class AdvancedPredictionEngine:
             scaler = lstm_dict['scaler']
             lookback = lstm_dict['lookback']
 
-            # Scale recent prices
             scaled_prices = scaler.transform(np.array(recent_prices).reshape(-1, 1))
 
             predictions = []
             current_sequence = scaled_prices[-lookback:].copy()
 
             for _ in range(days_ahead):
-                # Prepare input
                 X_input = current_sequence.reshape(1, lookback, 1)
 
-                # Predict next value
                 scaled_pred = model.predict(X_input, verbose=0)[0][0]
 
-                # Inverse transform to get actual price
                 pred_price = scaler.inverse_transform([[scaled_pred]])[0][0]
                 predictions.append(pred_price)
 
-                # Update sequence for next prediction
                 current_sequence = np.vstack([current_sequence[1:], [[scaled_pred]]])
 
             return predictions
@@ -624,7 +580,6 @@ class AdvancedPredictionEngine:
             current_window = recent_prices[-window_size:].copy()
 
             for _ in range(days_ahead):
-                # Prepare enhanced features (same as training)
                 ma_7 = sum(current_window[-7:]) / min(7, len(current_window))
                 ma_14 = sum(current_window[-14:]) / min(14, len(current_window))
                 ma_30 = sum(current_window) / len(current_window)
@@ -670,23 +625,18 @@ class AdvancedPredictionEngine:
                 ]
                 features_array = np.array([features])
 
-                # Handle ensemble or single model
                 if isinstance(model, dict):
-                    # Ensemble prediction - average predictions from all models
                     ensemble_predictions = []
                     for model_name, trained_model in model.items():
                         pred = trained_model.predict(features_array)[0]
                         ensemble_predictions.append(pred)
-                    # Weighted average (XGBoost gets more weight)
-                    weights = {'xgboost': 0.5, 'gradient_boosting': 0.3, 'random_forest': 0.2}
+                    weights = {'xgboost': 0.55, 'gradient_boosting': 0.30, 'random_forest': 0.15}
                     next_price = sum(ensemble_predictions[i] * list(weights.values())[i] for i in range(len(ensemble_predictions)))
                 else:
-                    # Single model prediction
                     next_price = model.predict(features_array)[0]
 
                 predictions.append(next_price)
 
-                # Update window
                 current_window = current_window[1:] + [next_price]
 
             return predictions
@@ -707,7 +657,6 @@ class AdvancedPredictionEngine:
 
         engine = cls()
 
-        # Load data - ALWAYS use full 40-year history for best accuracy
         historical_data = cls.load_historical_data(currency_code, use_full_history=True)
         current_price_data = cls.get_current_price(currency_code)
 
@@ -718,11 +667,9 @@ class AdvancedPredictionEngine:
         current_sell = current_price_data['sell']
         currency_name = current_price_data['name']
 
-        # Analyze enhanced news sentiment with economic indicators
         news_sentiment = NewsSentimentAnalyzer.analyze_news(currency_code)
         impact_factor = news_sentiment.get('impactFactor', 0.5)
 
-        # Load economic indicators if available
         economic_indicators = {}
         try:
             with open('api/economic_indicators.json', 'r') as f:
@@ -730,62 +677,49 @@ class AdvancedPredictionEngine:
         except:
             pass
 
-        # Analyze AED correlation
         aed_correlation = cls.analyze_aed_correlation(currency_code, historical_data)
 
-        # Extract buy prices
         buy_prices = [p.get('bp', 0) for p in historical_data if p.get('bp')]
 
         if not buy_prices:
             buy_prices = [current_buy]
 
-        # Calculate advanced features
         features = cls.calculate_advanced_features(buy_prices)
 
-        # Hybrid Model Approach for 95-98% accuracy:
-        # Train both LSTM and Ensemble models, then combine predictions
         ml_model = None
         lstm_model = None
         ml_predictions = []
         lstm_predictions = []
 
         if use_ml and ML_AVAILABLE and len(buy_prices) >= 60:
-            # Train ensemble model (XGBoost + GradientBoosting + RandomForest)
             print(f"Training ensemble model with {len(buy_prices)} data points...")
             ml_model = engine.train_ml_model(buy_prices, 'ensemble')
             if ml_model:
                 ml_predictions = engine.generate_ml_predictions(ml_model, buy_prices, days_ahead)
 
-            # Train LSTM neural network for time series patterns
-            if len(buy_prices) >= 120:  # LSTM needs more data
+            if len(buy_prices) >= 120:
                 print(f"Training LSTM model with {len(buy_prices)} data points...")
                 lstm_model = engine.train_lstm_model(buy_prices, epochs=30, lookback=60)
                 if lstm_model:
                     lstm_predictions = engine.generate_lstm_predictions(lstm_model, buy_prices, days_ahead)
 
-        # Generate predictions
         predictions = []
         last_buy = current_buy
         last_sell = current_sell
 
-        # Enhanced sentiment adjustment with impact factor
-        sentiment_factor = news_sentiment['score'] * impact_factor * 0.15  # Max ±15% influence with impact weighting
+        sentiment_factor = news_sentiment['score'] * impact_factor * 0.15
 
-        # Enhanced trend calculation incorporating sentiment and economic indicators
         base_trend = features['trend']
         momentum = features['momentum']
 
-        # Economic indicator adjustments
         economic_adjustment = 0.0
         if economic_indicators:
             oil_data = economic_indicators.get('oil', {})
             sanctions_data = economic_indicators.get('sanctions', {})
 
-            # High sanctions = negative for Iranian Rial
             if sanctions_data.get('iran_sanctions_level') == 'high':
                 economic_adjustment -= 0.05
 
-            # High oil but can't export due to sanctions
             if oil_data.get('wti', 75) > 85 and sanctions_data.get('iran_sanctions_level') == 'high':
                 economic_adjustment -= 0.03
 
@@ -794,73 +728,55 @@ class AdvancedPredictionEngine:
         for day_offset in range(1, days_ahead + 1):
             prediction_date = datetime.now() + timedelta(days=day_offset)
 
-            # Hybrid prediction combining LSTM + Ensemble + Trend
-            # This approach achieves 95-98% accuracy by leveraging multiple models
             predicted_buy = 0.0
             weights_sum = 0.0
 
-            # LSTM prediction (40% weight if available)
             if lstm_predictions and day_offset <= len(lstm_predictions):
-                predicted_buy += lstm_predictions[day_offset - 1] * 0.40
+                predicted_buy += lstm_predictions[day_offset - 1] * 0.45
+                weights_sum += 0.45
+
+            if ml_predictions and day_offset <= len(ml_predictions):
+                predicted_buy += ml_predictions[day_offset - 1] * 0.40
                 weights_sum += 0.40
 
-            # Ensemble ML prediction (35% weight if available)
-            if ml_predictions and day_offset <= len(ml_predictions):
-                predicted_buy += ml_predictions[day_offset - 1] * 0.35
-                weights_sum += 0.35
-
-            # Trend-based prediction (remaining weight)
             trend_weight = 1.0 - weights_sum
             trend_factor = 1.0 + (trend_adjustment * (day_offset / 30.0))
             traditional_predicted_buy = last_buy * trend_factor
             predicted_buy += traditional_predicted_buy * trend_weight
 
-            # If no ML models available, use pure trend-based
             if weights_sum == 0.0:
                 predicted_buy = traditional_predicted_buy
 
-            # Calculate sell price
             spread_ratio = current_sell / current_buy if current_buy != 0 else 1.0
             predicted_sell = predicted_buy * spread_ratio
 
-            # Calculate enhanced confidence for 95-98% accuracy target
-            # Time decay - predictions further in future are less confident
-            time_decay = 1.0 - (day_offset / (days_ahead * 2.5))  # Slower decay for better models
+            time_decay = 1.0 - (day_offset / (days_ahead * 2.5))
 
-            # Data quality factor - 40 years of historical data provides exceptional foundation
-            data_quality = min(1.0, len(buy_prices) / 800.0)  # Reaches 1.0 with 800+ points
+            data_quality = min(1.0, len(buy_prices) / 800.0)
 
-            # Volatility penalty - lower volatility = higher confidence
             volatility_penalty = 1.0 - min(features['volatility'] * 0.6, 0.3)
 
-            # News sentiment boost with impact factor
             news_confidence_boost = news_sentiment['confidence'] * impact_factor * 0.08
 
-            # Hybrid model boost - combining LSTM + Ensemble significantly improves accuracy
             model_boost = 0.0
             if lstm_model and ml_model and isinstance(ml_model, dict):
-                model_boost = 0.35  # Both LSTM and Ensemble = highest boost
+                model_boost = 0.40
             elif lstm_model or (ml_model and isinstance(ml_model, dict)):
-                model_boost = 0.25  # Either LSTM or Ensemble
+                model_boost = 0.30
             elif ml_model:
-                model_boost = 0.15  # Single ML model
+                model_boost = 0.20
 
-            # Full 40-year history bonus
             history_bonus = 0.18 if len(buy_prices) >= 1000 else (0.12 if len(buy_prices) >= 500 else 0.08)
 
-            # AED correlation bonus for regional stability
             aed_bonus = 0.06 if abs(aed_correlation.get('correlation', 0)) > 0.6 else 0.03
 
-            # Economic indicators bonus
             economic_bonus = 0.04 if economic_indicators else 0.0
 
-            # Combined confidence with optimized weights for 95-98% target
-            base_confidence = 0.78  # Increased base for hybrid models
+            base_confidence = 0.78
             confidence = max(0.90, min(0.98,
                 base_confidence * time_decay * volatility_penalty * data_quality +
                 news_confidence_boost + model_boost + history_bonus + aed_bonus + economic_bonus))
 
-            # Calculate bounds
             bound_range = predicted_buy * features['volatility'] * (1.0 + day_offset * 0.1)
             lower_bound = predicted_buy - bound_range
             upper_bound = predicted_buy + bound_range
@@ -875,12 +791,10 @@ class AdvancedPredictionEngine:
                 'upperBound': int(upper_bound)
             })
 
-            # Update for next iteration with exponential smoothing
             alpha = 0.3
             last_buy = alpha * predicted_buy + (1 - alpha) * last_buy
             last_sell = alpha * predicted_sell + (1 - alpha) * last_sell
 
-        # Determine overall trend
         combined_trend = base_trend + momentum + sentiment_factor
         if features['volatility'] > 0.15:
             prediction_trend = 'VOLATILE'
@@ -891,39 +805,24 @@ class AdvancedPredictionEngine:
         else:
             prediction_trend = 'NEUTRAL'
 
-        # Calculate enhanced overall confidence targeting 95-98%
-        # Data quality - 40 years of history provides exceptional foundation
         data_confidence = min(1.0, len(buy_prices) / 800.0)
-
-        # Volatility factor - lower volatility = higher predictability
         volatility_confidence = 1.0 - min(features['volatility'] * 0.6, 0.25)
-
-        # Time horizon factor - shorter predictions are more accurate
         time_confidence = 1.0 - min(0.25, days_ahead / 150.0)
-
-        # Enhanced news sentiment contribution with impact factor
         news_confidence = news_sentiment['confidence'] * impact_factor * 0.12
 
-        # Hybrid model contribution - LSTM + Ensemble provides significant boost
         hybrid_model_confidence = 0.0
         if lstm_model and ml_model and isinstance(ml_model, dict):
-            hybrid_model_confidence = 0.38  # Both models = maximum accuracy
+            hybrid_model_confidence = 0.42
         elif lstm_model or (ml_model and isinstance(ml_model, dict)):
-            hybrid_model_confidence = 0.28  # Single advanced model
+            hybrid_model_confidence = 0.32
         elif ml_model:
-            hybrid_model_confidence = 0.18  # Basic ML model
+            hybrid_model_confidence = 0.22
 
-        # Full 40-year history bonus (scaled by data points)
         history_bonus = 0.18 if len(buy_prices) >= 1000 else (0.14 if len(buy_prices) >= 500 else 0.10)
-
-        # AED correlation bonus - strong regional correlations improve accuracy
         aed_correlation_value = abs(aed_correlation.get('correlation', 0))
         aed_bonus = 0.08 if aed_correlation_value > 0.7 else (0.05 if aed_correlation_value > 0.5 else 0.02)
-
-        # Economic indicators bonus
         economic_bonus = 0.06 if economic_indicators else 0.0
 
-        # Weighted combination optimized for 95-98% accuracy
         overall_confidence = (
             data_confidence * 0.22 +
             volatility_confidence * 0.20 +
@@ -935,8 +834,25 @@ class AdvancedPredictionEngine:
             economic_bonus
         )
 
-        # Ensure confidence stays within 95-98% range for best-case scenarios
         overall_confidence = max(0.95, min(0.98, overall_confidence))
+
+        models_used = []
+        weights = {}
+
+        if lstm_model:
+            models_used.append('LSTM_Bidirectional')
+            weights['LSTM'] = '45%'
+
+        if isinstance(ml_model, dict):
+            models_used.extend(['XGBoost', 'GradientBoosting', 'RandomForest'])
+            weights['Ensemble'] = '40%'
+        elif ml_model:
+            models_used.append('Single_ML_Model')
+            weights['ML'] = '40%'
+
+        models_used.append('Trend_Analysis')
+        trend_weight = int((1.0 - (0.45 if lstm_model else 0) - (0.40 if ml_model else 0)) * 100)
+        weights['Trend'] = f"{trend_weight}%"
 
         return {
             'currencyCode': currency_code.upper(),
@@ -970,8 +886,8 @@ class AdvancedPredictionEngine:
                 'mlEnabled': ml_model is not None or lstm_model is not None,
                 'lstmEnabled': lstm_model is not None,
                 'ensembleModels': isinstance(ml_model, dict),
-                'modelsUsed': [],
-                'predictionWeights': {},
+                'modelsUsed': models_used,
+                'predictionWeights': weights,
                 'historicalDataPoints': len(buy_prices),
                 'fullHistoryUsed': True,
                 'dataSource': 'api/history/all.json (40 years)',
@@ -981,35 +897,7 @@ class AdvancedPredictionEngine:
             'generatedAt': datetime.now().isoformat() + 'Z'
         }
 
-        # Update modelsUsed and weights
-        models_used = []
-        weights = {}
 
-        if lstm_model:
-            models_used.append('LSTM_Bidirectional')
-            weights['LSTM'] = '40%'
-
-        if isinstance(ml_model, dict):
-            models_used.extend(['XGBoost', 'GradientBoosting', 'RandomForest'])
-            weights['Ensemble'] = '35%'
-        elif ml_model:
-            models_used.append('Single_ML_Model')
-            weights['ML'] = '35%'
-
-        models_used.append('Trend_Analysis')
-        trend_weight = int((1.0 - (0.40 if lstm_model else 0) - (0.35 if ml_model else 0)) * 100)
-        weights['Trend'] = f"{trend_weight}%"
-
-        # Update the return dictionary
-        return_dict['modelInfo']['modelsUsed'] = models_used
-        return_dict['modelInfo']['predictionWeights'] = weights
-
-        return return_dict
-
-
-# ========================
-# API Routes
-# ========================
 
 @app.route('/swagger.json', methods=['GET'])
 def swagger_spec():
@@ -1496,7 +1384,6 @@ def get_aed_correlations():
                     'strength': correlation['strength']
                 })
 
-        # Sort by absolute correlation value
         correlations.sort(key=lambda x: abs(x['correlation']), reverse=True)
 
         return jsonify({
@@ -1530,7 +1417,6 @@ def predict():
         if days_ahead < 1 or days_ahead > 365:
             return jsonify({'error': 'daysAhead must be between 1 and 365'}), 400
 
-        # Generate predictions
         result = AdvancedPredictionEngine.generate_predictions(
             currency_code=currency_code,
             days_ahead=days_ahead,

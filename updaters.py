@@ -11,7 +11,6 @@ from helper import (
 )
 from cache import load_cache, save_cache, save_api_endpoint
 
-# Import enhanced data sources
 try:
     from enhanced_data_sources import fetch_all_enhanced_data
     ENHANCED_DATA_AVAILABLE = True
@@ -29,7 +28,6 @@ async def fetch_news() -> Optional[List[Dict[str, Any]]]:
         print("   ⚠ NEWS_API_KEY not set, skipping news")
         return None
 
-    # Try enhanced news fetching first
     if ENHANCED_DATA_AVAILABLE:
         try:
             print("   🔍 Using enhanced news aggregator...")
@@ -39,7 +37,6 @@ async def fetch_news() -> Optional[List[Dict[str, Any]]]:
         except Exception as e:
             print(f"   ⚠ Enhanced news fetch failed, falling back to basic: {e}")
 
-    # Fallback to basic blockchain news
     url = f'https://newsapi.org/v2/everything?q=blockchain&apiKey={news_api_key}&pageSize=20&sortBy=publishedAt'
 
     try:

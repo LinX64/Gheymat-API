@@ -162,7 +162,6 @@ async def fetch_all_currencies_historical(period: str, currencies: List[str]) ->
             tasks.append(fetch_single_currency(session, url, period, currency_code))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        # Filter out None values and exceptions
         return [r for r in results if r is not None and not isinstance(r, Exception)]
 
 

@@ -25,12 +25,11 @@ def get_available_currencies() -> List[Dict]:
 def generate_prediction_for_currency(currency_code: str, days_ahead: int, use_full_history: bool = True) -> Dict:
     """Generate prediction for a single currency using full 40-year history with hybrid LSTM + Ensemble models."""
     try:
-        # ALWAYS use full history and ML for maximum accuracy (95-98% target)
         prediction = AdvancedPredictionEngine.generate_predictions(
             currency_code=currency_code,
             days_ahead=days_ahead,
-            use_full_history=True,  # Always use full 40-year history
-            use_ml=True  # Always use ML models for best accuracy
+            use_full_history=True,
+            use_ml=True
         )
         return {
             'success': True,
@@ -58,11 +57,9 @@ def generate_all_predictions():
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
 
-    # Create predictions directory
     predictions_dir = 'api/predictions'
     os.makedirs(predictions_dir, exist_ok=True)
 
-    # Get all currencies
     currencies = get_available_currencies()
     if not currencies:
         print("❌ No currencies found!")
@@ -71,7 +68,6 @@ def generate_all_predictions():
     print(f"Found {len(currencies)} currencies")
     print()
 
-    # Prediction configurations - now using full 40-year history for all predictions
     configs = [
         {'name': 'short', 'days_ahead': 7, 'use_full_history': True},
         {'name': 'medium', 'days_ahead': 14, 'use_full_history': True},
@@ -85,7 +81,6 @@ def generate_all_predictions():
         'generated_files': []
     }
 
-    # Generate predictions for each currency and configuration
     for config in configs:
         print(f"Generating {config['name'].upper()} predictions ({config['days_ahead']} days)...")
         print("-" * 70)
@@ -113,7 +108,6 @@ def generate_all_predictions():
             else:
                 stats['failed'] += 1
 
-        # Save predictions for this configuration
         output_file = f"{predictions_dir}/{config['name']}.json"
         with open(output_file, 'w') as f:
             json.dump({
@@ -129,7 +123,6 @@ def generate_all_predictions():
         print(f"  💾 Saved {len(config_predictions)} predictions to {output_file}")
         print()
 
-    # Generate index file
     index_file = f"{predictions_dir}/index.json"
     with open(index_file, 'w') as f:
         json.dump({
@@ -162,7 +155,7 @@ def generate_all_predictions():
     print()
     print("Generated files:")
     for file in stats['generated_files']:
-        file_size = os.path.getsize(file) / 1024  # Convert to KB
+        file_size = os.path.getsize(file) / 1024
         print(f"  - {file} ({file_size:.2f} KB)")
     print()
     print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

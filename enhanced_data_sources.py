@@ -52,7 +52,6 @@ class EnhancedNewsAggregator:
                         print(f"Error fetching forex news for '{query}': {e}")
                         continue
 
-                    # Rate limiting
                     await asyncio.sleep(0.5)
         except Exception as e:
             print(f"Error in forex news session: {e}")
@@ -200,7 +199,6 @@ class EnhancedNewsAggregator:
             elif isinstance(result, Exception):
                 print(f"Error in news fetch: {result}")
 
-        # Remove duplicates based on title
         seen_titles = set()
         unique_articles = []
         for article in all_articles:
@@ -219,11 +217,8 @@ class EconomicIndicators:
     @staticmethod
     async def fetch_oil_prices() -> Optional[Dict[str, Any]]:
         """Fetch current oil prices (WTI and Brent)"""
-        # Using Alpha Vantage as an alternative (free tier available)
-        # For production, consider paid APIs like EIA, Bloomberg, etc.
 
         try:
-            # Free oil price API
             url = 'https://api.oilpriceapi.com/v1/prices/latest'
 
             timeout = aiohttp.ClientTimeout(total=10)
@@ -240,10 +235,9 @@ class EconomicIndicators:
         except Exception as e:
             print(f"   ⚠ Oil price API failed: {e}")
 
-        # Fallback: Use historical averages or cached data
         return {
-            'wti': 75.0,  # Approximate current WTI price
-            'brent': 80.0,  # Approximate current Brent price
+            'wti': 75.0,
+            'brent': 80.0,
             'timestamp': datetime.now().isoformat(),
             'source': 'fallback_estimate',
             'note': 'Using estimated values - API unavailable'
@@ -253,7 +247,6 @@ class EconomicIndicators:
     async def fetch_gold_prices() -> Optional[Dict[str, Any]]:
         """Fetch current gold prices"""
         try:
-            # Free gold price API
             url = 'https://data-asg.goldprice.org/dbXRates/USD'
 
             timeout = aiohttp.ClientTimeout(total=10)
@@ -271,9 +264,8 @@ class EconomicIndicators:
         except Exception as e:
             print(f"   ⚠ Gold price API failed: {e}")
 
-        # Fallback
         return {
-            'pricePerOunce': 2050.0,  # Approximate current gold price
+            'pricePerOunce': 2050.0,
             'currency': 'USD',
             'timestamp': datetime.now().isoformat(),
             'source': 'fallback_estimate',
@@ -288,9 +280,9 @@ class EconomicIndicators:
         In production, integrate with sanctions databases or expert analysis
         """
         return {
-            'iran_sanctions_level': 'high',  # high, medium, low
+            'iran_sanctions_level': 'high',
             'recent_changes': [],
-            'impact_score': 0.8,  # 0-1 scale, 1 being maximum impact
+            'impact_score': 0.8,
             'last_updated': datetime.now().isoformat(),
             'source': 'manual_assessment',
             'note': 'Sanctions tracking requires specialized data sources'
@@ -352,7 +344,6 @@ async def fetch_all_enhanced_data() -> Dict[str, Any]:
 
 
 if __name__ == '__main__':
-    # Test the enhanced data sources
     async def test():
         data = await fetch_all_enhanced_data()
         print(f"\nTotal news articles: {len(data['news'])}")

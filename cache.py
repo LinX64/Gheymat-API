@@ -19,7 +19,6 @@ CACHE_EXPIRY = {
     'news': 60
 }
 
-
 def load_cache(endpoint: str) -> Optional[Dict[str, Any]]:
     cache_file = CACHE_DIR / f'{endpoint}.json'
 

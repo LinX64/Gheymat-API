@@ -11,35 +11,29 @@ from collections import defaultdict
 class EnhancedSentimentAnalyzer:
     """Advanced sentiment analysis with category-specific weighting"""
 
-    # Enhanced keyword lists with weights
     POSITIVE_KEYWORDS = {
-        # Economic positive
         'growth': 1.0, 'increase': 0.8, 'rise': 0.8, 'surge': 1.0, 'gain': 0.8,
         'bull': 1.0, 'rally': 1.0, 'strong': 0.9, 'boost': 0.9, 'recovery': 1.0,
         'positive': 0.7, 'optimistic': 0.8, 'improve': 0.8, 'expansion': 0.9,
         'prosperity': 1.0, 'strengthen': 0.9, 'advance': 0.8, 'upturn': 1.0,
 
-        # Policy positive
         'agreement': 0.9, 'deal': 0.8, 'cooperation': 0.9, 'stability': 1.0,
         'peace': 1.0, 'resolution': 0.9, 'diplomatic': 0.8, 'negotiate': 0.7,
         'partnership': 0.8, 'trade deal': 1.0, 'export': 0.7, 'investment': 0.9
     }
 
     NEGATIVE_KEYWORDS = {
-        # Economic negative
         'fall': 0.8, 'decline': 0.8, 'drop': 0.8, 'crash': 1.2, 'bear': 1.0,
         'weak': 0.8, 'crisis': 1.2, 'recession': 1.2, 'negative': 0.7,
         'pessimistic': 0.8, 'concern': 0.7, 'worry': 0.7, 'risk': 0.8,
         'volatility': 0.6, 'uncertainty': 0.8, 'downturn': 1.0, 'slump': 1.0,
 
-        # Geopolitical negative
         'war': 1.5, 'conflict': 1.3, 'tension': 1.0, 'sanctions': 1.5,
         'embargo': 1.5, 'attack': 1.3, 'strike': 1.0, 'threat': 1.0,
         'crisis': 1.2, 'instability': 1.1, 'protest': 0.8, 'unrest': 1.0,
         'disruption': 1.0, 'blockade': 1.3
     }
 
-    # Iran-specific keywords
     IRAN_POSITIVE_KEYWORDS = {
         'nuclear deal': 1.5, 'jcpoa': 1.5, 'sanctions relief': 2.0,
         'oil export': 1.0, 'trade agreement': 1.2, 'diplomatic': 0.8,
@@ -52,13 +46,12 @@ class EnhancedSentimentAnalyzer:
         'freeze assets': 2.0, 'isolation': 1.8, 'strike': 1.5
     }
 
-    # Category weights for impact on currency predictions
     CATEGORY_WEIGHTS = {
-        'forex_economic': 1.0,      # Direct impact
-        'iran_specific': 1.5,       # High impact on Iranian Rial
-        'geopolitical_war': 1.3,    # High impact due to uncertainty
-        'uae_regional': 0.9,        # Moderate impact (AED correlation)
-        'general': 0.5              # Lower impact
+        'forex_economic': 1.0,
+        'iran_specific': 1.5,
+        'geopolitical_war': 1.3,
+        'uae_regional': 0.9,
+        'general': 0.5
     }
 
     @staticmethod
@@ -72,7 +65,6 @@ class EnhancedSentimentAnalyzer:
         iran_positive_score = 0.0
         iran_negative_score = 0.0
 
-        # Check general keywords
         for keyword, weight in EnhancedSentimentAnalyzer.POSITIVE_KEYWORDS.items():
             count = text.count(keyword.lower())
             positive_score += count * weight
@@ -81,7 +73,6 @@ class EnhancedSentimentAnalyzer:
             count = text.count(keyword.lower())
             negative_score += count * weight
 
-        # Check Iran-specific keywords
         for keyword, weight in EnhancedSentimentAnalyzer.IRAN_POSITIVE_KEYWORDS.items():
             count = text.count(keyword.lower())
             iran_positive_score += count * weight
@@ -90,18 +81,15 @@ class EnhancedSentimentAnalyzer:
             count = text.count(keyword.lower())
             iran_negative_score += count * weight
 
-        # Combine scores with Iran-specific boost
         total_positive = positive_score + iran_positive_score
         total_negative = negative_score + iran_negative_score
 
-        # Calculate sentiment score (-1 to 1)
         total_indicators = total_positive + total_negative
         if total_indicators == 0:
             sentiment_score = 0.0
         else:
             sentiment_score = (total_positive - total_negative) / total_indicators
 
-        # Apply category weight
         category_weight = EnhancedSentimentAnalyzer.CATEGORY_WEIGHTS.get(category, 0.5)
         weighted_score = sentiment_score * category_weight
 
@@ -129,7 +117,6 @@ class EnhancedSentimentAnalyzer:
                     'articlesAnalyzed': 0
                 }
 
-            # Analyze each article
             article_sentiments = []
             category_sentiments = defaultdict(list)
 
@@ -140,13 +127,11 @@ class EnhancedSentimentAnalyzer:
                 category = sentiment_result['category']
                 category_sentiments[category].append(sentiment_result['weighted_score'])
 
-            # Calculate overall sentiment (weighted average)
             if article_sentiments:
                 overall_score = sum(s['weighted_score'] for s in article_sentiments) / len(article_sentiments)
             else:
                 overall_score = 0.0
 
-            # Calculate category-specific sentiments
             category_scores = {}
             for category, scores in category_sentiments.items():
                 if scores:
@@ -155,7 +140,6 @@ class EnhancedSentimentAnalyzer:
                         'articles': len(scores)
                     }
 
-            # Determine overall sentiment
             if overall_score > 0.2:
                 sentiment = 'POSITIVE'
             elif overall_score < -0.2:
@@ -163,13 +147,10 @@ class EnhancedSentimentAnalyzer:
             else:
                 sentiment = 'NEUTRAL'
 
-            # Calculate confidence based on number of articles and consistency
             article_count_factor = min(1.0, len(news_data) / 50.0)
-            score_consistency = 1.0 - min(1.0, abs(overall_score) * 0.3)  # More extreme = more confident
+            score_consistency = 1.0 - min(1.0, abs(overall_score) * 0.3)
             confidence = min(0.95, 0.6 + article_count_factor * 0.2 + score_consistency * 0.2)
 
-            # Calculate impact factor for predictions
-            # Higher absolute score = more impact on predictions
             impact_factor = min(1.0, abs(overall_score) * 2.0)
 
             return {
@@ -208,27 +189,24 @@ class EnhancedSentimentAnalyzer:
         sentiment_score = 0.0
         factors = []
 
-        # Oil prices impact (higher oil = potentially negative for Iran if sanctions prevent export)
         oil_data = indicators.get('oil', {})
         if 'wti' in oil_data:
             wti = oil_data.get('wti', 75)
             if wti > 90:
-                sentiment_score -= 0.2  # High oil but can't export = negative
+                sentiment_score -= 0.2
                 factors.append('high_oil_sanctions')
             elif wti > 80:
                 sentiment_score -= 0.1
 
-        # Gold prices impact (higher gold = economic uncertainty = flight to safety)
         gold_data = indicators.get('gold', {})
         if 'pricePerOunce' in gold_data:
             gold_price = gold_data.get('pricePerOunce', 2000)
             if gold_price > 2100:
-                sentiment_score -= 0.15  # High gold = uncertainty
+                sentiment_score -= 0.15
                 factors.append('high_gold_uncertainty')
             elif gold_price < 1900:
-                sentiment_score += 0.1  # Low gold = stability
+                sentiment_score += 0.1
 
-        # Sanctions impact (direct negative)
         sanctions_data = indicators.get('sanctions', {})
         sanctions_level = sanctions_data.get('iran_sanctions_level', 'medium')
         impact_score = sanctions_data.get('impact_score', 0.5)
@@ -240,7 +218,6 @@ class EnhancedSentimentAnalyzer:
             sentiment_score -= 0.2
             factors.append('medium_sanctions')
 
-        # Normalize to -1 to 1 range
         sentiment_score = max(-1.0, min(1.0, sentiment_score))
 
         return {
@@ -254,10 +231,8 @@ class EnhancedSentimentAnalyzer:
                                economic_indicators_file: str = 'api/economic_indicators.json') -> Dict[str, Any]:
         """Get combined sentiment from news and economic indicators"""
 
-        # Get news sentiment
         news_sentiment = EnhancedSentimentAnalyzer.analyze_enhanced_news(news_file)
 
-        # Get economic indicators sentiment
         try:
             with open(economic_indicators_file, 'r') as f:
                 indicators = json.load(f)
@@ -265,10 +240,8 @@ class EnhancedSentimentAnalyzer:
         except:
             economic_sentiment = {'score': 0.0, 'factors': [], 'impact': 'neutral'}
 
-        # Combine sentiments (70% news, 30% economic indicators)
         combined_score = news_sentiment['score'] * 0.7 + economic_sentiment['score'] * 0.3
 
-        # Overall sentiment
         if combined_score > 0.2:
             overall_sentiment = 'POSITIVE'
         elif combined_score < -0.2:
@@ -286,6 +259,5 @@ class EnhancedSentimentAnalyzer:
 
 
 if __name__ == '__main__':
-    # Test
     sentiment = EnhancedSentimentAnalyzer.get_combined_sentiment()
     print(json.dumps(sentiment, indent=2))

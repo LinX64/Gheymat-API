@@ -52,18 +52,14 @@ class PredictionBacktester:
 
         n = len(actual_prices)
 
-        # MAE - Mean Absolute Error
         mae = sum(abs(a - p) for a, p in zip(actual_prices, predicted_prices)) / n
 
-        # RMSE - Root Mean Square Error
         mse = sum((a - p) ** 2 for a, p in zip(actual_prices, predicted_prices)) / n
         rmse = math.sqrt(mse)
 
-        # MAPE - Mean Absolute Percentage Error (convert to percentage)
         mape_values = [abs((a - p) / a) * 100 for a, p in zip(actual_prices, predicted_prices) if a != 0]
         mape = sum(mape_values) / len(mape_values) if mape_values else 0.0
 
-        # Directional Accuracy (did we predict the trend correctly?)
         correct_directions = 0
         for i in range(1, n):
             actual_direction = actual_prices[i] - actual_prices[i-1]
@@ -75,15 +71,13 @@ class PredictionBacktester:
 
         directional_accuracy = (correct_directions / (n - 1) * 100) if n > 1 else 0.0
 
-        # R-squared (coefficient of determination)
         mean_actual = sum(actual_prices) / n
         ss_total = sum((a - mean_actual) ** 2 for a in actual_prices)
         ss_residual = sum((a - p) ** 2 for a, p in zip(actual_prices, predicted_prices))
 
         r_squared = 1 - (ss_residual / ss_total) if ss_total != 0 else 0.0
-        r_squared = max(0.0, r_squared)  # R-squared can be negative for very bad fits
+        r_squared = max(0.0, r_squared)
 
-        # Overall accuracy percentage (100% - MAPE)
         accuracy_percentage = max(0.0, 100.0 - mape)
 
         return {
@@ -118,7 +112,6 @@ class PredictionBacktester:
         print(f"Full history: {use_full_history}")
         print()
 
-        # Load historical data
         historical_data = PredictionBacktester.load_historical_data(currency_code)
         if len(historical_data) < 100:
             return {
@@ -133,12 +126,10 @@ class PredictionBacktester:
                 'price_points': len(buy_prices)
             }
 
-        # Prepare test periods
         all_predictions = []
         all_actuals = []
         test_results = []
 
-        # Use the last portion of data for testing
         test_start_index = len(buy_prices) - (test_periods * prediction_days) - 60
 
         if test_start_index < 60:
@@ -150,34 +141,28 @@ class PredictionBacktester:
             if current_index + prediction_days >= len(buy_prices):
                 break
 
-            # Training data up to current point
             training_data = buy_prices[:current_index]
 
-            # Actual future prices
             actual_future = buy_prices[current_index:current_index + prediction_days]
 
             if len(actual_future) < prediction_days:
                 break
 
             try:
-                # Train model and generate predictions
                 engine = AdvancedPredictionEngine()
                 model = engine.train_ml_model(training_data, 'ensemble')
 
                 if model:
                     predicted_future = engine.generate_ml_predictions(model, training_data, prediction_days)
                 else:
-                    # Fallback to trend-based prediction
                     predicted_future = []
                     last_price = training_data[-1]
-                    # Simple trend calculation
                     recent_trend = (training_data[-1] - training_data[-30]) / training_data[-30] if len(training_data) >= 30 else 0
                     for i in range(prediction_days):
                         pred = last_price * (1 + recent_trend * (i + 1) / 30)
                         predicted_future.append(pred)
 
                 if len(predicted_future) == prediction_days:
-                    # Calculate metrics for this period
                     period_metrics = PredictionBacktester.calculate_accuracy_metrics(
                         actual_future,
                         predicted_future
@@ -201,11 +186,9 @@ class PredictionBacktester:
                 print(f"  Error in period {period_idx + 1}: {e}")
                 continue
 
-        # Calculate overall metrics
         if all_predictions and all_actuals:
             overall_metrics = PredictionBacktester.calculate_accuracy_metrics(all_actuals, all_predictions)
 
-            # Calculate statistics across periods
             accuracy_scores = [r['metrics']['accuracy_percentage'] for r in test_results]
             mape_scores = [r['metrics']['mape'] for r in test_results]
 
@@ -276,7 +259,6 @@ class PredictionBacktester:
                 results[currency.upper()] = result
                 summary['failed'] += 1
 
-        # Calculate overall average accuracy
         successful_results = [r for r in results.values() if 'overall_metrics' in r]
         if successful_results:
             summary['average_accuracy'] = round(
@@ -303,7 +285,6 @@ class PredictionBacktester:
 
 
 if __name__ == '__main__':
-    # Test with major currencies
     test_currencies = ['usd', 'eur', 'gbp', 'aed']
     results = PredictionBacktester.validate_multiple_currencies(
         test_currencies,
@@ -311,7 +292,6 @@ if __name__ == '__main__':
         test_periods=5
     )
 
-    # Save results
     with open('api/backtest_results.json', 'w') as f:
         json.dump(results, f, indent=2)
 
