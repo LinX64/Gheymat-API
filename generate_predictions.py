@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 from typing import List, Dict
-from api_server import PredictionEngine
+from api_server import AdvancedPredictionEngine
 
 
 def get_available_currencies() -> List[Dict]:
@@ -22,13 +22,14 @@ def get_available_currencies() -> List[Dict]:
         return []
 
 
-def generate_prediction_for_currency(currency_code: str, days_ahead: int, historical_days: int) -> Dict:
-    """Generate prediction for a single currency."""
+def generate_prediction_for_currency(currency_code: str, days_ahead: int, use_full_history: bool = True) -> Dict:
+    """Generate prediction for a single currency using full 40-year history."""
     try:
-        prediction = PredictionEngine.generate_predictions(
+        prediction = AdvancedPredictionEngine.generate_predictions(
             currency_code=currency_code,
             days_ahead=days_ahead,
-            historical_days=historical_days
+            use_full_history=use_full_history,
+            use_ml=True
         )
         return {
             'success': True,
@@ -69,11 +70,11 @@ def generate_all_predictions():
     print(f"Found {len(currencies)} currencies")
     print()
 
-    # Prediction configurations
+    # Prediction configurations - now using full 40-year history for all predictions
     configs = [
-        {'name': 'short', 'days_ahead': 7, 'historical_days': 30},
-        {'name': 'medium', 'days_ahead': 14, 'historical_days': 60},
-        {'name': 'long', 'days_ahead': 30, 'historical_days': 90},
+        {'name': 'short', 'days_ahead': 7, 'use_full_history': True},
+        {'name': 'medium', 'days_ahead': 14, 'use_full_history': True},
+        {'name': 'long', 'days_ahead': 30, 'use_full_history': True},
     ]
 
     stats = {
@@ -98,7 +99,7 @@ def generate_all_predictions():
             result = generate_prediction_for_currency(
                 currency_code=currency_code,
                 days_ahead=config['days_ahead'],
-                historical_days=config['historical_days']
+                use_full_history=config['use_full_history']
             )
 
             if result['success']:
@@ -117,7 +118,8 @@ def generate_all_predictions():
             json.dump({
                 'generatedAt': datetime.now().isoformat() + 'Z',
                 'daysAhead': config['days_ahead'],
-                'historicalDays': config['historical_days'],
+                'useFullHistory': config['use_full_history'],
+                'historicalDataSource': 'api/history/all.json (40 years)',
                 'totalCurrencies': len(config_predictions),
                 'predictions': config_predictions
             }, f, indent=2)
@@ -135,7 +137,8 @@ def generate_all_predictions():
                 {
                     'name': config['name'],
                     'daysAhead': config['days_ahead'],
-                    'historicalDays': config['historical_days'],
+                    'useFullHistory': config['use_full_history'],
+                    'historicalDataSource': 'api/history/all.json (40 years)',
                     'endpoint': f"predictions/{config['name']}.json"
                 }
                 for config in configs
