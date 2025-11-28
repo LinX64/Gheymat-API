@@ -10,24 +10,74 @@ import numpy as np
 from collections import defaultdict
 import re
 
-try:
-    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
-    from sklearn.preprocessing import StandardScaler, MinMaxScaler
-    from sklearn.linear_model import Ridge, LinearRegression
-    from sklearn.model_selection import cross_val_score, TimeSeriesSplit
-    import xgboost as xgb
-    import lightgbm as lgb
-    from catboost import CatBoostRegressor
-    import tensorflow as tf
-    from tensorflow import keras
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional, MultiHeadAttention, LayerNormalization
-    from tensorflow.keras.optimizers import Adam
-    from tensorflow.keras.callbacks import EarlyStopping
-    ML_AVAILABLE = True
-except ImportError as import_err:
-    ML_AVAILABLE = False
-    print(f"Warning: ML libraries not available. Using fallback prediction methods. Error: {import_err}")
+# Global cache for ML libraries (loaded lazily on first prediction request)
+_ml_libs_cache = {}
+ML_AVAILABLE = None  # Will be set to True/False on first load attempt
+
+def _load_ml_libraries():
+    """Lazy load ML libraries only when needed for predictions"""
+    global ML_AVAILABLE, _ml_libs_cache
+
+    if _ml_libs_cache:  # Already loaded
+        return _ml_libs_cache
+
+    try:
+        print("Loading ML libraries (this may take 30-60 seconds)...")
+        import time
+        start_time = time.time()
+
+        from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
+        from sklearn.preprocessing import StandardScaler, MinMaxScaler
+        from sklearn.linear_model import Ridge, LinearRegression
+        from sklearn.model_selection import cross_val_score, TimeSeriesSplit
+        import xgboost as xgb
+        import lightgbm as lgb
+        from catboost import CatBoostRegressor
+        import tensorflow as tf
+        from tensorflow import keras
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional, MultiHeadAttention, LayerNormalization
+        from tensorflow.keras.optimizers import Adam
+        from tensorflow.keras.callbacks import EarlyStopping
+        import numpy as np
+
+        _ml_libs_cache = {
+            'RandomForestRegressor': RandomForestRegressor,
+            'GradientBoostingRegressor': GradientBoostingRegressor,
+            'StackingRegressor': StackingRegressor,
+            'StandardScaler': StandardScaler,
+            'MinMaxScaler': MinMaxScaler,
+            'Ridge': Ridge,
+            'LinearRegression': LinearRegression,
+            'cross_val_score': cross_val_score,
+            'TimeSeriesSplit': TimeSeriesSplit,
+            'xgb': xgb,
+            'lgb': lgb,
+            'CatBoostRegressor': CatBoostRegressor,
+            'tf': tf,
+            'keras': keras,
+            'Sequential': Sequential,
+            'LSTM': LSTM,
+            'Dense': Dense,
+            'Dropout': Dropout,
+            'Bidirectional': Bidirectional,
+            'MultiHeadAttention': MultiHeadAttention,
+            'LayerNormalization': LayerNormalization,
+            'Adam': Adam,
+            'EarlyStopping': EarlyStopping,
+            'np': np
+        }
+
+        ML_AVAILABLE = True
+        elapsed = time.time() - start_time
+        print(f"✓ ML libraries loaded successfully in {elapsed:.1f} seconds")
+        return _ml_libs_cache
+
+    except ImportError as import_err:
+        ML_AVAILABLE = False
+        print(f"⚠ ML libraries not available. Using fallback prediction methods. Error: {import_err}")
+        return {}
+
 
 try:
     from enhanced_sentiment import EnhancedSentimentAnalyzer
@@ -354,10 +404,22 @@ class AdvancedPredictionEngine:
 
     def train_lstm_model(self, prices: List[float], epochs: int = 50, lookback: int = 60) -> Optional[object]:
         """Train LSTM neural network for time series prediction"""
-        if not ML_AVAILABLE or len(prices) < lookback + 30:
+        # Lazy load ML libraries
+        ml_libs = _load_ml_libraries()
+        if not ml_libs or len(prices) < lookback + 30:
             return None
 
         try:
+            np = ml_libs['np']
+            MinMaxScaler = ml_libs['MinMaxScaler']
+            Sequential = ml_libs['Sequential']
+            Bidirectional = ml_libs['Bidirectional']
+            LSTM = ml_libs['LSTM']
+            Dropout = ml_libs['Dropout']
+            Dense = ml_libs['Dense']
+            Adam = ml_libs['Adam']
+            EarlyStopping = ml_libs['EarlyStopping']
+
             scaler = MinMaxScaler(feature_range=(0, 1))
             scaled_prices = scaler.fit_transform(np.array(prices).reshape(-1, 1))
 
@@ -482,10 +544,23 @@ class AdvancedPredictionEngine:
 
     def train_ml_model(self, prices: List[float], model_type: str = 'stacking') -> Optional[object]:
         """Train advanced stacking ensemble ML model with cross-validation"""
-        if not ML_AVAILABLE or len(prices) < 60:
+        # Lazy load ML libraries
+        ml_libs = _load_ml_libraries()
+        if not ml_libs or len(prices) < 60:
             return None
 
         try:
+            np = ml_libs['np']
+            xgb = ml_libs['xgb']
+            lgb = ml_libs['lgb']
+            CatBoostRegressor = ml_libs['CatBoostRegressor']
+            GradientBoostingRegressor = ml_libs['GradientBoostingRegressor']
+            RandomForestRegressor = ml_libs['RandomForestRegressor']
+            StackingRegressor = ml_libs['StackingRegressor']
+            Ridge = ml_libs['Ridge']
+            cross_val_score = ml_libs['cross_val_score']
+            TimeSeriesSplit = ml_libs['TimeSeriesSplit']
+
             X = []
             y = []
 
@@ -643,6 +718,12 @@ class AdvancedPredictionEngine:
             return []
 
         try:
+            # Lazy load numpy (already loaded if we got here, but being safe)
+            ml_libs = _load_ml_libraries()
+            np = ml_libs.get('np')
+            if not np:
+                return []
+
             model = lstm_dict['model']
             scaler = lstm_dict['scaler']
             lookback = lstm_dict['lookback']
@@ -676,6 +757,12 @@ class AdvancedPredictionEngine:
             return [], []
 
         try:
+            # Lazy load numpy
+            ml_libs = _load_ml_libraries()
+            np = ml_libs.get('np')
+            if not np:
+                return [], []
+
             predictions = []
             prediction_stds = []
             window_size = 30 if len(recent_prices) >= 100 else 14
@@ -793,7 +880,10 @@ class AdvancedPredictionEngine:
         lstm_predictions = []
         model_cv_score = 0.0
 
-        if use_ml and ML_AVAILABLE and len(buy_prices) >= 60:
+        # Lazy load ML libraries if needed
+        ml_libs = _load_ml_libraries() if use_ml and len(buy_prices) >= 60 else {}
+
+        if use_ml and ml_libs and len(buy_prices) >= 60:
             print(f"Training stacking ensemble model with {len(buy_prices)} data points...")
             ml_model = engine.train_ml_model(buy_prices, 'stacking')
             if ml_model:
@@ -1490,11 +1580,15 @@ def root():
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
+    """Health check endpoint - responds immediately without loading ML libraries"""
+    global ML_AVAILABLE
+    ml_status = 'loaded' if _ml_libs_cache else ('not_loaded' if ML_AVAILABLE is None else 'unavailable')
+
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'mlAvailable': ML_AVAILABLE
+        'mlStatus': ml_status,
+        'mlLibrariesLoaded': bool(_ml_libs_cache)
     }), 200
 
 
@@ -1670,6 +1764,9 @@ def predict():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    print(f"Starting CurrencyCapPortal API server on port {port}")
-    print(f"ML libraries available: {ML_AVAILABLE}")
+    print("=" * 70)
+    print(f"🚀 Starting CurrencyCapPortal API server on port {port}")
+    print(f"⚡ ML libraries will be loaded lazily on first prediction request")
+    print(f"✓ Server ready to accept connections")
+    print("=" * 70)
     app.run(host='0.0.0.0', port=port, debug=False)
