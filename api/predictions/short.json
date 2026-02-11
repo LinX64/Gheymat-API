@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-11T21:35:42.292024Z",
+  "generatedAt": "2026-02-11T22:31:37.624376Z",
   "daysAhead": 7,
   "useFullHistory": true,
   "historicalDataSource": "api/history/all.json (40 years)",
@@ -13,12 +13,12 @@
         "currentPrice": {
           "buy": 161550,
           "sell": 161745,
-          "timestamp": "2026-02-11T21:35:42.009601Z"
+          "timestamp": "2026-02-11T22:31:37.255663Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142009,
+            "timestamp": 1770935497255,
             "predictedBuy": 160006,
             "predictedSell": 160199,
             "confidence": 0.95,
@@ -27,7 +27,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542009,
+            "timestamp": 1771021897255,
             "predictedBuy": 158009,
             "predictedSell": 158200,
             "confidence": 0.95,
@@ -36,7 +36,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942009,
+            "timestamp": 1771108297255,
             "predictedBuy": 155573,
             "predictedSell": 155761,
             "confidence": 0.95,
@@ -45,7 +45,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342009,
+            "timestamp": 1771194697255,
             "predictedBuy": 152719,
             "predictedSell": 152903,
             "confidence": 0.95,
@@ -54,7 +54,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742009,
+            "timestamp": 1771281097255,
             "predictedBuy": 149469,
             "predictedSell": 149649,
             "confidence": 0.95,
@@ -63,7 +63,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142009,
+            "timestamp": 1771367497255,
             "predictedBuy": 145849,
             "predictedSell": 146025,
             "confidence": 0.95,
@@ -72,7 +72,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542009,
+            "timestamp": 1771453897255,
             "predictedBuy": 141888,
             "predictedSell": 142060,
             "confidence": 0.95,
@@ -119,21 +119,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -161,7 +161,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.009621Z"
+        "generatedAt": "2026-02-11T22:31:37.255678Z"
       }
     },
     {
@@ -172,81 +172,81 @@
         "currentPrice": {
           "buy": 191500,
           "sell": 191855,
-          "timestamp": "2026-02-11T21:35:42.019297Z"
+          "timestamp": "2026-02-11T22:31:37.264583Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142019,
-            "predictedBuy": 191160,
-            "predictedSell": 191514,
+            "timestamp": 1770935497264,
+            "predictedBuy": 189474,
+            "predictedSell": 189825,
             "confidence": 0.95,
-            "lowerBound": 191160,
-            "upperBound": 191160
+            "lowerBound": 118883,
+            "upperBound": 260064
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542019,
-            "predictedBuy": 190718,
-            "predictedSell": 191071,
+            "timestamp": 1771021897264,
+            "predictedBuy": 186853,
+            "predictedSell": 187200,
             "confidence": 0.95,
-            "lowerBound": 190718,
-            "upperBound": 190718
+            "lowerBound": 110911,
+            "upperBound": 262796
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942019,
-            "predictedBuy": 190175,
-            "predictedSell": 190528,
+            "timestamp": 1771108297264,
+            "predictedBuy": 183661,
+            "predictedSell": 184001,
             "confidence": 0.95,
-            "lowerBound": 190175,
-            "upperBound": 190175
+            "lowerBound": 102795,
+            "upperBound": 264527
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342019,
-            "predictedBuy": 189533,
-            "predictedSell": 189884,
+            "timestamp": 1771194697264,
+            "predictedBuy": 179925,
+            "predictedSell": 180259,
             "confidence": 0.95,
-            "lowerBound": 189533,
-            "upperBound": 189533
+            "lowerBound": 94610,
+            "upperBound": 265240
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742019,
-            "predictedBuy": 188791,
-            "predictedSell": 189141,
+            "timestamp": 1771281097264,
+            "predictedBuy": 175679,
+            "predictedSell": 176005,
             "confidence": 0.95,
-            "lowerBound": 188791,
-            "upperBound": 188791
+            "lowerBound": 86428,
+            "upperBound": 264931
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142019,
-            "predictedBuy": 187951,
-            "predictedSell": 188299,
+            "timestamp": 1771367497264,
+            "predictedBuy": 170961,
+            "predictedSell": 171278,
             "confidence": 0.95,
-            "lowerBound": 187951,
-            "upperBound": 187951
+            "lowerBound": 78316,
+            "upperBound": 263605
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542019,
-            "predictedBuy": 187014,
-            "predictedSell": 187360,
+            "timestamp": 1771453897264,
+            "predictedBuy": 165811,
+            "predictedSell": 166119,
             "confidence": 0.95,
-            "lowerBound": 187014,
-            "upperBound": 187014
+            "lowerBound": 70341,
+            "upperBound": 261281
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3387,
+          "momentum": -0.4429,
+          "movingAvg7Day": 89900,
+          "movingAvg30Day": 119553
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -278,21 +278,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -312,7 +312,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -320,7 +320,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.019312Z"
+        "generatedAt": "2026-02-11T22:31:37.264593Z"
       }
     },
     {
@@ -331,12 +331,12 @@
         "currentPrice": {
           "buy": 220300,
           "sell": 220650,
-          "timestamp": "2026-02-11T21:35:42.028286Z"
+          "timestamp": "2026-02-11T22:31:37.273141Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142028,
+            "timestamp": 1770935497273,
             "predictedBuy": 218052,
             "predictedSell": 218398,
             "confidence": 0.95,
@@ -345,7 +345,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542028,
+            "timestamp": 1771021897273,
             "predictedBuy": 215144,
             "predictedSell": 215485,
             "confidence": 0.95,
@@ -354,7 +354,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942028,
+            "timestamp": 1771108297273,
             "predictedBuy": 211599,
             "predictedSell": 211936,
             "confidence": 0.95,
@@ -363,7 +363,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342028,
+            "timestamp": 1771194697273,
             "predictedBuy": 207450,
             "predictedSell": 207779,
             "confidence": 0.95,
@@ -372,7 +372,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742028,
+            "timestamp": 1771281097273,
             "predictedBuy": 202730,
             "predictedSell": 203052,
             "confidence": 0.95,
@@ -381,7 +381,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142028,
+            "timestamp": 1771367497273,
             "predictedBuy": 197481,
             "predictedSell": 197795,
             "confidence": 0.95,
@@ -390,7 +390,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542028,
+            "timestamp": 1771453897273,
             "predictedBuy": 191748,
             "predictedSell": 192052,
             "confidence": 0.95,
@@ -437,21 +437,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -479,7 +479,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.028298Z"
+        "generatedAt": "2026-02-11T22:31:37.273150Z"
       }
     },
     {
@@ -490,12 +490,12 @@
         "currentPrice": {
           "buy": 209050,
           "sell": 209445,
-          "timestamp": "2026-02-11T21:35:42.037046Z"
+          "timestamp": "2026-02-11T22:31:37.290177Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142036,
+            "timestamp": 1770935497290,
             "predictedBuy": 208678,
             "predictedSell": 209073,
             "confidence": 0.95,
@@ -504,7 +504,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542036,
+            "timestamp": 1771021897290,
             "predictedBuy": 208196,
             "predictedSell": 208590,
             "confidence": 0.95,
@@ -513,7 +513,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942036,
+            "timestamp": 1771108297290,
             "predictedBuy": 207604,
             "predictedSell": 207996,
             "confidence": 0.95,
@@ -522,7 +522,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342037,
+            "timestamp": 1771194697290,
             "predictedBuy": 206902,
             "predictedSell": 207293,
             "confidence": 0.95,
@@ -531,7 +531,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742037,
+            "timestamp": 1771281097290,
             "predictedBuy": 206092,
             "predictedSell": 206482,
             "confidence": 0.95,
@@ -540,7 +540,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142037,
+            "timestamp": 1771367497290,
             "predictedBuy": 205175,
             "predictedSell": 205563,
             "confidence": 0.95,
@@ -549,7 +549,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542037,
+            "timestamp": 1771453897290,
             "predictedBuy": 204153,
             "predictedSell": 204538,
             "confidence": 0.95,
@@ -603,14 +603,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -638,7 +638,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.037059Z"
+        "generatedAt": "2026-02-11T22:31:37.290188Z"
       }
     },
     {
@@ -649,81 +649,81 @@
         "currentPrice": {
           "buy": 118600,
           "sell": 118815,
-          "timestamp": "2026-02-11T21:35:42.044694Z"
+          "timestamp": "2026-02-11T22:31:37.299217Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142044,
-            "predictedBuy": 118389,
-            "predictedSell": 118604,
+            "timestamp": 1770935497299,
+            "predictedBuy": 117443,
+            "predictedSell": 117655,
             "confidence": 0.95,
-            "lowerBound": 118389,
-            "upperBound": 118389
+            "lowerBound": 76825,
+            "upperBound": 158060
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542044,
-            "predictedBuy": 118115,
-            "predictedSell": 118330,
+            "timestamp": 1771021897299,
+            "predictedBuy": 115945,
+            "predictedSell": 116155,
             "confidence": 0.95,
-            "lowerBound": 118115,
-            "upperBound": 118115
+            "lowerBound": 72200,
+            "upperBound": 159690
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942044,
-            "predictedBuy": 117779,
-            "predictedSell": 117993,
+            "timestamp": 1771108297299,
+            "predictedBuy": 114120,
+            "predictedSell": 114327,
             "confidence": 0.95,
-            "lowerBound": 117779,
-            "upperBound": 117779
+            "lowerBound": 67476,
+            "upperBound": 160764
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342044,
-            "predictedBuy": 117381,
-            "predictedSell": 117594,
+            "timestamp": 1771194697299,
+            "predictedBuy": 111981,
+            "predictedSell": 112184,
             "confidence": 0.95,
-            "lowerBound": 117381,
-            "upperBound": 117381
+            "lowerBound": 62690,
+            "upperBound": 161272
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742044,
-            "predictedBuy": 116922,
-            "predictedSell": 117134,
+            "timestamp": 1771281097299,
+            "predictedBuy": 109547,
+            "predictedSell": 109745,
             "confidence": 0.95,
-            "lowerBound": 116922,
-            "upperBound": 116922
+            "lowerBound": 57883,
+            "upperBound": 161210
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142044,
-            "predictedBuy": 116402,
-            "predictedSell": 116613,
+            "timestamp": 1771367497299,
+            "predictedBuy": 106837,
+            "predictedSell": 107030,
             "confidence": 0.95,
-            "lowerBound": 116402,
-            "upperBound": 116402
+            "lowerBound": 53092,
+            "upperBound": 160581
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542044,
-            "predictedBuy": 115821,
-            "predictedSell": 116031,
+            "timestamp": 1771453897299,
+            "predictedBuy": 103873,
+            "predictedSell": 104061,
             "confidence": 0.95,
-            "lowerBound": 115821,
-            "upperBound": 115821
+            "lowerBound": 48354,
+            "upperBound": 159392
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3144,
+          "momentum": -0.4013,
+          "movingAvg7Day": 58771,
+          "movingAvg30Day": 75626
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -755,21 +755,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -789,7 +789,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -797,7 +797,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.044704Z"
+        "generatedAt": "2026-02-11T22:31:37.299226Z"
       }
     },
     {
@@ -808,81 +808,81 @@
         "currentPrice": {
           "buy": 114600,
           "sell": 114825,
-          "timestamp": "2026-02-11T21:35:42.051132Z"
+          "timestamp": "2026-02-11T22:31:37.307917Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142051,
-            "predictedBuy": 114396,
-            "predictedSell": 114621,
+            "timestamp": 1770935497307,
+            "predictedBuy": 113454,
+            "predictedSell": 113677,
             "confidence": 0.95,
-            "lowerBound": 114396,
-            "upperBound": 114396
+            "lowerBound": 71068,
+            "upperBound": 155840
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542051,
-            "predictedBuy": 114132,
-            "predictedSell": 114356,
+            "timestamp": 1771021897307,
+            "predictedBuy": 111971,
+            "predictedSell": 112191,
             "confidence": 0.95,
-            "lowerBound": 114132,
-            "upperBound": 114132
+            "lowerBound": 66336,
+            "upperBound": 157606
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942051,
-            "predictedBuy": 113807,
-            "predictedSell": 114031,
+            "timestamp": 1771108297307,
+            "predictedBuy": 110164,
+            "predictedSell": 110381,
             "confidence": 0.95,
-            "lowerBound": 113807,
-            "upperBound": 113807
+            "lowerBound": 61524,
+            "upperBound": 158804
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342051,
-            "predictedBuy": 113422,
-            "predictedSell": 113645,
+            "timestamp": 1771194697307,
+            "predictedBuy": 108048,
+            "predictedSell": 108260,
             "confidence": 0.95,
-            "lowerBound": 113422,
-            "upperBound": 113422
+            "lowerBound": 56673,
+            "upperBound": 159423
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742051,
-            "predictedBuy": 112978,
-            "predictedSell": 113200,
+            "timestamp": 1771281097307,
+            "predictedBuy": 105640,
+            "predictedSell": 105848,
             "confidence": 0.95,
-            "lowerBound": 112978,
-            "upperBound": 112978
+            "lowerBound": 51822,
+            "upperBound": 159459
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142051,
-            "predictedBuy": 112476,
-            "predictedSell": 112697,
+            "timestamp": 1771367497307,
+            "predictedBuy": 102961,
+            "predictedSell": 103163,
             "confidence": 0.95,
-            "lowerBound": 112476,
-            "upperBound": 112476
+            "lowerBound": 47011,
+            "upperBound": 158912
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542051,
-            "predictedBuy": 111915,
-            "predictedSell": 112135,
+            "timestamp": 1771453897307,
+            "predictedBuy": 100033,
+            "predictedSell": 100230,
             "confidence": 0.95,
-            "lowerBound": 111915,
-            "upperBound": 111915
+            "lowerBound": 42276,
+            "upperBound": 157790
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3396,
+          "momentum": -0.4106,
+          "movingAvg7Day": 53042,
+          "movingAvg30Day": 69623
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -914,21 +914,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -948,7 +948,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -956,7 +956,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.051141Z"
+        "generatedAt": "2026-02-11T22:31:37.307927Z"
       }
     },
     {
@@ -967,81 +967,81 @@
         "currentPrice": {
           "buy": 18000,
           "sell": 18120,
-          "timestamp": "2026-02-11T21:35:42.057592Z"
+          "timestamp": "2026-02-11T22:31:37.316470Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142057,
-            "predictedBuy": 17968,
-            "predictedSell": 18087,
+            "timestamp": 1770935497316,
+            "predictedBuy": 17799,
+            "predictedSell": 17917,
             "confidence": 0.95,
-            "lowerBound": 17968,
-            "upperBound": 17968
+            "lowerBound": 10701,
+            "upperBound": 24896
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542057,
-            "predictedBuy": 17926,
-            "predictedSell": 18046,
+            "timestamp": 1771021897316,
+            "predictedBuy": 17539,
+            "predictedSell": 17656,
             "confidence": 0.95,
-            "lowerBound": 17926,
-            "upperBound": 17926
+            "lowerBound": 9909,
+            "upperBound": 25169
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942057,
-            "predictedBuy": 17875,
-            "predictedSell": 17994,
+            "timestamp": 1771108297316,
+            "predictedBuy": 17223,
+            "predictedSell": 17338,
             "confidence": 0.95,
-            "lowerBound": 17875,
-            "upperBound": 17875
+            "lowerBound": 9106,
+            "upperBound": 25340
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342057,
-            "predictedBuy": 17815,
-            "predictedSell": 17933,
+            "timestamp": 1771194697316,
+            "predictedBuy": 16854,
+            "predictedSell": 16966,
             "confidence": 0.95,
-            "lowerBound": 17815,
-            "upperBound": 17815
+            "lowerBound": 8300,
+            "upperBound": 25407
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742057,
-            "predictedBuy": 17745,
-            "predictedSell": 17863,
+            "timestamp": 1771281097316,
+            "predictedBuy": 16434,
+            "predictedSell": 16544,
             "confidence": 0.95,
-            "lowerBound": 17745,
-            "upperBound": 17745
+            "lowerBound": 7498,
+            "upperBound": 25370
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142057,
-            "predictedBuy": 17666,
-            "predictedSell": 17784,
+            "timestamp": 1771367497316,
+            "predictedBuy": 15968,
+            "predictedSell": 16075,
             "confidence": 0.95,
-            "lowerBound": 17666,
-            "upperBound": 17666
+            "lowerBound": 6706,
+            "upperBound": 25230
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542057,
-            "predictedBuy": 17578,
-            "predictedSell": 17695,
+            "timestamp": 1771453897316,
+            "predictedBuy": 15461,
+            "predictedSell": 15564,
             "confidence": 0.95,
-            "lowerBound": 17578,
-            "upperBound": 17578
+            "lowerBound": 5933,
+            "upperBound": 24989
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3625,
+          "momentum": -0.4717,
+          "movingAvg7Day": 8045,
+          "movingAvg30Day": 10897
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -1073,21 +1073,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1107,7 +1107,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -1115,7 +1115,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.057601Z"
+        "generatedAt": "2026-02-11T22:31:37.316479Z"
       }
     },
     {
@@ -1126,12 +1126,12 @@
         "currentPrice": {
           "buy": 17000,
           "sell": 17020,
-          "timestamp": "2026-02-11T21:35:42.064129Z"
+          "timestamp": "2026-02-11T22:31:37.325533Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142064,
+            "timestamp": 1770935497325,
             "predictedBuy": 16817,
             "predictedSell": 16837,
             "confidence": 0.95,
@@ -1140,7 +1140,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542064,
+            "timestamp": 1771021897325,
             "predictedBuy": 16582,
             "predictedSell": 16601,
             "confidence": 0.95,
@@ -1149,7 +1149,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942064,
+            "timestamp": 1771108297325,
             "predictedBuy": 16295,
             "predictedSell": 16314,
             "confidence": 0.95,
@@ -1158,7 +1158,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342064,
+            "timestamp": 1771194697325,
             "predictedBuy": 15959,
             "predictedSell": 15977,
             "confidence": 0.95,
@@ -1167,7 +1167,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742064,
+            "timestamp": 1771281097325,
             "predictedBuy": 15577,
             "predictedSell": 15595,
             "confidence": 0.95,
@@ -1176,7 +1176,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142064,
+            "timestamp": 1771367497325,
             "predictedBuy": 15153,
             "predictedSell": 15171,
             "confidence": 0.95,
@@ -1185,7 +1185,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542064,
+            "timestamp": 1771453897325,
             "predictedBuy": 14691,
             "predictedSell": 14708,
             "confidence": 0.95,
@@ -1232,21 +1232,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1274,7 +1274,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.064139Z"
+        "generatedAt": "2026-02-11T22:31:37.325542Z"
       }
     },
     {
@@ -1285,81 +1285,81 @@
         "currentPrice": {
           "buy": 2090,
           "sell": 2100,
-          "timestamp": "2026-02-11T21:35:42.070610Z"
+          "timestamp": "2026-02-11T22:31:37.334157Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142070,
-            "predictedBuy": 2086,
-            "predictedSell": 2096,
+            "timestamp": 1770935497334,
+            "predictedBuy": 2064,
+            "predictedSell": 2074,
             "confidence": 0.95,
-            "lowerBound": 2086,
-            "upperBound": 2086
+            "lowerBound": 1203,
+            "upperBound": 2926
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542070,
-            "predictedBuy": 2081,
-            "predictedSell": 2091,
+            "timestamp": 1771021897334,
+            "predictedBuy": 2032,
+            "predictedSell": 2041,
             "confidence": 0.95,
-            "lowerBound": 2081,
-            "upperBound": 2081
+            "lowerBound": 1107,
+            "upperBound": 2956
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942070,
-            "predictedBuy": 2075,
-            "predictedSell": 2085,
+            "timestamp": 1771108297334,
+            "predictedBuy": 1992,
+            "predictedSell": 2001,
             "confidence": 0.95,
-            "lowerBound": 2075,
-            "upperBound": 2075
+            "lowerBound": 1010,
+            "upperBound": 2974
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342070,
-            "predictedBuy": 2068,
-            "predictedSell": 2078,
+            "timestamp": 1771194697334,
+            "predictedBuy": 1945,
+            "predictedSell": 1955,
             "confidence": 0.95,
-            "lowerBound": 2068,
-            "upperBound": 2068
+            "lowerBound": 912,
+            "upperBound": 2979
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742070,
-            "predictedBuy": 2060,
-            "predictedSell": 2070,
+            "timestamp": 1771281097334,
+            "predictedBuy": 1893,
+            "predictedSell": 1902,
             "confidence": 0.95,
-            "lowerBound": 2060,
-            "upperBound": 2060
+            "lowerBound": 816,
+            "upperBound": 2970
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142070,
-            "predictedBuy": 2051,
-            "predictedSell": 2061,
+            "timestamp": 1771367497334,
+            "predictedBuy": 1834,
+            "predictedSell": 1843,
             "confidence": 0.95,
-            "lowerBound": 2051,
-            "upperBound": 2051
+            "lowerBound": 721,
+            "upperBound": 2948
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542070,
-            "predictedBuy": 2041,
-            "predictedSell": 2050,
+            "timestamp": 1771453897334,
+            "predictedBuy": 1771,
+            "predictedSell": 1780,
             "confidence": 0.95,
-            "lowerBound": 2041,
-            "upperBound": 2041
+            "lowerBound": 629,
+            "upperBound": 2913
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3793,
+          "momentum": -0.5235,
+          "movingAvg7Day": 917,
+          "movingAvg30Day": 1257
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -1391,21 +1391,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1425,7 +1425,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -1433,7 +1433,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.070620Z"
+        "generatedAt": "2026-02-11T22:31:37.334166Z"
       }
     },
     {
@@ -1444,81 +1444,81 @@
         "currentPrice": {
           "buy": 5185,
           "sell": 5195,
-          "timestamp": "2026-02-11T21:35:42.084897Z"
+          "timestamp": "2026-02-11T22:31:37.342728Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142084,
-            "predictedBuy": 5175,
-            "predictedSell": 5185,
-            "confidence": 0.95,
-            "lowerBound": 5175,
-            "upperBound": 5175
-          },
-          {
-            "date": "2026-02-13",
-            "timestamp": 1771018542084,
-            "predictedBuy": 5163,
-            "predictedSell": 5173,
-            "confidence": 0.95,
-            "lowerBound": 5163,
-            "upperBound": 5163
-          },
-          {
-            "date": "2026-02-14",
-            "timestamp": 1771104942084,
-            "predictedBuy": 5149,
-            "predictedSell": 5159,
-            "confidence": 0.95,
-            "lowerBound": 5149,
-            "upperBound": 5149
-          },
-          {
-            "date": "2026-02-15",
-            "timestamp": 1771191342084,
+            "timestamp": 1770935497342,
             "predictedBuy": 5131,
             "predictedSell": 5141,
             "confidence": 0.95,
-            "lowerBound": 5131,
-            "upperBound": 5131
+            "lowerBound": 3234,
+            "upperBound": 7028
+          },
+          {
+            "date": "2026-02-13",
+            "timestamp": 1771021897342,
+            "predictedBuy": 5062,
+            "predictedSell": 5072,
+            "confidence": 0.95,
+            "lowerBound": 3021,
+            "upperBound": 7104
+          },
+          {
+            "date": "2026-02-14",
+            "timestamp": 1771108297342,
+            "predictedBuy": 4978,
+            "predictedSell": 4988,
+            "confidence": 0.95,
+            "lowerBound": 2803,
+            "upperBound": 7153
+          },
+          {
+            "date": "2026-02-15",
+            "timestamp": 1771194697342,
+            "predictedBuy": 4880,
+            "predictedSell": 4889,
+            "confidence": 0.95,
+            "lowerBound": 2584,
+            "upperBound": 7176
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742084,
-            "predictedBuy": 5111,
-            "predictedSell": 5121,
+            "timestamp": 1771281097342,
+            "predictedBuy": 4768,
+            "predictedSell": 4777,
             "confidence": 0.95,
-            "lowerBound": 5111,
-            "upperBound": 5111
+            "lowerBound": 2364,
+            "upperBound": 7172
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142084,
-            "predictedBuy": 5088,
-            "predictedSell": 5098,
+            "timestamp": 1771367497342,
+            "predictedBuy": 4644,
+            "predictedSell": 4653,
             "confidence": 0.95,
-            "lowerBound": 5088,
-            "upperBound": 5088
+            "lowerBound": 2146,
+            "upperBound": 7141
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542084,
-            "predictedBuy": 5063,
-            "predictedSell": 5073,
+            "timestamp": 1771453897342,
+            "predictedBuy": 4508,
+            "predictedSell": 4516,
             "confidence": 0.95,
-            "lowerBound": 5063,
-            "upperBound": 5063
+            "lowerBound": 1932,
+            "upperBound": 7083
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3361,
+          "momentum": -0.4269,
+          "movingAvg7Day": 2448,
+          "movingAvg30Day": 3227
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -1550,21 +1550,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1584,7 +1584,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -1592,7 +1592,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.084910Z"
+        "generatedAt": "2026-02-11T22:31:37.342737Z"
       }
     },
     {
@@ -1603,12 +1603,12 @@
         "currentPrice": {
           "buy": 127850,
           "sell": 128045,
-          "timestamp": "2026-02-11T21:35:42.091500Z"
+          "timestamp": "2026-02-11T22:31:37.351447Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142091,
+            "timestamp": 1770935497351,
             "predictedBuy": 126569,
             "predictedSell": 126762,
             "confidence": 0.95,
@@ -1617,7 +1617,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542091,
+            "timestamp": 1771021897351,
             "predictedBuy": 124913,
             "predictedSell": 125103,
             "confidence": 0.95,
@@ -1626,7 +1626,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942091,
+            "timestamp": 1771108297351,
             "predictedBuy": 122893,
             "predictedSell": 123081,
             "confidence": 0.95,
@@ -1635,7 +1635,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342091,
+            "timestamp": 1771194697351,
             "predictedBuy": 120528,
             "predictedSell": 120712,
             "confidence": 0.95,
@@ -1644,7 +1644,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742091,
+            "timestamp": 1771281097351,
             "predictedBuy": 117838,
             "predictedSell": 118017,
             "confidence": 0.95,
@@ -1653,7 +1653,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142091,
+            "timestamp": 1771367497351,
             "predictedBuy": 114844,
             "predictedSell": 115019,
             "confidence": 0.95,
@@ -1662,7 +1662,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542091,
+            "timestamp": 1771453897351,
             "predictedBuy": 111572,
             "predictedSell": 111743,
             "confidence": 0.95,
@@ -1709,21 +1709,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1751,7 +1751,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.091510Z"
+        "generatedAt": "2026-02-11T22:31:37.351457Z"
       }
     },
     {
@@ -1762,81 +1762,81 @@
         "currentPrice": {
           "buy": 20600,
           "sell": 20710,
-          "timestamp": "2026-02-11T21:35:42.097942Z"
+          "timestamp": "2026-02-11T22:31:37.360019Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142097,
-            "predictedBuy": 20563,
-            "predictedSell": 20673,
+            "timestamp": 1770935497359,
+            "predictedBuy": 20404,
+            "predictedSell": 20513,
             "confidence": 0.95,
-            "lowerBound": 20563,
-            "upperBound": 20563
+            "lowerBound": 13604,
+            "upperBound": 27204
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542097,
-            "predictedBuy": 20515,
-            "predictedSell": 20625,
+            "timestamp": 1771021897359,
+            "predictedBuy": 20151,
+            "predictedSell": 20258,
             "confidence": 0.95,
-            "lowerBound": 20515,
-            "upperBound": 20515
+            "lowerBound": 12825,
+            "upperBound": 27477
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942097,
-            "predictedBuy": 20457,
-            "predictedSell": 20566,
+            "timestamp": 1771108297359,
+            "predictedBuy": 19842,
+            "predictedSell": 19948,
             "confidence": 0.95,
-            "lowerBound": 20457,
-            "upperBound": 20457
+            "lowerBound": 12027,
+            "upperBound": 27657
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342097,
-            "predictedBuy": 20388,
-            "predictedSell": 20497,
+            "timestamp": 1771194697359,
+            "predictedBuy": 19480,
+            "predictedSell": 19584,
             "confidence": 0.95,
-            "lowerBound": 20388,
-            "upperBound": 20388
+            "lowerBound": 11217,
+            "upperBound": 27742
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742097,
-            "predictedBuy": 20308,
-            "predictedSell": 20417,
+            "timestamp": 1771281097359,
+            "predictedBuy": 19068,
+            "predictedSell": 19170,
             "confidence": 0.95,
-            "lowerBound": 20308,
-            "upperBound": 20308
+            "lowerBound": 10402,
+            "upperBound": 27733
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142097,
-            "predictedBuy": 20218,
-            "predictedSell": 20326,
+            "timestamp": 1771367497360,
+            "predictedBuy": 18609,
+            "predictedSell": 18708,
             "confidence": 0.95,
-            "lowerBound": 20218,
-            "upperBound": 20218
+            "lowerBound": 9588,
+            "upperBound": 27629
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542097,
-            "predictedBuy": 20117,
-            "predictedSell": 20224,
+            "timestamp": 1771453897360,
+            "predictedBuy": 18106,
+            "predictedSell": 18203,
             "confidence": 0.95,
-            "lowerBound": 20117,
-            "upperBound": 20117
+            "lowerBound": 8781,
+            "upperBound": 27432
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.303,
+          "momentum": -0.3891,
+          "movingAvg7Day": 10530,
+          "movingAvg30Day": 13389
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -1868,21 +1868,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -1902,7 +1902,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -1910,7 +1910,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.097952Z"
+        "generatedAt": "2026-02-11T22:31:37.360029Z"
       }
     },
     {
@@ -1921,81 +1921,81 @@
         "currentPrice": {
           "buy": 95800,
           "sell": 95840,
-          "timestamp": "2026-02-11T21:35:42.104369Z"
+          "timestamp": "2026-02-11T22:31:37.368745Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142104,
-            "predictedBuy": 95629,
-            "predictedSell": 95669,
+            "timestamp": 1770935497368,
+            "predictedBuy": 94931,
+            "predictedSell": 94970,
             "confidence": 0.95,
-            "lowerBound": 95629,
-            "upperBound": 95629
+            "lowerBound": 65536,
+            "upperBound": 124325
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542104,
-            "predictedBuy": 95409,
-            "predictedSell": 95448,
+            "timestamp": 1771021897368,
+            "predictedBuy": 93806,
+            "predictedSell": 93845,
             "confidence": 0.95,
-            "lowerBound": 95409,
-            "upperBound": 95409
+            "lowerBound": 62119,
+            "upperBound": 125493
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942104,
-            "predictedBuy": 95137,
-            "predictedSell": 95177,
+            "timestamp": 1771108297368,
+            "predictedBuy": 92434,
+            "predictedSell": 92472,
             "confidence": 0.95,
-            "lowerBound": 95137,
-            "upperBound": 95137
+            "lowerBound": 58609,
+            "upperBound": 126259
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342104,
-            "predictedBuy": 94816,
-            "predictedSell": 94855,
+            "timestamp": 1771194697368,
+            "predictedBuy": 90825,
+            "predictedSell": 90863,
             "confidence": 0.95,
-            "lowerBound": 94816,
-            "upperBound": 94816
+            "lowerBound": 55032,
+            "upperBound": 126618
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742104,
-            "predictedBuy": 94444,
-            "predictedSell": 94484,
+            "timestamp": 1771281097368,
+            "predictedBuy": 88991,
+            "predictedSell": 89028,
             "confidence": 0.95,
-            "lowerBound": 94444,
-            "upperBound": 94444
+            "lowerBound": 51416,
+            "upperBound": 126566
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142104,
-            "predictedBuy": 94024,
-            "predictedSell": 94063,
+            "timestamp": 1771367497368,
+            "predictedBuy": 86946,
+            "predictedSell": 86983,
             "confidence": 0.95,
-            "lowerBound": 94024,
-            "upperBound": 94024
+            "lowerBound": 47787,
+            "upperBound": 126106
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542104,
-            "predictedBuy": 93555,
-            "predictedSell": 93595,
+            "timestamp": 1771453897368,
+            "predictedBuy": 84707,
+            "predictedSell": 84742,
             "confidence": 0.95,
-            "lowerBound": 93555,
-            "upperBound": 93555
+            "lowerBound": 44172,
+            "upperBound": 125242
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.2815,
+          "momentum": -0.3644,
+          "movingAvg7Day": 48571,
+          "movingAvg30Day": 58891
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2027,21 +2027,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2061,7 +2061,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 12,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -2069,7 +2069,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.104378Z"
+        "generatedAt": "2026-02-11T22:31:37.368755Z"
       }
     },
     {
@@ -2080,81 +2080,81 @@
         "currentPrice": {
           "buy": 427.5,
           "sell": 428.27222222222224,
-          "timestamp": "2026-02-11T21:35:42.110913Z"
+          "timestamp": "2026-02-11T22:31:37.377366Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142110,
-            "predictedBuy": 426,
-            "predictedSell": 427,
+            "timestamp": 1770935497377,
+            "predictedBuy": 423,
+            "predictedSell": 424,
             "confidence": 0.95,
-            "lowerBound": 426,
-            "upperBound": 426
+            "lowerBound": 276,
+            "upperBound": 570
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542110,
-            "predictedBuy": 425,
-            "predictedSell": 426,
-            "confidence": 0.95,
-            "lowerBound": 425,
-            "upperBound": 425
-          },
-          {
-            "date": "2026-02-14",
-            "timestamp": 1771104942110,
-            "predictedBuy": 424,
-            "predictedSell": 425,
-            "confidence": 0.95,
-            "lowerBound": 424,
-            "upperBound": 424
-          },
-          {
-            "date": "2026-02-15",
-            "timestamp": 1771191342110,
-            "predictedBuy": 423,
-            "predictedSell": 423,
-            "confidence": 0.95,
-            "lowerBound": 423,
-            "upperBound": 423
-          },
-          {
-            "date": "2026-02-16",
-            "timestamp": 1771277742110,
-            "predictedBuy": 421,
-            "predictedSell": 422,
-            "confidence": 0.95,
-            "lowerBound": 421,
-            "upperBound": 421
-          },
-          {
-            "date": "2026-02-17",
-            "timestamp": 1771364142110,
-            "predictedBuy": 419,
-            "predictedSell": 420,
-            "confidence": 0.95,
-            "lowerBound": 419,
-            "upperBound": 419
-          },
-          {
-            "date": "2026-02-18",
-            "timestamp": 1771450542110,
+            "timestamp": 1771021897377,
             "predictedBuy": 417,
             "predictedSell": 418,
             "confidence": 0.95,
-            "lowerBound": 417,
-            "upperBound": 417
+            "lowerBound": 259,
+            "upperBound": 576
+          },
+          {
+            "date": "2026-02-14",
+            "timestamp": 1771108297377,
+            "predictedBuy": 411,
+            "predictedSell": 412,
+            "confidence": 0.95,
+            "lowerBound": 242,
+            "upperBound": 579
+          },
+          {
+            "date": "2026-02-15",
+            "timestamp": 1771194697377,
+            "predictedBuy": 403,
+            "predictedSell": 404,
+            "confidence": 0.95,
+            "lowerBound": 225,
+            "upperBound": 581
+          },
+          {
+            "date": "2026-02-16",
+            "timestamp": 1771281097377,
+            "predictedBuy": 394,
+            "predictedSell": 395,
+            "confidence": 0.95,
+            "lowerBound": 207,
+            "upperBound": 581
+          },
+          {
+            "date": "2026-02-17",
+            "timestamp": 1771367497377,
+            "predictedBuy": 384,
+            "predictedSell": 385,
+            "confidence": 0.95,
+            "lowerBound": 190,
+            "upperBound": 579
+          },
+          {
+            "date": "2026-02-18",
+            "timestamp": 1771453897377,
+            "predictedBuy": 374,
+            "predictedSell": 374,
+            "confidence": 0.95,
+            "lowerBound": 173,
+            "upperBound": 574
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3155,
+          "momentum": -0.4041,
+          "movingAvg7Day": 211,
+          "movingAvg30Day": 272
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2186,21 +2186,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2220,7 +2220,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -2228,7 +2228,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.110924Z"
+        "generatedAt": "2026-02-11T22:31:37.377375Z"
       }
     },
     {
@@ -2239,81 +2239,81 @@
         "currentPrice": {
           "buy": 25550,
           "sell": 25675,
-          "timestamp": "2026-02-11T21:35:42.117328Z"
+          "timestamp": "2026-02-11T22:31:37.385962Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142117,
-            "predictedBuy": 25504,
-            "predictedSell": 25629,
+            "timestamp": 1770935497385,
+            "predictedBuy": 25279,
+            "predictedSell": 25403,
             "confidence": 0.95,
-            "lowerBound": 25504,
-            "upperBound": 25504
+            "lowerBound": 15844,
+            "upperBound": 34715
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542117,
-            "predictedBuy": 25445,
-            "predictedSell": 25570,
+            "timestamp": 1771021897385,
+            "predictedBuy": 24930,
+            "predictedSell": 25052,
             "confidence": 0.95,
-            "lowerBound": 25445,
-            "upperBound": 25445
+            "lowerBound": 14779,
+            "upperBound": 35081
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942117,
-            "predictedBuy": 25373,
-            "predictedSell": 25497,
+            "timestamp": 1771108297385,
+            "predictedBuy": 24504,
+            "predictedSell": 24624,
             "confidence": 0.95,
-            "lowerBound": 25373,
-            "upperBound": 25373
+            "lowerBound": 13695,
+            "upperBound": 35313
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342117,
-            "predictedBuy": 25287,
-            "predictedSell": 25411,
+            "timestamp": 1771194697385,
+            "predictedBuy": 24005,
+            "predictedSell": 24123,
             "confidence": 0.95,
-            "lowerBound": 25287,
-            "upperBound": 25287
+            "lowerBound": 12602,
+            "upperBound": 35409
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742117,
-            "predictedBuy": 25188,
-            "predictedSell": 25311,
+            "timestamp": 1771281097385,
+            "predictedBuy": 23439,
+            "predictedSell": 23553,
             "confidence": 0.95,
-            "lowerBound": 25188,
-            "upperBound": 25188
+            "lowerBound": 11509,
+            "upperBound": 35369
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142117,
-            "predictedBuy": 25076,
-            "predictedSell": 25199,
+            "timestamp": 1771367497385,
+            "predictedBuy": 22809,
+            "predictedSell": 22921,
             "confidence": 0.95,
-            "lowerBound": 25076,
-            "upperBound": 25076
+            "lowerBound": 10426,
+            "upperBound": 35193
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542117,
-            "predictedBuy": 24951,
-            "predictedSell": 25073,
+            "timestamp": 1771453897385,
+            "predictedBuy": 22122,
+            "predictedSell": 22230,
             "confidence": 0.95,
-            "lowerBound": 24951,
-            "upperBound": 24951
+            "lowerBound": 9361,
+            "upperBound": 34883
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3393,
+          "momentum": -0.4428,
+          "movingAvg7Day": 11975,
+          "movingAvg30Day": 15940
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2345,21 +2345,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2379,7 +2379,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -2387,7 +2387,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.117337Z"
+        "generatedAt": "2026-02-11T22:31:37.385971Z"
       }
     },
     {
@@ -2398,81 +2398,81 @@
         "currentPrice": {
           "buy": 45050,
           "sell": 45055,
-          "timestamp": "2026-02-11T21:35:42.123182Z"
+          "timestamp": "2026-02-11T22:31:37.392907Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142123,
-            "predictedBuy": 44970,
-            "predictedSell": 44975,
+            "timestamp": 1770935497392,
+            "predictedBuy": 44621,
+            "predictedSell": 44626,
             "confidence": 0.95,
-            "lowerBound": 44970,
-            "upperBound": 44970
+            "lowerBound": 29637,
+            "upperBound": 59606
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542123,
-            "predictedBuy": 44866,
-            "predictedSell": 44871,
+            "timestamp": 1771021897392,
+            "predictedBuy": 44067,
+            "predictedSell": 44072,
             "confidence": 0.95,
-            "lowerBound": 44866,
-            "upperBound": 44866
+            "lowerBound": 27923,
+            "upperBound": 60211
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942123,
-            "predictedBuy": 44738,
-            "predictedSell": 44743,
+            "timestamp": 1771108297392,
+            "predictedBuy": 43391,
+            "predictedSell": 43396,
             "confidence": 0.95,
-            "lowerBound": 44738,
-            "upperBound": 44738
+            "lowerBound": 26170,
+            "upperBound": 60612
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342123,
-            "predictedBuy": 44587,
-            "predictedSell": 44592,
+            "timestamp": 1771194697392,
+            "predictedBuy": 42599,
+            "predictedSell": 42603,
             "confidence": 0.95,
-            "lowerBound": 44587,
-            "upperBound": 44587
+            "lowerBound": 24392,
+            "upperBound": 60806
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742123,
-            "predictedBuy": 44412,
-            "predictedSell": 44417,
+            "timestamp": 1771281097392,
+            "predictedBuy": 41697,
+            "predictedSell": 41701,
             "confidence": 0.95,
-            "lowerBound": 44412,
-            "upperBound": 44412
+            "lowerBound": 22602,
+            "upperBound": 60791
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142123,
-            "predictedBuy": 44215,
-            "predictedSell": 44220,
+            "timestamp": 1771367497392,
+            "predictedBuy": 40692,
+            "predictedSell": 40696,
             "confidence": 0.95,
-            "lowerBound": 44215,
-            "upperBound": 44215
+            "lowerBound": 20815,
+            "upperBound": 60568
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542123,
-            "predictedBuy": 43994,
-            "predictedSell": 43999,
+            "timestamp": 1771453897392,
+            "predictedBuy": 39592,
+            "predictedSell": 39597,
             "confidence": 0.95,
-            "lowerBound": 43994,
-            "upperBound": 43994
+            "lowerBound": 19044,
+            "upperBound": 60140
           }
         ],
-        "confidenceScore": 0.951,
-        "trend": "NEUTRAL",
+        "confidenceScore": 0.95,
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3053,
+          "momentum": -0.3889,
+          "movingAvg7Day": 22691,
+          "movingAvg30Day": 28868
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2511,14 +2511,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2538,15 +2538,15 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
           "targetAccuracy": "95-98%",
-          "achievedConfidence": "95.1%",
+          "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.123192Z"
+        "generatedAt": "2026-02-11T22:31:37.392916Z"
       }
     },
     {
@@ -2557,81 +2557,81 @@
         "currentPrice": {
           "buy": 1055,
           "sell": 1060,
-          "timestamp": "2026-02-11T21:35:42.129559Z"
+          "timestamp": "2026-02-11T22:31:37.401628Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142129,
-            "predictedBuy": 1053,
-            "predictedSell": 1058,
-            "confidence": 0.95,
-            "lowerBound": 1053,
-            "upperBound": 1053
-          },
-          {
-            "date": "2026-02-13",
-            "timestamp": 1771018542129,
-            "predictedBuy": 1050,
-            "predictedSell": 1055,
-            "confidence": 0.95,
-            "lowerBound": 1050,
-            "upperBound": 1050
-          },
-          {
-            "date": "2026-02-14",
-            "timestamp": 1771104942129,
-            "predictedBuy": 1047,
-            "predictedSell": 1052,
-            "confidence": 0.95,
-            "lowerBound": 1047,
-            "upperBound": 1047
-          },
-          {
-            "date": "2026-02-15",
-            "timestamp": 1771191342129,
+            "timestamp": 1770935497401,
             "predictedBuy": 1044,
             "predictedSell": 1049,
             "confidence": 0.95,
-            "lowerBound": 1044,
-            "upperBound": 1044
+            "lowerBound": 712,
+            "upperBound": 1377
+          },
+          {
+            "date": "2026-02-13",
+            "timestamp": 1771021897401,
+            "predictedBuy": 1031,
+            "predictedSell": 1036,
+            "confidence": 0.95,
+            "lowerBound": 673,
+            "upperBound": 1389
+          },
+          {
+            "date": "2026-02-14",
+            "timestamp": 1771108297401,
+            "predictedBuy": 1015,
+            "predictedSell": 1020,
+            "confidence": 0.95,
+            "lowerBound": 633,
+            "upperBound": 1397
+          },
+          {
+            "date": "2026-02-15",
+            "timestamp": 1771194697401,
+            "predictedBuy": 996,
+            "predictedSell": 1001,
+            "confidence": 0.95,
+            "lowerBound": 592,
+            "upperBound": 1400
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742129,
-            "predictedBuy": 1040,
-            "predictedSell": 1045,
+            "timestamp": 1771281097401,
+            "predictedBuy": 974,
+            "predictedSell": 979,
             "confidence": 0.95,
-            "lowerBound": 1040,
-            "upperBound": 1040
+            "lowerBound": 551,
+            "upperBound": 1398
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142129,
-            "predictedBuy": 1035,
-            "predictedSell": 1040,
+            "timestamp": 1771367497401,
+            "predictedBuy": 950,
+            "predictedSell": 955,
             "confidence": 0.95,
-            "lowerBound": 1035,
-            "upperBound": 1035
+            "lowerBound": 510,
+            "upperBound": 1391
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542129,
-            "predictedBuy": 1030,
-            "predictedSell": 1035,
+            "timestamp": 1771453897401,
+            "predictedBuy": 924,
+            "predictedSell": 929,
             "confidence": 0.95,
-            "lowerBound": 1030,
-            "upperBound": 1030
+            "lowerBound": 469,
+            "upperBound": 1379
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.2894,
+          "momentum": -0.4033,
+          "movingAvg7Day": 551,
+          "movingAvg30Day": 693
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2663,21 +2663,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2697,7 +2697,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -2705,7 +2705,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.129568Z"
+        "generatedAt": "2026-02-11T22:31:37.401638Z"
       }
     },
     {
@@ -2716,81 +2716,81 @@
         "currentPrice": {
           "buy": 3685,
           "sell": 3710,
-          "timestamp": "2026-02-11T21:35:42.136013Z"
+          "timestamp": "2026-02-11T22:31:37.410383Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142135,
-            "predictedBuy": 3678,
-            "predictedSell": 3703,
+            "timestamp": 1770935497410,
+            "predictedBuy": 3657,
+            "predictedSell": 3682,
             "confidence": 0.95,
-            "lowerBound": 3678,
-            "upperBound": 3678
+            "lowerBound": 2726,
+            "upperBound": 4589
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542135,
-            "predictedBuy": 3669,
-            "predictedSell": 3694,
+            "timestamp": 1771021897410,
+            "predictedBuy": 3622,
+            "predictedSell": 3647,
             "confidence": 0.95,
-            "lowerBound": 3669,
-            "upperBound": 3669
+            "lowerBound": 2615,
+            "upperBound": 4629
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942135,
-            "predictedBuy": 3659,
-            "predictedSell": 3684,
+            "timestamp": 1771108297410,
+            "predictedBuy": 3579,
+            "predictedSell": 3603,
             "confidence": 0.95,
-            "lowerBound": 3659,
-            "upperBound": 3659
+            "lowerBound": 2501,
+            "upperBound": 4657
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342135,
-            "predictedBuy": 3647,
-            "predictedSell": 3671,
+            "timestamp": 1771194697410,
+            "predictedBuy": 3528,
+            "predictedSell": 3552,
             "confidence": 0.95,
-            "lowerBound": 3647,
-            "upperBound": 3647
+            "lowerBound": 2384,
+            "upperBound": 4672
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742135,
-            "predictedBuy": 3632,
-            "predictedSell": 3657,
+            "timestamp": 1771281097410,
+            "predictedBuy": 3471,
+            "predictedSell": 3494,
             "confidence": 0.95,
-            "lowerBound": 3632,
-            "upperBound": 3632
+            "lowerBound": 2265,
+            "upperBound": 4676
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142135,
-            "predictedBuy": 3616,
-            "predictedSell": 3641,
+            "timestamp": 1771367497410,
+            "predictedBuy": 3406,
+            "predictedSell": 3429,
             "confidence": 0.95,
-            "lowerBound": 3616,
-            "upperBound": 3616
+            "lowerBound": 2144,
+            "upperBound": 4668
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542136,
-            "predictedBuy": 3598,
-            "predictedSell": 3623,
+            "timestamp": 1771453897410,
+            "predictedBuy": 3335,
+            "predictedSell": 3357,
             "confidence": 0.95,
-            "lowerBound": 3598,
-            "upperBound": 3598
+            "lowerBound": 2022,
+            "upperBound": 4648
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.2316,
+          "momentum": -0.2832,
+          "movingAvg7Day": 2222,
+          "movingAvg30Day": 2607
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2822,21 +2822,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -2856,7 +2856,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -2864,7 +2864,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.136023Z"
+        "generatedAt": "2026-02-11T22:31:37.410392Z"
       }
     },
     {
@@ -2875,81 +2875,81 @@
         "currentPrice": {
           "buy": 23400,
           "sell": 23415,
-          "timestamp": "2026-02-11T21:35:42.142468Z"
+          "timestamp": "2026-02-11T22:31:37.419019Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142142,
-            "predictedBuy": 23358,
-            "predictedSell": 23373,
+            "timestamp": 1770935497418,
+            "predictedBuy": 23171,
+            "predictedSell": 23186,
             "confidence": 0.95,
-            "lowerBound": 23358,
-            "upperBound": 23358
+            "lowerBound": 15057,
+            "upperBound": 31285
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542142,
-            "predictedBuy": 23304,
-            "predictedSell": 23319,
+            "timestamp": 1771021897418,
+            "predictedBuy": 22875,
+            "predictedSell": 22890,
             "confidence": 0.95,
-            "lowerBound": 23304,
-            "upperBound": 23304
+            "lowerBound": 14136,
+            "upperBound": 31614
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942142,
-            "predictedBuy": 23238,
-            "predictedSell": 23253,
+            "timestamp": 1771108297418,
+            "predictedBuy": 22515,
+            "predictedSell": 22529,
             "confidence": 0.95,
-            "lowerBound": 23238,
-            "upperBound": 23238
+            "lowerBound": 13197,
+            "upperBound": 31833
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342142,
-            "predictedBuy": 23159,
-            "predictedSell": 23174,
+            "timestamp": 1771194697418,
+            "predictedBuy": 22092,
+            "predictedSell": 22106,
             "confidence": 0.95,
-            "lowerBound": 23159,
-            "upperBound": 23159
+            "lowerBound": 12246,
+            "upperBound": 31939
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742142,
-            "predictedBuy": 23068,
-            "predictedSell": 23083,
+            "timestamp": 1771281097418,
+            "predictedBuy": 21612,
+            "predictedSell": 21625,
             "confidence": 0.95,
-            "lowerBound": 23068,
-            "upperBound": 23068
+            "lowerBound": 11291,
+            "upperBound": 31932
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142142,
-            "predictedBuy": 22966,
-            "predictedSell": 22981,
+            "timestamp": 1771367497419,
+            "predictedBuy": 21076,
+            "predictedSell": 21090,
             "confidence": 0.95,
-            "lowerBound": 22966,
-            "upperBound": 22966
+            "lowerBound": 10341,
+            "upperBound": 31812
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542142,
-            "predictedBuy": 22851,
-            "predictedSell": 22866,
+            "timestamp": 1771453897419,
+            "predictedBuy": 20491,
+            "predictedSell": 20504,
             "confidence": 0.95,
-            "lowerBound": 22851,
-            "upperBound": 22851
+            "lowerBound": 9401,
+            "upperBound": 31581
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3184,
+          "momentum": -0.4013,
+          "movingAvg7Day": 11455,
+          "movingAvg30Day": 14772
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -2981,21 +2981,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3015,7 +3015,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -3023,7 +3023,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.142477Z"
+        "generatedAt": "2026-02-11T22:31:37.419029Z"
       }
     },
     {
@@ -3034,12 +3034,12 @@
         "currentPrice": {
           "buy": 43000,
           "sell": 43130,
-          "timestamp": "2026-02-11T21:35:42.148880Z"
+          "timestamp": "2026-02-11T22:31:37.427638Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142148,
+            "timestamp": 1770935497427,
             "predictedBuy": 42588,
             "predictedSell": 42716,
             "confidence": 0.95,
@@ -3048,7 +3048,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542148,
+            "timestamp": 1771021897427,
             "predictedBuy": 42055,
             "predictedSell": 42182,
             "confidence": 0.95,
@@ -3057,7 +3057,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942148,
+            "timestamp": 1771108297427,
             "predictedBuy": 41405,
             "predictedSell": 41530,
             "confidence": 0.95,
@@ -3066,7 +3066,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342148,
+            "timestamp": 1771194697427,
             "predictedBuy": 40643,
             "predictedSell": 40766,
             "confidence": 0.95,
@@ -3075,7 +3075,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742148,
+            "timestamp": 1771281097427,
             "predictedBuy": 39775,
             "predictedSell": 39896,
             "confidence": 0.95,
@@ -3084,7 +3084,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142148,
+            "timestamp": 1771367497427,
             "predictedBuy": 38810,
             "predictedSell": 38927,
             "confidence": 0.95,
@@ -3093,7 +3093,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542148,
+            "timestamp": 1771453897427,
             "predictedBuy": 37753,
             "predictedSell": 37867,
             "confidence": 0.95,
@@ -3140,21 +3140,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3182,7 +3182,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.148890Z"
+        "generatedAt": "2026-02-11T22:31:37.427647Z"
       }
     },
     {
@@ -3193,12 +3193,12 @@
         "currentPrice": {
           "buy": 1775,
           "sell": 1785,
-          "timestamp": "2026-02-11T21:35:42.155234Z"
+          "timestamp": "2026-02-11T22:31:37.436236Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142155,
+            "timestamp": 1770935497436,
             "predictedBuy": 1771,
             "predictedSell": 1781,
             "confidence": 0.95,
@@ -3207,7 +3207,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542155,
+            "timestamp": 1771021897436,
             "predictedBuy": 1767,
             "predictedSell": 1777,
             "confidence": 0.95,
@@ -3216,7 +3216,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942155,
+            "timestamp": 1771108297436,
             "predictedBuy": 1762,
             "predictedSell": 1772,
             "confidence": 0.95,
@@ -3225,7 +3225,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342155,
+            "timestamp": 1771194697436,
             "predictedBuy": 1756,
             "predictedSell": 1766,
             "confidence": 0.95,
@@ -3234,7 +3234,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742155,
+            "timestamp": 1771281097436,
             "predictedBuy": 1749,
             "predictedSell": 1759,
             "confidence": 0.95,
@@ -3243,7 +3243,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142155,
+            "timestamp": 1771367497436,
             "predictedBuy": 1742,
             "predictedSell": 1751,
             "confidence": 0.95,
@@ -3252,7 +3252,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542155,
+            "timestamp": 1771453897436,
             "predictedBuy": 1733,
             "predictedSell": 1743,
             "confidence": 0.95,
@@ -3306,14 +3306,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3341,7 +3341,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.155243Z"
+        "generatedAt": "2026-02-11T22:31:37.436246Z"
       }
     },
     {
@@ -3352,12 +3352,12 @@
         "currentPrice": {
           "buy": 41200,
           "sell": 41325,
-          "timestamp": "2026-02-11T21:35:42.161953Z"
+          "timestamp": "2026-02-11T22:31:37.444855Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142161,
+            "timestamp": 1770935497444,
             "predictedBuy": 40773,
             "predictedSell": 40897,
             "confidence": 0.95,
@@ -3366,7 +3366,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542161,
+            "timestamp": 1771021897444,
             "predictedBuy": 40221,
             "predictedSell": 40343,
             "confidence": 0.95,
@@ -3375,7 +3375,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942161,
+            "timestamp": 1771108297444,
             "predictedBuy": 39548,
             "predictedSell": 39668,
             "confidence": 0.95,
@@ -3384,7 +3384,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342161,
+            "timestamp": 1771194697444,
             "predictedBuy": 38761,
             "predictedSell": 38879,
             "confidence": 0.95,
@@ -3393,7 +3393,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742161,
+            "timestamp": 1771281097444,
             "predictedBuy": 37866,
             "predictedSell": 37981,
             "confidence": 0.95,
@@ -3402,7 +3402,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142161,
+            "timestamp": 1771367497444,
             "predictedBuy": 36871,
             "predictedSell": 36983,
             "confidence": 0.95,
@@ -3411,7 +3411,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542161,
+            "timestamp": 1771453897444,
             "predictedBuy": 35784,
             "predictedSell": 35892,
             "confidence": 0.95,
@@ -3458,21 +3458,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3500,7 +3500,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.161962Z"
+        "generatedAt": "2026-02-11T22:31:37.444864Z"
       }
     },
     {
@@ -3511,12 +3511,12 @@
         "currentPrice": {
           "buy": 2500,
           "sell": 2510,
-          "timestamp": "2026-02-11T21:35:42.168558Z"
+          "timestamp": "2026-02-11T22:31:37.453545Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142168,
+            "timestamp": 1770935497453,
             "predictedBuy": 2475,
             "predictedSell": 2485,
             "confidence": 0.95,
@@ -3525,7 +3525,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542168,
+            "timestamp": 1771021897453,
             "predictedBuy": 2443,
             "predictedSell": 2452,
             "confidence": 0.95,
@@ -3534,7 +3534,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942168,
+            "timestamp": 1771108297453,
             "predictedBuy": 2403,
             "predictedSell": 2413,
             "confidence": 0.95,
@@ -3543,7 +3543,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342168,
+            "timestamp": 1771194697453,
             "predictedBuy": 2358,
             "predictedSell": 2367,
             "confidence": 0.95,
@@ -3552,7 +3552,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742168,
+            "timestamp": 1771281097453,
             "predictedBuy": 2305,
             "predictedSell": 2315,
             "confidence": 0.95,
@@ -3561,7 +3561,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142168,
+            "timestamp": 1771367497453,
             "predictedBuy": 2247,
             "predictedSell": 2256,
             "confidence": 0.95,
@@ -3570,7 +3570,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542168,
+            "timestamp": 1771453897453,
             "predictedBuy": 2184,
             "predictedSell": 2193,
             "confidence": 0.95,
@@ -3617,21 +3617,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3659,7 +3659,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.168567Z"
+        "generatedAt": "2026-02-11T22:31:37.453555Z"
       }
     },
     {
@@ -3670,12 +3670,12 @@
         "currentPrice": {
           "buy": 526500,
           "sell": 527180,
-          "timestamp": "2026-02-11T21:35:42.175182Z"
+          "timestamp": "2026-02-11T22:31:37.462320Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142175,
+            "timestamp": 1770935497462,
             "predictedBuy": 521455,
             "predictedSell": 522128,
             "confidence": 0.95,
@@ -3684,7 +3684,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542175,
+            "timestamp": 1771021897462,
             "predictedBuy": 514925,
             "predictedSell": 515590,
             "confidence": 0.95,
@@ -3693,7 +3693,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942175,
+            "timestamp": 1771108297462,
             "predictedBuy": 506963,
             "predictedSell": 507618,
             "confidence": 0.95,
@@ -3702,7 +3702,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342175,
+            "timestamp": 1771194697462,
             "predictedBuy": 497633,
             "predictedSell": 498276,
             "confidence": 0.95,
@@ -3711,7 +3711,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742175,
+            "timestamp": 1771281097462,
             "predictedBuy": 487010,
             "predictedSell": 487639,
             "confidence": 0.95,
@@ -3720,7 +3720,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142175,
+            "timestamp": 1771367497462,
             "predictedBuy": 475179,
             "predictedSell": 475793,
             "confidence": 0.95,
@@ -3729,7 +3729,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542175,
+            "timestamp": 1771453897462,
             "predictedBuy": 462236,
             "predictedSell": 462833,
             "confidence": 0.95,
@@ -3776,21 +3776,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3818,7 +3818,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.175193Z"
+        "generatedAt": "2026-02-11T22:31:37.462330Z"
       }
     },
     {
@@ -3829,12 +3829,12 @@
         "currentPrice": {
           "buy": 123.5,
           "sell": 123.55555555555556,
-          "timestamp": "2026-02-11T21:35:42.181628Z"
+          "timestamp": "2026-02-11T22:31:37.471190Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142181,
+            "timestamp": 1770935497471,
             "predictedBuy": 122,
             "predictedSell": 122,
             "confidence": 0.95,
@@ -3843,7 +3843,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542181,
+            "timestamp": 1771021897471,
             "predictedBuy": 120,
             "predictedSell": 120,
             "confidence": 0.95,
@@ -3852,7 +3852,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942181,
+            "timestamp": 1771108297471,
             "predictedBuy": 118,
             "predictedSell": 118,
             "confidence": 0.95,
@@ -3861,7 +3861,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342181,
+            "timestamp": 1771194697471,
             "predictedBuy": 116,
             "predictedSell": 116,
             "confidence": 0.95,
@@ -3870,7 +3870,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742181,
+            "timestamp": 1771281097471,
             "predictedBuy": 114,
             "predictedSell": 114,
             "confidence": 0.95,
@@ -3879,7 +3879,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142181,
+            "timestamp": 1771367497471,
             "predictedBuy": 111,
             "predictedSell": 111,
             "confidence": 0.95,
@@ -3888,7 +3888,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542181,
+            "timestamp": 1771453897471,
             "predictedBuy": 108,
             "predictedSell": 108,
             "confidence": 0.95,
@@ -3935,21 +3935,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -3977,7 +3977,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.181638Z"
+        "generatedAt": "2026-02-11T22:31:37.471200Z"
       }
     },
     {
@@ -3988,81 +3988,81 @@
         "currentPrice": {
           "buy": 428250,
           "sell": 429000,
-          "timestamp": "2026-02-11T21:35:42.188325Z"
+          "timestamp": "2026-02-11T22:31:37.479966Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142188,
-            "predictedBuy": 427489,
-            "predictedSell": 428238,
+            "timestamp": 1770935497479,
+            "predictedBuy": 424158,
+            "predictedSell": 424901,
             "confidence": 0.95,
-            "lowerBound": 427489,
-            "upperBound": 427489
+            "lowerBound": 282731,
+            "upperBound": 565585
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542188,
-            "predictedBuy": 426502,
-            "predictedSell": 427249,
+            "timestamp": 1771021897479,
+            "predictedBuy": 418863,
+            "predictedSell": 419596,
             "confidence": 0.95,
-            "lowerBound": 426502,
-            "upperBound": 426502
+            "lowerBound": 266505,
+            "upperBound": 571221
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942188,
-            "predictedBuy": 425288,
-            "predictedSell": 426033,
+            "timestamp": 1771108297479,
+            "predictedBuy": 412406,
+            "predictedSell": 413128,
             "confidence": 0.95,
-            "lowerBound": 425288,
-            "upperBound": 425288
+            "lowerBound": 249896,
+            "upperBound": 574916
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342188,
-            "predictedBuy": 423851,
-            "predictedSell": 424593,
+            "timestamp": 1771194697479,
+            "predictedBuy": 404838,
+            "predictedSell": 405547,
             "confidence": 0.95,
-            "lowerBound": 423851,
-            "upperBound": 423851
+            "lowerBound": 233039,
+            "upperBound": 576638
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742188,
-            "predictedBuy": 422192,
-            "predictedSell": 422931,
+            "timestamp": 1771281097479,
+            "predictedBuy": 396222,
+            "predictedSell": 396916,
             "confidence": 0.95,
-            "lowerBound": 422192,
-            "upperBound": 422192
+            "lowerBound": 216069,
+            "upperBound": 576375
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142188,
-            "predictedBuy": 420313,
-            "predictedSell": 421049,
+            "timestamp": 1771367497479,
+            "predictedBuy": 386626,
+            "predictedSell": 387303,
             "confidence": 0.95,
-            "lowerBound": 420313,
-            "upperBound": 420313
+            "lowerBound": 199117,
+            "upperBound": 574135
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542188,
-            "predictedBuy": 418218,
-            "predictedSell": 418951,
+            "timestamp": 1771453897479,
+            "predictedBuy": 376126,
+            "predictedSell": 376785,
             "confidence": 0.95,
-            "lowerBound": 418218,
-            "upperBound": 418218
+            "lowerBound": 182308,
+            "upperBound": 569944
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3031,
+          "momentum": -0.3923,
+          "movingAvg7Day": 218750,
+          "movingAvg30Day": 278103
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -4094,21 +4094,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4128,7 +4128,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -4136,7 +4136,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.188335Z"
+        "generatedAt": "2026-02-11T22:31:37.479976Z"
       }
     },
     {
@@ -4147,81 +4147,81 @@
         "currentPrice": {
           "buy": 420100,
           "sell": 420650,
-          "timestamp": "2026-02-11T21:35:42.194835Z"
+          "timestamp": "2026-02-11T22:31:37.488707Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142194,
-            "predictedBuy": 419354,
-            "predictedSell": 419903,
+            "timestamp": 1770935497488,
+            "predictedBuy": 416080,
+            "predictedSell": 416625,
             "confidence": 0.95,
-            "lowerBound": 419354,
-            "upperBound": 419354
+            "lowerBound": 277282,
+            "upperBound": 554878
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542194,
-            "predictedBuy": 418385,
-            "predictedSell": 418933,
+            "timestamp": 1771021897488,
+            "predictedBuy": 410878,
+            "predictedSell": 411416,
             "confidence": 0.95,
-            "lowerBound": 418385,
-            "upperBound": 418385
+            "lowerBound": 261355,
+            "upperBound": 560401
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942194,
-            "predictedBuy": 417195,
-            "predictedSell": 417741,
+            "timestamp": 1771108297488,
+            "predictedBuy": 404534,
+            "predictedSell": 405064,
             "confidence": 0.95,
-            "lowerBound": 417195,
-            "upperBound": 417195
+            "lowerBound": 245052,
+            "upperBound": 564016
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342194,
-            "predictedBuy": 415785,
-            "predictedSell": 416329,
+            "timestamp": 1771194697488,
+            "predictedBuy": 397100,
+            "predictedSell": 397620,
             "confidence": 0.95,
-            "lowerBound": 415785,
-            "upperBound": 415785
+            "lowerBound": 228506,
+            "upperBound": 565694
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742194,
-            "predictedBuy": 414157,
-            "predictedSell": 414699,
+            "timestamp": 1771281097488,
+            "predictedBuy": 388635,
+            "predictedSell": 389144,
             "confidence": 0.95,
-            "lowerBound": 414157,
-            "upperBound": 414157
+            "lowerBound": 211850,
+            "upperBound": 565421
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142194,
-            "predictedBuy": 412314,
-            "predictedSell": 412854,
+            "timestamp": 1771367497488,
+            "predictedBuy": 379209,
+            "predictedSell": 379705,
             "confidence": 0.95,
-            "lowerBound": 412314,
-            "upperBound": 412314
+            "lowerBound": 195211,
+            "upperBound": 563206
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542194,
-            "predictedBuy": 410259,
-            "predictedSell": 410796,
+            "timestamp": 1771453897488,
+            "predictedBuy": 368895,
+            "predictedSell": 369378,
             "confidence": 0.95,
-            "lowerBound": 410259,
-            "upperBound": 410259
+            "lowerBound": 178715,
+            "upperBound": 559075
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3033,
+          "momentum": -0.393,
+          "movingAvg7Day": 214514,
+          "movingAvg30Day": 272803
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -4253,21 +4253,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4287,7 +4287,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -4295,7 +4295,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.194845Z"
+        "generatedAt": "2026-02-11T22:31:37.488717Z"
       }
     },
     {
@@ -4306,81 +4306,81 @@
         "currentPrice": {
           "buy": 44300,
           "sell": 44430,
-          "timestamp": "2026-02-11T21:35:42.201215Z"
+          "timestamp": "2026-02-11T22:31:37.497463Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142201,
-            "predictedBuy": 44221,
-            "predictedSell": 44351,
+            "timestamp": 1770935497497,
+            "predictedBuy": 43875,
+            "predictedSell": 44004,
             "confidence": 0.95,
-            "lowerBound": 44221,
-            "upperBound": 44221
+            "lowerBound": 29216,
+            "upperBound": 58535
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542201,
-            "predictedBuy": 44119,
-            "predictedSell": 44248,
+            "timestamp": 1771021897497,
+            "predictedBuy": 43327,
+            "predictedSell": 43454,
             "confidence": 0.95,
-            "lowerBound": 44119,
-            "upperBound": 44119
+            "lowerBound": 27534,
+            "upperBound": 59119
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942201,
-            "predictedBuy": 43993,
-            "predictedSell": 44122,
+            "timestamp": 1771108297497,
+            "predictedBuy": 42657,
+            "predictedSell": 42782,
             "confidence": 0.95,
-            "lowerBound": 43993,
-            "upperBound": 43993
+            "lowerBound": 25813,
+            "upperBound": 59501
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342201,
-            "predictedBuy": 43844,
-            "predictedSell": 43973,
+            "timestamp": 1771194697497,
+            "predictedBuy": 41873,
+            "predictedSell": 41996,
             "confidence": 0.95,
-            "lowerBound": 43844,
-            "upperBound": 43844
+            "lowerBound": 24067,
+            "upperBound": 59679
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742201,
-            "predictedBuy": 43673,
-            "predictedSell": 43801,
+            "timestamp": 1771281097497,
+            "predictedBuy": 40980,
+            "predictedSell": 41100,
             "confidence": 0.95,
-            "lowerBound": 43673,
-            "upperBound": 43673
+            "lowerBound": 22309,
+            "upperBound": 59651
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142201,
-            "predictedBuy": 43479,
-            "predictedSell": 43606,
+            "timestamp": 1771367497497,
+            "predictedBuy": 39985,
+            "predictedSell": 40103,
             "confidence": 0.95,
-            "lowerBound": 43479,
-            "upperBound": 43479
+            "lowerBound": 20553,
+            "upperBound": 59418
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542201,
-            "predictedBuy": 43262,
-            "predictedSell": 43389,
+            "timestamp": 1771453897497,
+            "predictedBuy": 38897,
+            "predictedSell": 39011,
             "confidence": 0.95,
-            "lowerBound": 43262,
-            "upperBound": 43262
+            "lowerBound": 18812,
+            "upperBound": 58983
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.3037,
+          "momentum": -0.3933,
+          "movingAvg7Day": 22585,
+          "movingAvg30Day": 28723
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -4412,21 +4412,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4446,7 +4446,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -4454,7 +4454,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.201224Z"
+        "generatedAt": "2026-02-11T22:31:37.497473Z"
       }
     },
     {
@@ -4465,12 +4465,12 @@
         "currentPrice": {
           "buy": 0,
           "sell": 19978255,
-          "timestamp": "2026-02-11T21:35:42.207592Z"
+          "timestamp": "2026-02-11T22:31:37.506214Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142207,
+            "timestamp": 1770935497506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4479,7 +4479,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542207,
+            "timestamp": 1771021897506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4488,7 +4488,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942207,
+            "timestamp": 1771108297506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4497,7 +4497,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342207,
+            "timestamp": 1771194697506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4506,7 +4506,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742207,
+            "timestamp": 1771281097506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4515,7 +4515,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142207,
+            "timestamp": 1771367497506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4524,7 +4524,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542207,
+            "timestamp": 1771453897506,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4571,21 +4571,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4613,7 +4613,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.207600Z"
+        "generatedAt": "2026-02-11T22:31:37.506224Z"
       }
     },
     {
@@ -4624,12 +4624,12 @@
         "currentPrice": {
           "buy": 0,
           "sell": 86541800,
-          "timestamp": "2026-02-11T21:35:42.213960Z"
+          "timestamp": "2026-02-11T22:31:37.514965Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142213,
+            "timestamp": 1770935497514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4638,7 +4638,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542213,
+            "timestamp": 1771021897514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4647,7 +4647,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942213,
+            "timestamp": 1771108297514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4656,7 +4656,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342213,
+            "timestamp": 1771194697514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4665,7 +4665,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742213,
+            "timestamp": 1771281097514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4674,7 +4674,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142213,
+            "timestamp": 1771367497514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4683,7 +4683,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542213,
+            "timestamp": 1771453897514,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4730,21 +4730,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4772,7 +4772,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.213970Z"
+        "generatedAt": "2026-02-11T22:31:37.514975Z"
       }
     },
     {
@@ -4782,13 +4782,13 @@
         "currencyName": "Bitcoin",
         "currentPrice": {
           "buy": 0,
-          "sell": 11149999299,
-          "timestamp": "2026-02-11T21:35:42.220341Z"
+          "sell": 11149903760,
+          "timestamp": "2026-02-11T22:31:37.523716Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142220,
+            "timestamp": 1770935497523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4797,7 +4797,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542220,
+            "timestamp": 1771021897523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4806,7 +4806,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942220,
+            "timestamp": 1771108297523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4815,7 +4815,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342220,
+            "timestamp": 1771194697523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4824,7 +4824,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742220,
+            "timestamp": 1771281097523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4833,7 +4833,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142220,
+            "timestamp": 1771367497523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4842,7 +4842,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542220,
+            "timestamp": 1771453897523,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4896,14 +4896,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -4931,7 +4931,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.220349Z"
+        "generatedAt": "2026-02-11T22:31:37.523726Z"
       }
     },
     {
@@ -4941,13 +4941,13 @@
         "currencyName": "Ethereum",
         "currentPrice": {
           "buy": 0,
-          "sell": 322000004,
-          "timestamp": "2026-02-11T21:35:42.226722Z"
+          "sell": 322300002,
+          "timestamp": "2026-02-11T22:31:37.532500Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142226,
+            "timestamp": 1770935497532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4956,7 +4956,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542226,
+            "timestamp": 1771021897532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4965,7 +4965,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942226,
+            "timestamp": 1771108297532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4974,7 +4974,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342226,
+            "timestamp": 1771194697532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4983,7 +4983,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742226,
+            "timestamp": 1771281097532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -4992,7 +4992,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142226,
+            "timestamp": 1771367497532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5001,7 +5001,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542226,
+            "timestamp": 1771453897532,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5048,21 +5048,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5090,7 +5090,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.226732Z"
+        "generatedAt": "2026-02-11T22:31:37.532510Z"
       }
     },
     {
@@ -5100,13 +5100,13 @@
         "currencyName": "Ripple",
         "currentPrice": {
           "buy": 0,
-          "sell": 228000,
-          "timestamp": "2026-02-11T21:35:42.233137Z"
+          "sell": 226902,
+          "timestamp": "2026-02-11T22:31:37.542647Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142233,
+            "timestamp": 1770935497542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5115,7 +5115,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542233,
+            "timestamp": 1771021897542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5124,7 +5124,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942233,
+            "timestamp": 1771108297542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5133,7 +5133,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342233,
+            "timestamp": 1771194697542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5142,7 +5142,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742233,
+            "timestamp": 1771281097542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5151,7 +5151,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142233,
+            "timestamp": 1771367497542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5160,7 +5160,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542233,
+            "timestamp": 1771453897542,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5214,14 +5214,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5249,7 +5249,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.233146Z"
+        "generatedAt": "2026-02-11T22:31:37.542658Z"
       }
     },
     {
@@ -5259,13 +5259,13 @@
         "currencyName": "Bitcoin Cash",
         "currentPrice": {
           "buy": 0,
-          "sell": 85777024,
-          "timestamp": "2026-02-11T21:35:42.239507Z"
+          "sell": 85566515,
+          "timestamp": "2026-02-11T22:31:37.551483Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142239,
+            "timestamp": 1770935497551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5274,7 +5274,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542239,
+            "timestamp": 1771021897551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5283,7 +5283,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942239,
+            "timestamp": 1771108297551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5292,7 +5292,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342239,
+            "timestamp": 1771194697551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5301,7 +5301,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742239,
+            "timestamp": 1771281097551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5310,7 +5310,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142239,
+            "timestamp": 1771367497551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5319,7 +5319,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542239,
+            "timestamp": 1771453897551,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5366,21 +5366,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5408,7 +5408,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.239516Z"
+        "generatedAt": "2026-02-11T22:31:37.551493Z"
       }
     },
     {
@@ -5418,13 +5418,13 @@
         "currencyName": "Litecoin",
         "currentPrice": {
           "buy": 0,
-          "sell": 8586798,
-          "timestamp": "2026-02-11T21:35:42.245854Z"
+          "sell": 8671486,
+          "timestamp": "2026-02-11T22:31:37.560618Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142245,
+            "timestamp": 1770935497560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5433,7 +5433,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542245,
+            "timestamp": 1771021897560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5442,7 +5442,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942245,
+            "timestamp": 1771108297560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5451,7 +5451,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342245,
+            "timestamp": 1771194697560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5460,7 +5460,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742245,
+            "timestamp": 1771281097560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5469,7 +5469,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142245,
+            "timestamp": 1771367497560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5478,7 +5478,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542245,
+            "timestamp": 1771453897560,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5532,14 +5532,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5567,7 +5567,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.245862Z"
+        "generatedAt": "2026-02-11T22:31:37.560630Z"
       }
     },
     {
@@ -5577,13 +5577,13 @@
         "currencyName": "Binance",
         "currentPrice": {
           "buy": 0,
-          "sell": 100500000,
-          "timestamp": "2026-02-11T21:35:42.253448Z"
+          "sell": 100400000,
+          "timestamp": "2026-02-11T22:31:37.571987Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142253,
+            "timestamp": 1770935497571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5592,7 +5592,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542253,
+            "timestamp": 1771021897571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5601,7 +5601,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942253,
+            "timestamp": 1771108297571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5610,7 +5610,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342253,
+            "timestamp": 1771194697571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5619,7 +5619,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742253,
+            "timestamp": 1771281097571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5628,7 +5628,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142253,
+            "timestamp": 1771367497571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5637,7 +5637,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542253,
+            "timestamp": 1771453897571,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5684,21 +5684,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5726,7 +5726,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.253457Z"
+        "generatedAt": "2026-02-11T22:31:37.571998Z"
       }
     },
     {
@@ -5736,13 +5736,13 @@
         "currencyName": "Tether USDT",
         "currentPrice": {
           "buy": 0,
-          "sell": 165001,
-          "timestamp": "2026-02-11T21:35:42.259849Z"
+          "sell": 164553,
+          "timestamp": "2026-02-11T22:31:37.580705Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142259,
+            "timestamp": 1770935497580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5751,7 +5751,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542259,
+            "timestamp": 1771021897580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5760,7 +5760,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942259,
+            "timestamp": 1771108297580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5769,7 +5769,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342259,
+            "timestamp": 1771194697580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5778,7 +5778,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742259,
+            "timestamp": 1771281097580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5787,7 +5787,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142259,
+            "timestamp": 1771367497580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5796,7 +5796,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542259,
+            "timestamp": 1771453897580,
             "predictedBuy": 0,
             "predictedSell": 0,
             "confidence": 0.95,
@@ -5843,21 +5843,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -5885,7 +5885,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.259858Z"
+        "generatedAt": "2026-02-11T22:31:37.580715Z"
       }
     },
     {
@@ -5896,12 +5896,12 @@
         "currentPrice": {
           "buy": 190500000,
           "sell": 196180000,
-          "timestamp": "2026-02-11T21:35:42.266273Z"
+          "timestamp": "2026-02-11T22:31:37.589513Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142266,
+            "timestamp": 1770935497589,
             "predictedBuy": 187955660,
             "predictedSell": 193559797,
             "confidence": 0.95,
@@ -5910,7 +5910,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542266,
+            "timestamp": 1771021897589,
             "predictedBuy": 184668407,
             "predictedSell": 190174531,
             "confidence": 0.95,
@@ -5919,7 +5919,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942266,
+            "timestamp": 1771108297589,
             "predictedBuy": 180674699,
             "predictedSell": 186061745,
             "confidence": 0.95,
@@ -5928,7 +5928,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342266,
+            "timestamp": 1771194697589,
             "predictedBuy": 176019278,
             "predictedSell": 181267517,
             "confidence": 0.95,
@@ -5937,7 +5937,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742266,
+            "timestamp": 1771281097589,
             "predictedBuy": 170754344,
             "predictedSell": 175845602,
             "confidence": 0.95,
@@ -5946,7 +5946,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142266,
+            "timestamp": 1771367497589,
             "predictedBuy": 164938568,
             "predictedSell": 169856421,
             "confidence": 0.95,
@@ -5955,7 +5955,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542266,
+            "timestamp": 1771453897589,
             "predictedBuy": 158635999,
             "predictedSell": 163365934,
             "confidence": 0.95,
@@ -6002,21 +6002,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -6044,7 +6044,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.266282Z"
+        "generatedAt": "2026-02-11T22:31:37.589523Z"
       }
     },
     {
@@ -6055,12 +6055,12 @@
         "currentPrice": {
           "buy": 196000000,
           "sell": 200400000,
-          "timestamp": "2026-02-11T21:35:42.272687Z"
+          "timestamp": "2026-02-11T22:31:37.598259Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142272,
+            "timestamp": 1770935497598,
             "predictedBuy": 193413172,
             "predictedSell": 197755101,
             "confidence": 0.95,
@@ -6069,7 +6069,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542272,
+            "timestamp": 1771021897598,
             "predictedBuy": 190070782,
             "predictedSell": 194337677,
             "confidence": 0.95,
@@ -6078,7 +6078,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942272,
+            "timestamp": 1771108297598,
             "predictedBuy": 186009457,
             "predictedSell": 190185180,
             "confidence": 0.95,
@@ -6087,7 +6087,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342272,
+            "timestamp": 1771194697598,
             "predictedBuy": 181274165,
             "predictedSell": 185343585,
             "confidence": 0.95,
@@ -6096,7 +6096,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742272,
+            "timestamp": 1771281097598,
             "predictedBuy": 175917381,
             "predictedSell": 179866547,
             "confidence": 0.95,
@@ -6105,7 +6105,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142272,
+            "timestamp": 1771367497598,
             "predictedBuy": 169998116,
             "predictedSell": 173814400,
             "confidence": 0.95,
@@ -6114,7 +6114,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542272,
+            "timestamp": 1771453897598,
             "predictedBuy": 163580826,
             "predictedSell": 167253048,
             "confidence": 0.95,
@@ -6161,21 +6161,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -6203,7 +6203,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.272696Z"
+        "generatedAt": "2026-02-11T22:31:37.598269Z"
       }
     },
     {
@@ -6214,81 +6214,81 @@
         "currentPrice": {
           "buy": 98500000,
           "sell": 101900000,
-          "timestamp": "2026-02-11T21:35:42.279045Z"
+          "timestamp": "2026-02-11T22:31:37.606947Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142278,
-            "predictedBuy": 98325128,
-            "predictedSell": 101719092,
+            "timestamp": 1770935497606,
+            "predictedBuy": 97222244,
+            "predictedSell": 100578139,
             "confidence": 0.95,
-            "lowerBound": 98325128,
-            "upperBound": 98325128
+            "lowerBound": 49122705,
+            "upperBound": 145321784
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542279,
-            "predictedBuy": 98097981,
-            "predictedSell": 101484104,
+            "timestamp": 1771021897606,
+            "predictedBuy": 95571107,
+            "predictedSell": 98870008,
             "confidence": 0.95,
-            "lowerBound": 98097981,
-            "upperBound": 98097981
+            "lowerBound": 43990024,
+            "upperBound": 147152190
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942279,
-            "predictedBuy": 97818894,
-            "predictedSell": 101195384,
+            "timestamp": 1771108297606,
+            "predictedBuy": 93564374,
+            "predictedSell": 96794007,
             "confidence": 0.95,
-            "lowerBound": 97818894,
-            "upperBound": 97818894
+            "lowerBound": 38858185,
+            "upperBound": 148270563
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342279,
-            "predictedBuy": 97488284,
-            "predictedSell": 100853362,
+            "timestamp": 1771194697606,
+            "predictedBuy": 91223885,
+            "predictedSell": 94372730,
             "confidence": 0.95,
-            "lowerBound": 97488284,
-            "upperBound": 97488284
+            "lowerBound": 33783255,
+            "upperBound": 148664514
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742279,
-            "predictedBuy": 97106652,
-            "predictedSell": 100458556,
+            "timestamp": 1771281097606,
+            "predictedBuy": 88575139,
+            "predictedSell": 91632555,
             "confidence": 0.95,
-            "lowerBound": 97106652,
-            "upperBound": 97106652
+            "lowerBound": 28818564,
+            "upperBound": 148331714
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142279,
-            "predictedBuy": 96674576,
-            "predictedSell": 100011566,
+            "timestamp": 1771367497606,
+            "predictedBuy": 85646831,
+            "predictedSell": 88603168,
             "confidence": 0.95,
-            "lowerBound": 96674576,
-            "upperBound": 96674576
+            "lowerBound": 24013751,
+            "upperBound": 147279911
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542279,
-            "predictedBuy": 96192716,
-            "predictedSell": 99513074,
+            "timestamp": 1771453897606,
+            "predictedBuy": 82470328,
+            "predictedSell": 85317019,
             "confidence": 0.95,
-            "lowerBound": 96192716,
-            "upperBound": 96192716
+            "lowerBound": 19413919,
+            "upperBound": 145526737
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.4498,
+          "momentum": -0.5625,
+          "movingAvg7Day": 38314285,
+          "movingAvg30Day": 55092307
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -6320,21 +6320,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -6354,7 +6354,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -6362,7 +6362,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.279054Z"
+        "generatedAt": "2026-02-11T22:31:37.606957Z"
       }
     },
     {
@@ -6373,81 +6373,81 @@
         "currentPrice": {
           "buy": 54000000,
           "sell": 57860000,
-          "timestamp": "2026-02-11T21:35:42.285455Z"
+          "timestamp": "2026-02-11T22:31:37.615607Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142285,
-            "predictedBuy": 53904131,
-            "predictedSell": 57757278,
+            "timestamp": 1770935497615,
+            "predictedBuy": 53332763,
+            "predictedSell": 57145068,
             "confidence": 0.95,
-            "lowerBound": 53904131,
-            "upperBound": 53904131
+            "lowerBound": 27647185,
+            "upperBound": 79018341
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542285,
-            "predictedBuy": 53779604,
-            "predictedSell": 57623849,
+            "timestamp": 1771021897615,
+            "predictedBuy": 52470302,
+            "predictedSell": 56220957,
             "confidence": 0.95,
-            "lowerBound": 53779604,
-            "upperBound": 53779604
+            "lowerBound": 24902802,
+            "upperBound": 80037802
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942285,
-            "predictedBuy": 53626602,
-            "predictedSell": 57459910,
+            "timestamp": 1771108297615,
+            "predictedBuy": 51421466,
+            "predictedSell": 55097149,
             "confidence": 0.95,
-            "lowerBound": 53626602,
-            "upperBound": 53626602
+            "lowerBound": 22153646,
+            "upperBound": 80689287
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342285,
-            "predictedBuy": 53445354,
-            "predictedSell": 57265707,
+            "timestamp": 1771194697615,
+            "predictedBuy": 50197131,
+            "predictedSell": 53785296,
             "confidence": 0.95,
-            "lowerBound": 53445354,
-            "upperBound": 53445354
+            "lowerBound": 19428405,
+            "upperBound": 80965856
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742285,
-            "predictedBuy": 53236134,
-            "predictedSell": 57041531,
+            "timestamp": 1771281097615,
+            "predictedBuy": 48810012,
+            "predictedSell": 52299024,
             "confidence": 0.95,
-            "lowerBound": 53236134,
-            "upperBound": 53236134
+            "lowerBound": 16754498,
+            "upperBound": 80865526
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142285,
-            "predictedBuy": 52999260,
-            "predictedSell": 56787725,
+            "timestamp": 1771367497615,
+            "predictedBuy": 47274442,
+            "predictedSell": 50653689,
             "confidence": 0.95,
-            "lowerBound": 52999260,
-            "upperBound": 52999260
+            "lowerBound": 14157596,
+            "upperBound": 80391288
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542285,
-            "predictedBuy": 52735093,
-            "predictedSell": 56504675,
+            "timestamp": 1771453897615,
+            "predictedBuy": 45606125,
+            "predictedSell": 48866119,
             "confidence": 0.95,
-            "lowerBound": 52735093,
-            "upperBound": 52735093
+            "lowerBound": 11661214,
+            "upperBound": 79551036
           }
         ],
         "confidenceScore": 0.95,
-        "trend": "NEUTRAL",
+        "trend": "VOLATILE",
         "technicalIndicators": {
           "rsi": 50.0,
-          "volatility": 0.0,
-          "momentum": 0.0,
-          "movingAvg7Day": 0,
-          "movingAvg30Day": 0
+          "volatility": 0.4378,
+          "momentum": -0.5278,
+          "movingAvg7Day": 21642857,
+          "movingAvg30Day": 31246153
         },
         "newsSentiment": {
           "sentiment": "NEUTRAL",
@@ -6479,21 +6479,21 @@
         },
         "aedCorrelation": {
           "correlation": 0.0,
-          "strength": "UNKNOWN"
+          "strength": "ERROR"
         },
         "economicIndicators": {
           "included": true,
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -6513,7 +6513,7 @@
             "Trend": "100%"
           },
           "enhancedFeatures": 20,
-          "historicalDataPoints": 1,
+          "historicalDataPoints": 13,
           "fullHistoryUsed": true,
           "dataSource": "api/history/all.json (40 years)",
           "qualityTier": "STANDARD (96% max)",
@@ -6521,7 +6521,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.285465Z"
+        "generatedAt": "2026-02-11T22:31:37.615616Z"
       }
     },
     {
@@ -6532,12 +6532,12 @@
         "currentPrice": {
           "buy": 25500000,
           "sell": 23500000,
-          "timestamp": "2026-02-11T21:35:42.291890Z"
+          "timestamp": "2026-02-11T22:31:37.624243Z"
         },
         "predictions": [
           {
             "date": "2026-02-12",
-            "timestamp": 1770932142291,
+            "timestamp": 1770935497624,
             "predictedBuy": 25454728,
             "predictedSell": 23458279,
             "confidence": 0.95,
@@ -6546,7 +6546,7 @@
           },
           {
             "date": "2026-02-13",
-            "timestamp": 1771018542291,
+            "timestamp": 1771021897624,
             "predictedBuy": 25395924,
             "predictedSell": 23404086,
             "confidence": 0.95,
@@ -6555,7 +6555,7 @@
           },
           {
             "date": "2026-02-14",
-            "timestamp": 1771104942291,
+            "timestamp": 1771108297624,
             "predictedBuy": 25323673,
             "predictedSell": 23337502,
             "confidence": 0.95,
@@ -6564,7 +6564,7 @@
           },
           {
             "date": "2026-02-15",
-            "timestamp": 1771191342291,
+            "timestamp": 1771194697624,
             "predictedBuy": 25238083,
             "predictedSell": 23258626,
             "confidence": 0.95,
@@ -6573,7 +6573,7 @@
           },
           {
             "date": "2026-02-16",
-            "timestamp": 1771277742291,
+            "timestamp": 1771281097624,
             "predictedBuy": 25139285,
             "predictedSell": 23167576,
             "confidence": 0.95,
@@ -6582,7 +6582,7 @@
           },
           {
             "date": "2026-02-17",
-            "timestamp": 1771364142291,
+            "timestamp": 1771367497624,
             "predictedBuy": 25027428,
             "predictedSell": 23064492,
             "confidence": 0.95,
@@ -6591,7 +6591,7 @@
           },
           {
             "date": "2026-02-18",
-            "timestamp": 1771450542291,
+            "timestamp": 1771453897624,
             "predictedBuy": 24902682,
             "predictedSell": 22949531,
             "confidence": 0.95,
@@ -6645,14 +6645,14 @@
           "oilPrices": {
             "wti": 75.0,
             "brent": 80.0,
-            "timestamp": "2026-02-11T21:05:47.372255",
+            "timestamp": "2026-02-11T22:18:01.060444",
             "source": "fallback_estimate",
             "note": "Using estimated values - API unavailable"
           },
           "goldPrices": {
             "pricePerOunce": 2050.0,
             "currency": "USD",
-            "timestamp": "2026-02-11T21:05:47.258029",
+            "timestamp": "2026-02-11T22:18:01.020362",
             "source": "fallback_estimate",
             "note": "Using estimated value - API unavailable"
           },
@@ -6680,7 +6680,7 @@
           "achievedConfidence": "95.0%",
           "confidenceCalibration": "Cross-validated with TimeSeriesSplit"
         },
-        "generatedAt": "2026-02-11T21:35:42.291900Z"
+        "generatedAt": "2026-02-11T22:31:37.624252Z"
       }
     }
   ]
