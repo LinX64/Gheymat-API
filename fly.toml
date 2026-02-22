@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for app-falling-dawn-6992 on 2026-02-22T00:19:36Z
+# fly.toml app configuration file generated for currencycapportal on 2026-02-22T00:22:08Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'app-falling-dawn-6992'
+app = 'currencycapportal'
 primary_region = 'iad'
 
 [build]
@@ -20,4 +20,4 @@ primary_region = 'iad'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
+  memory_mb = 1024
