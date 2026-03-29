@@ -67,11 +67,19 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.ref }}
 
+      - name: Prepare GitHub Pages deployment
+        run: |
+          mkdir -p dist
+          cp -r website/. dist/
+          for f in api/*; do
+            [ "$(basename "$f")" != "index.html" ] && cp -r "$f" dist/
+          done
+
       - name: Deploy predictions to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./api
+          publish_dir: ./dist
           publish_branch: gh-pages
           force_orphan: true
           commit_message: 'Deploy AI predictions and API data'

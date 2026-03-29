@@ -35,11 +35,19 @@ jobs:
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         run: python update_apis.py
 
+      - name: Prepare GitHub Pages deployment
+        run: |
+          mkdir -p dist
+          cp -r website/. dist/
+          for f in api/*; do
+            [ "$(basename "$f")" != "index.html" ] && cp -r "$f" dist/
+          done
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./api
+          publish_dir: ./dist
           publish_branch: gh-pages
           force_orphan: true
 
