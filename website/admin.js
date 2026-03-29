@@ -2,7 +2,7 @@
 // admin.js — Gheymat Admin Dashboard
 // ============================================================
 
-const AUTH_API_URL = window.AUTH_API_URL || 'https://currencycapportal.fly.dev';
+const AUTH_API_URL = window.AUTH_API_URL || 'https://gheymat-api-production.up.railway.app';
 
 // ---- Auth state ----
 const auth = {

@@ -3,7 +3,7 @@
 // ============================================================
 
 const API_URL        = 'https://linx64.github.io/CurrencyCapPortal/latest.json';
-const AUTH_API_URL   = window.AUTH_API_URL || 'https://currencycapportal.fly.dev';
+const AUTH_API_URL   = window.AUTH_API_URL || 'https://gheymat-api-production.up.railway.app';
 const BULK_CURRENCIES = ['usd', 'eur', 'gbp', 'try', 'aed', 'cny'];
 
 // ---- i18n (minimal, bilingual) ----
