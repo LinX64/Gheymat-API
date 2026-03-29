@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Gheymat - AI-Powered Currency Predictions for Smarter Investment Decisions">
+    <meta name="keywords" content="currency prediction, AI, forex, Iranian currency, exchange rates, investment">
+    <title>Gheymat - AI-Powered Currency Predictions</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <canvas id="neuralBackground" class="neural-background" aria-hidden="true"></canvas>
+
+    <header class="hero" role="banner">
+        <nav class="navbar" role="navigation" aria-label="Main navigation">
+            <div class="logo" role="img" aria-label="Gheymat logo">
+                <img src="logo.png" alt="Gheymat Logo" class="logo-image">
+                <span class="logo-text">Gheymat</span>
+            </div>
+            <div class="nav-center">
+                <a href="mailto:support@gheymat.com" class="nav-link" data-i18n="nav.contact" aria-label="Contact us via email">Contact</a>
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle between light and dark theme" aria-pressed="false">
+                    <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
+                        <path d="M12 1V3M12 21V23M23 12H21M3 12H1M20.485 20.485L19.071 19.071M4.929 4.929L3.515 3.515M20.485 3.515L19.071 4.929M4.929 19.071L3.515 20.485" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+                <button class="lang-toggle" id="langToggle" aria-label="Toggle between English and Farsi language">
+                    <span class="lang-text">فا</span>
+                </button>
+                <!-- Auth buttons — toggled by JS -->
+                <div class="nav-auth" id="navAuth">
+                    <button class="nav-btn nav-btn-ghost" id="navLoginBtn" data-i18n="nav.login">Sign In</button>
+                    <button class="nav-btn nav-btn-primary" id="navRegisterBtn" data-i18n="nav.register">Get Started</button>
+                </div>
+                <div class="nav-user" id="navUser" style="display:none">
+                    <span class="nav-user-tier" id="navUserTier"></span>
+                    <span class="nav-user-name" id="navUserName"></span>
+                    <button class="nav-btn nav-btn-ghost" id="navLogoutBtn" data-i18n="nav.logout">Sign Out</button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="hero-content">
+            <h1 class="hero-title" id="heroTitle">
+                <span class="gradient-text" data-i18n="hero.title">Currency Predictions</span>
+            </h1>
+
+            <p class="hero-description" data-i18n="hero.description">
+                AI-powered forecasts for Iranian exchange rates
+            </p>
+
+            <div class="download-section">
+                <p class="download-label" data-i18n="hero.downloadFrom">Download from</p>
+                <div class="hero-download-buttons">
+                    <a href="#" class="hero-download-btn" aria-label="Download Gheymat app from Apple App Store">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                        </svg>
+                        <span data-i18n="nav.ios">App Store</span>
+                    </a>
+                    <a href="#" class="hero-download-btn" aria-label="Download Gheymat app from Google Play Store">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.9 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
+                        </svg>
+                        <span data-i18n="nav.android">Google Play</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main id="main-content">
+        <section class="latest-prices" aria-labelledby="prices-title">
+            <div class="prices-container">
+                <div class="prices-header">
+                    <div>
+                        <h2 id="prices-title" class="prices-title" data-i18n="prices.title">Latest Rates</h2>
+                        <p class="prices-subtitle" data-i18n="prices.subtitle">Prices in Toman</p>
+                    </div>
+                    <div class="live-indicator" aria-live="polite" aria-label="Live currency rates">
+                        <span class="pulse-dot" aria-hidden="true"></span>
+                        <span data-i18n="prices.live">Live</span>
+                    </div>
+                </div>
+                <div class="prices-grid" role="list" aria-label="Currency prices"></div>
+            </div>
+        </section>
+        <!-- AI Predictions Section -->
+        <section class="predictions-section" id="predictionsSection" aria-labelledby="predictions-title">
+            <div class="predictions-container">
+                <div class="predictions-header">
+                    <div>
+                        <h2 id="predictions-title" class="predictions-title" data-i18n="predictions.title">AI Currency Predictions</h2>
+                        <p class="predictions-subtitle" data-i18n="predictions.subtitle">7-day forecasts powered by machine learning</p>
+                    </div>
+                    <div class="predictions-badge">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+                        <span data-i18n="predictions.aiPowered">AI Powered</span>
+                    </div>
+                </div>
+
+                <!-- Free tier: teaser with blur -->
+                <div class="predictions-gate" id="predictionsGate">
+                    <div class="predictions-teaser" aria-hidden="true">
+                        <div class="teaser-cards">
+                            <div class="teaser-card">
+                                <div class="teaser-flag">🇺🇸</div>
+                                <div class="teaser-code">USD</div>
+                                <div class="teaser-price">154,900</div>
+                                <div class="teaser-change positive">+2.4%</div>
+                            </div>
+                            <div class="teaser-card">
+                                <div class="teaser-flag">🇪🇺</div>
+                                <div class="teaser-code">EUR</div>
+                                <div class="teaser-price">168,200</div>
+                                <div class="teaser-change negative">-0.8%</div>
+                            </div>
+                            <div class="teaser-card">
+                                <div class="teaser-flag">🇬🇧</div>
+                                <div class="teaser-code">GBP</div>
+                                <div class="teaser-price">197,500</div>
+                                <div class="teaser-change positive">+1.2%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="predictions-lock">
+                        <div class="lock-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        </div>
+                        <h3 class="lock-title" data-i18n="predictions.lockTitle">Premium Feature</h3>
+                        <p class="lock-desc" data-i18n="predictions.lockDesc">Get AI-powered 7-day forecasts for all currencies. Sign in and upgrade to Premium.</p>
+                        <div class="lock-actions">
+                            <button class="btn-premium" id="unlockPredictionsBtn" data-i18n="predictions.unlock">Unlock Predictions</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Premium: actual predictions grid -->
+                <div class="predictions-grid" id="predictionsGrid" style="display:none" role="list" aria-label="AI currency predictions"></div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="footer" role="contentinfo">
+        <p data-i18n="footer.copyright">&copy; 2025 Gheymat. All rights reserved.</p>
+    </footer>
+
+    <button id="scrollToTop" class="scroll-to-top" aria-label="Scroll to top">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+    </button>
+
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" style="display:none">
+        <div class="modal-box">
+            <button class="modal-close" id="modalClose" aria-label="Close modal">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
+            <!-- Tab switcher -->
+            <div class="modal-tabs">
+                <button class="modal-tab active" id="tabLogin" data-i18n="auth.loginTab">Sign In</button>
+                <button class="modal-tab" id="tabRegister" data-i18n="auth.registerTab">Create Account</button>
+            </div>
+
+            <!-- Login form -->
+            <form class="auth-form" id="loginForm" novalidate>
+                <h2 class="modal-title" id="modalTitle" data-i18n="auth.loginTitle">Welcome back</h2>
+                <div class="form-group">
+                    <label class="form-label" for="loginEmail" data-i18n="auth.email">Email</label>
+                    <input class="form-input" id="loginEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="loginPassword" data-i18n="auth.password">Password</label>
+                    <input class="form-input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+                </div>
+                <div class="form-error" id="loginError" role="alert"></div>
+                <button class="form-submit" type="submit" id="loginSubmit" data-i18n="auth.loginBtn">Sign In</button>
+            </form>
+
+            <!-- Register form -->
+            <form class="auth-form" id="registerForm" style="display:none" novalidate>
+                <h2 class="modal-title" data-i18n="auth.registerTitle">Create your account</h2>
+                <div class="form-group">
+                    <label class="form-label" for="regName" data-i18n="auth.name">Full Name</label>
+                    <input class="form-input" id="regName" type="text" autocomplete="name" required placeholder="John Doe">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="regEmail" data-i18n="auth.email">Email</label>
+                    <input class="form-input" id="regEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="regPassword" data-i18n="auth.password">Password</label>
+                    <input class="form-input" id="regPassword" type="password" autocomplete="new-password" required placeholder="Min. 8 characters">
+                </div>
+                <div class="form-error" id="registerError" role="alert"></div>
+                <button class="form-submit" type="submit" id="registerSubmit" data-i18n="auth.registerBtn">Create Account</button>
+                <p class="form-note" data-i18n="auth.freeNote">Free account — upgrade to Premium anytime.</p>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

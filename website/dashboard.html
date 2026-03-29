@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Gheymat</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ==================== NAVBAR ==================== -->
+<nav class="dash-nav" role="navigation">
+    <a href="index.html" class="dash-logo" aria-label="Gheymat home">
+        <img src="logo.png" alt="" class="logo-image">
+        <span class="logo-text">Gheymat</span>
+    </a>
+
+    <div class="dash-tabs" role="tablist">
+        <button class="dash-tab active" id="tabRates" role="tab" aria-selected="true" aria-controls="panelRates">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span id="tabRatesLabel">Rates</span>
+        </button>
+        <button class="dash-tab" id="tabPredict" role="tab" aria-selected="false" aria-controls="panelPredict">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span id="tabPredictLabel">AI Predictions</span>
+            <span class="tab-badge" id="premiumBadge">Premium</span>
+        </button>
+        <button class="dash-tab" id="tabAccount" role="tab" aria-selected="false" aria-controls="panelAccount">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="tabAccountLabel">Account</span>
+        </button>
+    </div>
+
+    <div class="dash-nav-right">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+            <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/><path d="M12 1V3M12 21V23M23 12H21M3 12H1M20.485 20.485L19.071 19.071M4.929 4.929L3.515 3.515M20.485 3.515L19.071 4.929M4.929 19.071L3.515 20.485" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="lang-toggle" id="langToggle"><span class="lang-text">فا</span></button>
+        <div class="dash-user" id="dashUser">
+            <span class="dash-user-tier" id="dashUserTier"></span>
+            <span class="dash-user-name" id="dashUserName"></span>
+        </div>
+        <button class="nav-btn nav-btn-ghost" id="dashLogoutBtn" style="display:none">Sign Out</button>
+        <button class="nav-btn nav-btn-primary" id="dashLoginBtn">Sign In</button>
+    </div>
+</nav>
+
+<!-- ==================== MAIN ==================== -->
+<main class="dash-main" id="main-content">
+
+    <!-- ===== RATES PANEL ===== -->
+    <section class="dash-panel active" id="panelRates" role="tabpanel" aria-labelledby="tabRates">
+        <div class="dash-panel-header">
+            <div>
+                <h1 class="dash-panel-title" id="ratesPanelTitle">Exchange Rates</h1>
+                <p class="dash-panel-subtitle" id="ratesPanelSubtitle">All currencies — prices in Toman</p>
+            </div>
+            <div class="dash-panel-actions">
+                <div class="dash-live" id="ratesLive">
+                    <span class="pulse-dot"></span>
+                    <span id="ratesLiveLabel">Live</span>
+                </div>
+                <input class="dash-search" id="ratesSearch" type="search" placeholder="Search currency…" aria-label="Search currencies">
+            </div>
+        </div>
+
+        <div class="rates-table-wrap">
+            <table class="rates-table" role="grid" aria-label="Currency exchange rates">
+                <thead>
+                    <tr>
+                        <th class="rates-th rates-th-currency" id="thCurrency">Currency</th>
+                        <th class="rates-th rates-th-num" id="thBuy">Buy</th>
+                        <th class="rates-th rates-th-num" id="thSell">Sell</th>
+                        <th class="rates-th rates-th-num" id="thChange">Change</th>
+                        <th class="rates-th rates-th-time" id="thUpdated">Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="ratesBody">
+                    <tr><td colspan="5" class="rates-loading" id="ratesLoading">Loading rates…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ===== PREDICTIONS PANEL ===== -->
+    <section class="dash-panel" id="panelPredict" role="tabpanel" aria-labelledby="tabPredict" hidden>
+
+        <!-- Gate: not logged in -->
+        <div class="dash-gate" id="predictGateLogin" style="display:none">
+            <div class="gate-icon">🔐</div>
+            <h2 class="gate-title" id="gateTitleLogin">Sign in to access AI Predictions</h2>
+            <p class="gate-desc" id="gateDescLogin">Create a free account to get started.</p>
+            <button class="btn-premium" id="gateLoginBtn">Sign In / Register</button>
+        </div>
+
+        <!-- Gate: logged in but not premium -->
+        <div class="dash-gate" id="predictGatePremium" style="display:none">
+            <div class="gate-icon">⭐</div>
+            <h2 class="gate-title" id="gateTitlePremium">Upgrade to Premium</h2>
+            <p class="gate-desc" id="gateDescPremium">Live AI predictions are a Premium feature. Upgrade to unlock 7-day forecasts powered by LSTM + ensemble ML models.</p>
+            <ul class="premium-features">
+                <li>✓ Live 7-day AI predictions for any currency</li>
+                <li>✓ Confidence intervals & trend analysis</li>
+                <li>✓ LSTM + XGBoost + LightGBM ensemble</li>
+                <li>✓ Unlimited prediction requests</li>
+            </ul>
+            <button class="btn-premium" id="gateUpgradeBtn">Upgrade to Premium</button>
+        </div>
+
+        <!-- Premium content -->
+        <div id="predictContent" style="display:none">
+            <div class="dash-panel-header">
+                <div>
+                    <h1 class="dash-panel-title" id="predictPanelTitle">AI Currency Predictions</h1>
+                    <p class="dash-panel-subtitle" id="predictPanelSubtitle">Live 7-day forecasts powered by machine learning</p>
+                </div>
+                <span class="dash-premium-badge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+                    Premium
+                </span>
+            </div>
+
+            <div class="predict-form-wrap">
+                <form class="predict-form" id="predictForm">
+                    <div class="predict-field">
+                        <label class="predict-label" for="predictCurrency" id="predictCurrencyLabel">Currency</label>
+                        <select class="predict-select" id="predictCurrency">
+                            <option value="usd">🇺🇸 USD — US Dollar</option>
+                            <option value="eur">🇪🇺 EUR — Euro</option>
+                            <option value="gbp">🇬🇧 GBP — British Pound</option>
+                            <option value="try">🇹🇷 TRY — Turkish Lira</option>
+                            <option value="aed">🇦🇪 AED — UAE Dirham</option>
+                            <option value="cny">🇨🇳 CNY — Chinese Yuan</option>
+                            <option value="cad">🇨🇦 CAD — Canadian Dollar</option>
+                            <option value="aud">🇦🇺 AUD — Australian Dollar</option>
+                            <option value="chf">🇨🇭 CHF — Swiss Franc</option>
+                            <option value="rub">🇷🇺 RUB — Russian Ruble</option>
+                            <option value="jpy">🇯🇵 JPY — Japanese Yen</option>
+                            <option value="sar">🇸🇦 SAR — Saudi Riyal</option>
+                        </select>
+                    </div>
+                    <div class="predict-field">
+                        <label class="predict-label" for="predictDays" id="predictDaysLabel">Forecast horizon</label>
+                        <select class="predict-select" id="predictDays">
+                            <option value="7">7 days</option>
+                            <option value="14" selected>14 days</option>
+                            <option value="30">30 days</option>
+                        </select>
+                    </div>
+                    <button class="predict-run-btn" type="submit" id="predictRunBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Run Prediction
+                    </button>
+                </form>
+            </div>
+
+            <div id="predictResult" class="predict-result" aria-live="polite"></div>
+
+            <div class="predict-bulk-wrap">
+                <div class="predict-bulk-header">
+                    <h2 class="predict-bulk-title" id="bulkTitle">Quick Overview</h2>
+                    <p class="predict-bulk-sub" id="bulkSub">7-day forecast for key currencies</p>
+                    <button class="predict-bulk-btn" id="bulkRunBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/></svg>
+                        Refresh All
+                    </button>
+                </div>
+                <div class="predictions-grid" id="bulkGrid" role="list"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== ACCOUNT PANEL ===== -->
+    <section class="dash-panel" id="panelAccount" role="tabpanel" aria-labelledby="tabAccount" hidden>
+
+        <!-- Not logged in -->
+        <div class="dash-gate" id="accountGateLogin" style="display:none">
+            <div class="gate-icon">👤</div>
+            <h2 class="gate-title" id="accountGateTitle">Sign in to view your account</h2>
+            <button class="btn-premium" id="accountLoginBtn">Sign In / Register</button>
+        </div>
+
+        <!-- Logged in -->
+        <div id="accountContent" style="display:none">
+            <div class="dash-panel-header">
+                <h1 class="dash-panel-title" id="accountPanelTitle">Your Account</h1>
+            </div>
+
+            <div class="account-grid">
+                <!-- Profile card -->
+                <div class="account-card">
+                    <div class="account-avatar" id="accountAvatar"></div>
+                    <div class="account-info">
+                        <div class="account-name" id="accountName"></div>
+                        <div class="account-email" id="accountEmail"></div>
+                        <div class="account-since" id="accountSince"></div>
+                    </div>
+                    <div class="account-tier-badge" id="accountTierBadge"></div>
+                </div>
+
+                <!-- Free tier / upgrade card -->
+                <div class="upgrade-card" id="upgradeCard">
+                    <div class="upgrade-card-header">
+                        <span class="upgrade-icon">⭐</span>
+                        <div>
+                            <h3 class="upgrade-title" id="upgradeTitle">Upgrade to Premium</h3>
+                            <p class="upgrade-sub" id="upgradeSub">Unlock AI predictions &amp; advanced analytics</p>
+                        </div>
+                    </div>
+                    <ul class="upgrade-features" id="upgradeFeatures">
+                        <li>Live AI predictions (LSTM + ensemble)</li>
+                        <li>7, 14 &amp; 30-day forecasts</li>
+                        <li>Confidence intervals &amp; trend analysis</li>
+                        <li>Priority API access</li>
+                    </ul>
+                    <button class="btn-premium upgrade-cta" id="upgradeCtaBtn">Upgrade Now</button>
+                </div>
+
+                <!-- Premium welcome card (shown when already premium) -->
+                <div class="premium-active-card" id="premiumActiveCard" style="display:none">
+                    <div class="premium-active-icon">⭐</div>
+                    <h3 class="premium-active-title" id="premiumActiveTitle">You're on Premium</h3>
+                    <p class="premium-active-sub" id="premiumActiveSub">You have full access to all AI prediction features.</p>
+                    <a href="#" class="premium-active-link" id="goPredictLink">Go to AI Predictions →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- Auth Modal (shared with index.html) -->
+<div class="modal-overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" style="display:none">
+    <div class="modal-box">
+        <button class="modal-close" id="modalClose" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="modal-tabs">
+            <button class="modal-tab active" id="tabLogin">Sign In</button>
+            <button class="modal-tab" id="tabRegister">Create Account</button>
+        </div>
+        <form class="auth-form" id="loginForm" novalidate>
+            <h2 class="modal-title" id="authModalTitle">Welcome back</h2>
+            <div class="form-group">
+                <label class="form-label" for="loginEmail">Email</label>
+                <input class="form-input" id="loginEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="loginPassword">Password</label>
+                <input class="form-input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+            </div>
+            <div class="form-error" id="loginError" role="alert"></div>
+            <button class="form-submit" type="submit" id="loginSubmit">Sign In</button>
+        </form>
+        <form class="auth-form" id="registerForm" style="display:none" novalidate>
+            <h2 class="modal-title">Create your account</h2>
+            <div class="form-group">
+                <label class="form-label" for="regName">Full Name</label>
+                <input class="form-input" id="regName" type="text" autocomplete="name" required placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="regEmail">Email</label>
+                <input class="form-input" id="regEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="regPassword">Password</label>
+                <input class="form-input" id="regPassword" type="password" autocomplete="new-password" required placeholder="Min. 8 characters">
+            </div>
+            <div class="form-error" id="registerError" role="alert"></div>
+            <button class="form-submit" type="submit" id="registerSubmit">Create Account</button>
+            <p class="form-note">Free account — upgrade to Premium anytime.</p>
+        </form>
+    </div>
+</div>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

@@ -86,8 +86,23 @@ except ImportError:
     ENHANCED_SENTIMENT_AVAILABLE = False
     print("Warning: Enhanced sentiment analysis not available.")
 
+from auth import (
+    init_db, require_premium, require_admin,
+    handle_register, handle_login, handle_me, handle_refresh,
+    handle_admin_stats, handle_admin_list_users,
+    handle_admin_update_user, handle_admin_delete_user,
+    get_current_user
+)
+
 app = Flask(__name__)
 CORS(app)
+
+# Initialize user database on startup
+try:
+    init_db()
+    print("✓ Auth database initialized")
+except Exception as _auth_err:
+    print(f"⚠ Auth database init failed: {_auth_err}")
 
 SWAGGER_URL = '/docs'
 API_URL = '/swagger.json'
@@ -1725,8 +1740,9 @@ def get_aed_correlations():
 
 
 @app.route('/api/v1/predict', methods=['POST'])
+@require_premium
 def predict():
-    """Generate AI predictions"""
+    """Generate AI predictions (premium users only)"""
     try:
         data = request.get_json()
 
@@ -1760,6 +1776,66 @@ def predict():
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+
+@app.route('/api/auth/register', methods=['POST'])
+def auth_register():
+    """Register a new user"""
+    return handle_register()
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    """Login and receive JWT tokens"""
+    return handle_login()
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def auth_me():
+    """Get current authenticated user"""
+    return handle_me()
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+def auth_refresh():
+    """Refresh access token"""
+    return handle_refresh()
+
+
+# ---------------------------------------------------------------------------
+# Admin routes (require admin tier)
+# ---------------------------------------------------------------------------
+
+@app.route('/api/admin/stats', methods=['GET'])
+@require_admin
+def admin_stats():
+    """Admin: system stats"""
+    return handle_admin_stats()
+
+
+@app.route('/api/admin/users', methods=['GET'])
+@require_admin
+def admin_list_users():
+    """Admin: list all users"""
+    return handle_admin_list_users()
+
+
+@app.route('/api/admin/users/<user_id>', methods=['PATCH'])
+@require_admin
+def admin_update_user(user_id):
+    """Admin: update user tier"""
+    return handle_admin_update_user(user_id)
+
+
+@app.route('/api/admin/users/<user_id>', methods=['DELETE'])
+@require_admin
+def admin_delete_user(user_id):
+    """Admin: delete user"""
+    return handle_admin_delete_user(user_id)
 
 
 if __name__ == '__main__':

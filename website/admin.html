@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — Gheymat</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="dash-nav" role="navigation">
+    <a href="index.html" class="dash-logo" aria-label="Gheymat home">
+        <img src="logo.png" alt="" class="logo-image" style="height:28px;width:auto;">
+        <span class="logo-text">Gheymat</span>
+    </a>
+    <div style="flex:1; display:flex; align-items:center; gap:8px; padding-left:16px;">
+        <span class="admin-tier-badge admin" style="font-size:12px; padding:4px 12px;">ADMIN PANEL</span>
+    </div>
+    <div class="dash-nav-right">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+            <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/><path d="M12 1V3M12 21V23M23 12H21M3 12H1M20.485 20.485L19.071 19.071M4.929 4.929L3.515 3.515M20.485 3.515L19.071 4.929M4.929 19.071L3.515 20.485" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <span class="dash-user-name" id="adminUserName" style="font-size:13px;color:var(--text-secondary)"></span>
+        <button class="nav-btn nav-btn-ghost" id="adminLogoutBtn" style="display:none">Sign Out</button>
+    </div>
+</nav>
+
+<!-- GATE: not logged in or not admin -->
+<div id="adminGate" style="display:none; max-width:480px; margin:80px auto; text-align:center; padding:24px;">
+    <div style="font-size:48px; margin-bottom:16px;">🔐</div>
+    <h2 id="gateMsg" style="font-size:20px; font-weight:700; color:var(--text-primary); margin:0 0 12px;">Admin access required</h2>
+    <p style="color:var(--text-secondary); font-size:14px; margin:0 0 20px;">Sign in with an admin account to access this panel.</p>
+    <button class="btn-premium" id="gateLoginBtn">Sign In</button>
+</div>
+
+<!-- MAIN CONTENT (admin only) -->
+<main class="dash-main" id="adminMain" style="display:none;">
+    <div class="dash-panel active" style="max-width:1100px;">
+
+        <!-- Stats row -->
+        <div class="dash-panel-header" style="margin-bottom:20px;">
+            <div>
+                <h1 class="dash-panel-title">Admin Dashboard</h1>
+                <p class="dash-panel-subtitle">User management &amp; system overview</p>
+            </div>
+            <button class="predict-bulk-btn" id="refreshBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/></svg>
+                Refresh
+            </button>
+        </div>
+
+        <div class="admin-stats-grid" id="statsGrid">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Total Users</div>
+                <div class="admin-stat-value" id="statTotal">—</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Premium</div>
+                <div class="admin-stat-value" id="statPremium">—</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Free</div>
+                <div class="admin-stat-value" id="statFree">—</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">New (7d)</div>
+                <div class="admin-stat-value" id="statNew">—</div>
+                <div class="admin-stat-sub">last 7 days</div>
+            </div>
+        </div>
+
+        <!-- Search bar -->
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+            <h2 style="font-size:17px; font-weight:700; margin:0; flex:1;">Users</h2>
+            <input class="dash-search" id="userSearch" type="search" placeholder="Search by name or email…" style="min-width:220px;">
+        </div>
+
+        <!-- Users table -->
+        <div class="admin-users-table-wrap">
+            <table class="admin-users-table" role="grid">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Tier</th>
+                        <th>Joined</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersBody">
+                    <tr><td colspan="6" class="rates-loading">Loading users…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</main>
+
+<!-- Auth Modal -->
+<div class="modal-overlay" id="authModal" role="dialog" aria-modal="true" style="display:none">
+    <div class="modal-box">
+        <button class="modal-close" id="modalClose" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="modal-tabs">
+            <button class="modal-tab active" id="tabLogin">Sign In</button>
+            <button class="modal-tab" id="tabRegister">Create Account</button>
+        </div>
+        <form class="auth-form" id="loginForm" novalidate>
+            <h2 class="modal-title">Welcome back</h2>
+            <div class="form-group">
+                <label class="form-label" for="loginEmail">Email</label>
+                <input class="form-input" id="loginEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="loginPassword">Password</label>
+                <input class="form-input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+            </div>
+            <div class="form-error" id="loginError" role="alert"></div>
+            <button class="form-submit" type="submit" id="loginSubmit">Sign In</button>
+        </form>
+        <form class="auth-form" id="registerForm" style="display:none" novalidate>
+            <h2 class="modal-title">Create account</h2>
+            <div class="form-group">
+                <label class="form-label" for="regName">Full Name</label>
+                <input class="form-input" id="regName" type="text" autocomplete="name" required placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="regEmail">Email</label>
+                <input class="form-input" id="regEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="regPassword">Password</label>
+                <input class="form-input" id="regPassword" type="password" autocomplete="new-password" required placeholder="Min. 8 characters">
+            </div>
+            <div class="form-error" id="registerError" role="alert"></div>
+            <button class="form-submit" type="submit" id="registerSubmit">Create Account</button>
+        </form>
+    </div>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
