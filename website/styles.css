@@ -2908,3 +2908,321 @@ a:focus-visible {
     border-radius: 6px;
     padding: 5px 12px;
 }
+
+/* ==========================================
+   Currency Detail Modal
+   ========================================== */
+
+.cmodal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: cmodal-fade-in 0.2s ease;
+}
+
+@keyframes cmodal-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.cmodal-box {
+    background: var(--bg-card-elevated);
+    border: 1px solid var(--border-color-elevated);
+    border-radius: var(--card-radius-lg);
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-color);
+    animation: cmodal-slide-up 0.22s ease;
+}
+
+@keyframes cmodal-slide-up {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+
+.cmodal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: var(--hover-overlay);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: background 0.15s;
+}
+[dir="rtl"] .cmodal-close { right: auto; left: 16px; }
+
+.cmodal-close:hover { background: var(--border-color-elevated); }
+
+/* ---- Gate (non-premium) ---- */
+.cmodal-gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 48px 32px;
+    gap: 12px;
+}
+
+.cmodal-gate-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--hover-overlay);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+}
+
+.cmodal-gate-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.cmodal-gate-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-width: 320px;
+}
+
+.cmodal-gate-btn {
+    margin-top: 8px;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.cmodal-gate-btn:hover { opacity: 0.85; }
+
+/* ---- Premium modal content ---- */
+.cmodal-header {
+    padding: 28px 28px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.cmodal-flag {
+    font-size: 2.4rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.cmodal-title-block { flex: 1; }
+
+.cmodal-code {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.cmodal-name {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.cmodal-price-block {
+    text-align: right;
+}
+[dir="rtl"] .cmodal-price-block { text-align: left; }
+
+.cmodal-price {
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-primary);
+}
+
+.cmodal-change {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.cmodal-change.positive { color: var(--color-positive); }
+.cmodal-change.negative { color: var(--color-negative); }
+
+/* ---- Chart ---- */
+.cmodal-chart-wrap {
+    padding: 20px 28px 0;
+}
+
+.cmodal-chart-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cmodal-chart {
+    width: 100%;
+    height: 110px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--hover-overlay);
+}
+
+.cmodal-chart svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---- Stats row ---- */
+.cmodal-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-color);
+    margin: 20px 28px 0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.cmodal-stat {
+    background: var(--bg-card);
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cmodal-stat-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cmodal-stat-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-primary);
+}
+
+/* ---- AI Prediction ---- */
+.cmodal-ai {
+    margin: 20px 28px 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.cmodal-ai-header {
+    background: var(--hover-overlay);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+}
+
+.cmodal-ai-body {
+    padding: 16px;
+}
+
+.cmodal-ai-loading {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.cmodal-ai-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.88rem;
+}
+.cmodal-ai-row:last-child { border-bottom: none; }
+
+.cmodal-ai-row-label { color: var(--text-secondary); }
+.cmodal-ai-row-value { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+.cmodal-ai-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+}
+.cmodal-ai-trend.up   { background: var(--bg-positive); color: var(--color-positive); }
+.cmodal-ai-trend.down { background: var(--bg-negative);  color: var(--color-negative); }
+.cmodal-ai-trend.neutral { background: var(--hover-overlay); color: var(--text-secondary); }
+
+.cmodal-ai-confidence {
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    margin-top: 12px;
+    overflow: hidden;
+}
+
+.cmodal-ai-confidence-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-primary);
+    transition: width 0.6s ease;
+}
+
+.cmodal-ai-error {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 16px;
+}
+
+/* Make price cards clickable */
+.price-item {
+    cursor: pointer;
+}
+.price-item:hover {
+    border-color: var(--border-color-elevated);
+}
+
+@media (max-width: 480px) {
+    .cmodal-stats { grid-template-columns: repeat(2, 1fr); }
+    .cmodal-header { padding: 24px 20px 0; }
+    .cmodal-chart-wrap { padding: 16px 20px 0; }
+    .cmodal-stats { margin: 16px 20px 0; }
+    .cmodal-ai { margin: 16px 20px 20px; }
+}

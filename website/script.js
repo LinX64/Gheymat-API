@@ -74,6 +74,22 @@ const translations = {
             subtitle: 'Real-time exchange rates for all available currencies',
             backButton: 'Back to Home'
         },
+        currencyModal: {
+            gateTitle: 'Premium Charts & AI Analysis',
+            gateDesc: 'Upgrade to Premium to unlock full price charts, historical data, and live AI predictions for every currency.',
+            gateBtn: 'Upgrade to Premium',
+            chartLabel: '7-Day Price History',
+            aiTitle: 'AI Prediction · 7 Days',
+            aiLoading: 'Running AI model…',
+            aiError: 'Prediction unavailable',
+            predicted: 'Predicted Price',
+            confidence: 'Confidence',
+            trend: 'Trend',
+            buy: 'Buy',
+            sell: 'Sell',
+            high: 'High',
+            low: 'Low'
+        },
         footer: {
             copyright: '© 2025 Gheymat. All rights reserved.'
         },
@@ -194,6 +210,22 @@ const translations = {
             title: 'همه قیمت‌های ارز',
             subtitle: 'نرخ ارز به‌روز برای همه ارزهای موجود',
             backButton: 'بازگشت به خانه'
+        },
+        currencyModal: {
+            gateTitle: 'نمودار و تحلیل هوش مصنوعی',
+            gateDesc: 'برای دسترسی به نمودار کامل، داده‌های تاریخی و پیش‌بینی زنده هوش مصنوعی برای هر ارز، به پریمیوم ارتقا دهید.',
+            gateBtn: 'ارتقا به پریمیوم',
+            chartLabel: 'تاریخچه ۷ روز گذشته',
+            aiTitle: 'پیش‌بینی هوش مصنوعی · ۷ روز',
+            aiLoading: 'در حال اجرای مدل هوش مصنوعی…',
+            aiError: 'پیش‌بینی در دسترس نیست',
+            predicted: 'قیمت پیش‌بینی‌شده',
+            confidence: 'اطمینان',
+            trend: 'روند',
+            buy: 'خرید',
+            sell: 'فروش',
+            high: 'بالا',
+            low: 'پایین'
         },
         footer: {
             copyright: '© ۲۰۲۵ قیمت. تمامی حقوق محفوظ است.'
@@ -755,6 +787,7 @@ async function updatePrices() {
 
     // Fetch fresh data from API (no cache)
     const data = await fetchLatestPrices();
+    if (Array.isArray(data)) _lastPrices = data;
 
     // Remove loading state
     if (liveIndicator) {
@@ -793,6 +826,7 @@ async function updatePrices() {
 
     if (html) {
         pricesGrid.innerHTML = html;
+        initCardClicks();
     } else {
         console.error('No price cards generated');
     }
@@ -1134,6 +1168,240 @@ async function loadPredictions() {
         grid.innerHTML = `<p class="predictions-error">${t.error}</p>`;
     }
 }
+
+// ==========================================
+// Currency Detail Modal
+// ==========================================
+
+// Cache for history data to avoid refetching per session
+const _historyCache = {};
+
+function _drawSparkChart(points, isUp) {
+    if (!points || points.length < 2) return '';
+    const W = 460, H = 110;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const pad = 10;
+    const xs = points.map((_, i) => pad + (i / (points.length - 1)) * (W - pad * 2));
+    const ys = points.map(p => H - pad - ((p - min) / range) * (H - pad * 2));
+    const line = xs.map((x, i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+    const area = `${line} L${xs[xs.length - 1].toFixed(1)},${H} L${xs[0].toFixed(1)},${H} Z`;
+    const color = isUp ? '#10B981' : '#EF4444';
+    const gid = `cg${Date.now()}`;
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" width="100%" height="100%">
+        <defs>
+            <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        <path d="${area}" fill="url(#${gid})"/>
+        <path d="${line}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`;
+}
+
+function _renderCurrencyGate(currency) {
+    const t = translations[currentLang].currencyModal;
+    const name = translations[currentLang].currencies[currency.ab.toLowerCase()] || currency.en;
+    return `
+        <div class="cmodal-gate">
+            <div class="cmodal-gate-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+            </div>
+            <div style="font-size:2rem">${currency.av || ''}</div>
+            <div class="cmodal-code" id="cmodalTitle">${currency.ab.toUpperCase()} — ${name}</div>
+            <div class="cmodal-gate-title">${t.gateTitle}</div>
+            <p class="cmodal-gate-desc">${t.gateDesc}</p>
+            <button class="cmodal-gate-btn" id="cmodalUpgradeBtn">${t.gateBtn}</button>
+        </div>`;
+}
+
+function _renderCurrencyContent(currency, historyPoints, t) {
+    const latestPs = currency.ps?.[currency.ps.length - 1] || {};
+    const buy = latestPs.bp || 0;
+    const sell = latestPs.sp || 0;
+    const price = sell || buy;
+    const name = translations[currentLang].currencies[currency.ab.toLowerCase()] || currency.en;
+
+    const allPrices = historyPoints.map(p => p.sp || p.bp || 0).filter(Boolean);
+    const high = allPrices.length ? Math.max(...allPrices) : 0;
+    const low  = allPrices.length ? Math.min(...allPrices) : 0;
+    const oldest = allPrices[0] || price;
+    const pctChange = oldest ? (((price - oldest) / oldest) * 100).toFixed(2) : '0.00';
+    const isUp = parseFloat(pctChange) >= 0;
+    const chartPts = [...allPrices].reverse();
+
+    return `
+        <div class="cmodal-header">
+            <div class="cmodal-flag" aria-hidden="true">${currency.av || ''}</div>
+            <div class="cmodal-title-block">
+                <div class="cmodal-code" id="cmodalTitle">${currency.ab.toUpperCase()}</div>
+                <div class="cmodal-name">${name}</div>
+            </div>
+            <div class="cmodal-price-block">
+                <div class="cmodal-price">${formatPrice(price)}</div>
+                <div class="cmodal-change ${isUp ? 'positive' : 'negative'}">${isUp ? '+' : ''}${pctChange}%</div>
+            </div>
+        </div>
+        <div class="cmodal-chart-wrap">
+            <div class="cmodal-chart-label">${t.chartLabel}</div>
+            <div class="cmodal-chart">${_drawSparkChart(chartPts, isUp)}</div>
+        </div>
+        <div class="cmodal-stats">
+            <div class="cmodal-stat">
+                <span class="cmodal-stat-label">${t.buy}</span>
+                <span class="cmodal-stat-value">${formatPrice(buy)}</span>
+            </div>
+            <div class="cmodal-stat">
+                <span class="cmodal-stat-label">${t.sell}</span>
+                <span class="cmodal-stat-value">${formatPrice(sell)}</span>
+            </div>
+            <div class="cmodal-stat">
+                <span class="cmodal-stat-label">${t.high}</span>
+                <span class="cmodal-stat-value">${formatPrice(high)}</span>
+            </div>
+            <div class="cmodal-stat">
+                <span class="cmodal-stat-label">${t.low}</span>
+                <span class="cmodal-stat-value">${formatPrice(low)}</span>
+            </div>
+        </div>
+        <div class="cmodal-ai">
+            <div class="cmodal-ai-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                ${t.aiTitle}
+            </div>
+            <div class="cmodal-ai-body" id="cmodalAiBody">
+                <div class="cmodal-ai-loading">${t.aiLoading}</div>
+            </div>
+        </div>`;
+}
+
+function _renderAiResult(pred, currentPrice, t) {
+    const predictedPrice = pred.price || 0;
+    const pct = currentPrice > 0 ? (((predictedPrice - currentPrice) / currentPrice) * 100).toFixed(1) : '0.0';
+    const isUp = parseFloat(pct) > 0;
+    const isDown = parseFloat(pct) < 0;
+    const confidence = pred.confidence ? Math.round(pred.confidence * 100) : 0;
+    const trend = pred.trend || 'neutral';
+    const tLabel = translations[currentLang].predictions;
+    const trendLabel = trend === 'up' ? tLabel.up : trend === 'down' ? tLabel.down : tLabel.neutral;
+
+    return `
+        <div class="cmodal-ai-row">
+            <span class="cmodal-ai-row-label">${t.predicted}</span>
+            <span class="cmodal-ai-row-value ${isUp ? 'positive' : isDown ? 'negative' : ''}">${formatPrice(predictedPrice)}</span>
+        </div>
+        <div class="cmodal-ai-row">
+            <span class="cmodal-ai-row-label">${t.trend}</span>
+            <span class="cmodal-ai-trend ${trend}">${trendLabel}</span>
+        </div>
+        <div class="cmodal-ai-row">
+            <span class="cmodal-ai-row-label">${t.confidence}</span>
+            <span class="cmodal-ai-row-value">${confidence}%</span>
+        </div>
+        <div class="cmodal-ai-confidence">
+            <div class="cmodal-ai-confidence-bar" style="width:${confidence}%"></div>
+        </div>`;
+}
+
+async function openCurrencyModal(currencyData) {
+    const modal = document.getElementById('currencyModal');
+    const content = document.getElementById('currencyModalContent');
+    if (!modal || !content) return;
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    const t = translations[currentLang].currencyModal;
+
+    if (!auth.isPremium()) {
+        content.innerHTML = _renderCurrencyGate(currencyData);
+        document.getElementById('cmodalUpgradeBtn')?.addEventListener('click', () => {
+            closeCurrencyModal();
+            if (auth.isLoggedIn()) openAuthModal('upgrade');
+            else openAuthModal('register');
+        });
+        return;
+    }
+
+    // Premium: show skeleton, then load data
+    content.innerHTML = '<div style="height:320px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)">Loading…</div>';
+
+    const code = currencyData.ab.toLowerCase();
+
+    // Fetch history (cached per session)
+    let historyPoints = [];
+    try {
+        if (!_historyCache['1w']) {
+            const res = await fetch(`${_isGitHubPages ? 'https://linx64.github.io/CurrencyCapPortal/api' : '/api'}/history/1w`);
+            _historyCache['1w'] = await res.json();
+        }
+        const historyData = _historyCache['1w'];
+        const entry = historyData.find(c => c.ab?.toLowerCase() === code);
+        historyPoints = entry?.ps || [];
+    } catch (_) { /* show chart empty */ }
+
+    content.innerHTML = _renderCurrencyContent(currencyData, historyPoints, t);
+
+    // Fetch AI prediction async — update AI block when ready
+    const aiBody = document.getElementById('cmodalAiBody');
+    try {
+        const res = await authFetch('/api/v1/predict', {
+            method: 'POST',
+            body: JSON.stringify({ currencyCode: code, daysAhead: 7, useML: true })
+        });
+        const data = await res.json();
+        if (res.ok && data.predictions?.[0] && aiBody) {
+            const currentPrice = data.currentPrice?.sell || data.currentPrice?.buy || 0;
+            aiBody.innerHTML = _renderAiResult(data.predictions[0], currentPrice, t);
+        } else if (aiBody) {
+            aiBody.innerHTML = `<div class="cmodal-ai-error">${t.aiError}</div>`;
+        }
+    } catch (_) {
+        if (aiBody) aiBody.innerHTML = `<div class="cmodal-ai-error">${t.aiError}</div>`;
+    }
+}
+
+function closeCurrencyModal() {
+    const modal = document.getElementById('currencyModal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Wire up modal close
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('currencyModalClose')?.addEventListener('click', closeCurrencyModal);
+    document.getElementById('currencyModal')?.addEventListener('click', e => {
+        if (e.target.id === 'currencyModal') closeCurrencyModal();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeCurrencyModal();
+    });
+});
+
+// Wire up price card clicks via event delegation (re-runs after each price update)
+function initCardClicks() {
+    const grid = document.querySelector('.prices-grid');
+    if (!grid || grid._cardClickBound) return;
+    grid._cardClickBound = true;
+    grid.addEventListener('click', e => {
+        const card = e.target.closest('.price-item');
+        if (!card) return;
+        const code = card.dataset.currency?.toLowerCase();
+        // Find currency data from the last fetched prices
+        const currency = _lastPrices?.find(c => c.ab?.toLowerCase() === code);
+        if (currency) openCurrencyModal(currency);
+    });
+}
+
+// Store last fetched prices so card clicks can reference them
+let _lastPrices = null;
 
 console.log('%c🚀 Gheymat - AI Currency Predictions', 'color: #5C3DF5; font-size: 16px; font-weight: bold;');
 console.log('%cBuilt with modern web technologies', 'color: #7B62F5; font-size: 12px;');
