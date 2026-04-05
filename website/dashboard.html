@@ -28,6 +28,10 @@
             <span id="tabPredictLabel">AI Predictions</span>
             <span class="tab-badge" id="premiumBadge">Premium</span>
         </button>
+        <button class="dash-tab" id="tabAlerts" role="tab" aria-selected="false" aria-controls="panelAlerts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="tabAlertsLabel">Price Alerts</span>
+        </button>
         <button class="dash-tab" id="tabAccount" role="tab" aria-selected="false" aria-controls="panelAccount">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span id="tabAccountLabel">Account</span>
@@ -170,6 +174,58 @@
                     </button>
                 </div>
                 <div class="predictions-grid" id="bulkGrid" role="list"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== ALERTS PANEL ===== -->
+    <section class="dash-panel" id="panelAlerts" role="tabpanel" aria-labelledby="tabAlerts" hidden>
+
+        <!-- Gate: not logged in -->
+        <div class="dash-gate" id="alertsGate" style="display:none">
+            <div class="gate-icon">🔔</div>
+            <h2 class="gate-title" id="alertsLoginTitle">Sign in to use Price Alerts</h2>
+            <p class="gate-desc">Set alerts when currencies hit your target price.</p>
+            <button class="btn-premium" id="alertsLoginBtn">Sign In / Register</button>
+        </div>
+
+        <!-- Logged-in content -->
+        <div id="alertsContent" style="display:none">
+            <div class="dash-panel-header">
+                <div>
+                    <h1 class="dash-panel-title" id="alertsTitle">Price Alerts</h1>
+                    <p class="dash-panel-subtitle" id="alertsSub">Get notified when a currency hits your target</p>
+                </div>
+                <span class="alerts-limit-note" id="alertsLimitNote"></span>
+            </div>
+
+            <!-- Existing alerts -->
+            <div id="alertsList" class="alerts-list"></div>
+
+            <!-- Create alert form -->
+            <div class="alerts-form-wrap">
+                <h3 class="alerts-form-title">Add Alert</h3>
+                <form class="alerts-form" id="alertForm" novalidate>
+                    <div class="alert-form-row">
+                        <div class="predict-field">
+                            <label class="predict-label" for="alertCurrency">Currency code (e.g. usd)</label>
+                            <input class="form-input" id="alertCurrency" type="text" maxlength="5" placeholder="usd" autocomplete="off" required>
+                        </div>
+                        <div class="predict-field">
+                            <label class="predict-label" for="alertPrice">Target price (Toman)</label>
+                            <input class="form-input" id="alertPrice" type="number" min="1" placeholder="e.g. 160000" required>
+                        </div>
+                        <div class="predict-field">
+                            <label class="predict-label" for="alertDirection">Alert when price is</label>
+                            <select class="predict-select" id="alertDirection">
+                                <option value="ABOVE">↑ Above target</option>
+                                <option value="BELOW">↓ Below target</option>
+                            </select>
+                        </div>
+                        <button class="predict-run-btn" type="submit" id="alertSubmitBtn">Set Alert</button>
+                    </div>
+                    <div class="form-error" id="alertError" role="alert"></div>
+                </form>
             </div>
         </div>
     </section>

@@ -2,8 +2,8 @@
 // dashboard.js — Gheymat Dashboard
 // ============================================================
 
-const API_URL        = 'https://linx64.github.io/CurrencyCapPortal/latest.json';
-const AUTH_API_URL   = window.AUTH_API_URL || 'https://gheymat-api-production.up.railway.app';
+const API_URL        = '/api/latest';
+const AUTH_API_URL   = window.AUTH_API_URL || '';
 const BULK_CURRENCIES = ['usd', 'eur', 'gbp', 'try', 'aed', 'cny'];
 
 // ---- i18n (minimal, bilingual) ----
@@ -40,7 +40,19 @@ const T = {
         justNow: 'just now', minutesAgo: 'min ago', hoursAgo: 'h ago',
         predError: 'Prediction failed. Please try again.',
         noData: 'No data available.',
-        dayLabels: { 7: '7 days', 14: '14 days', 30: '30 days' }
+        dayLabels: { 7: '7 days', 14: '14 days', 30: '30 days' },
+        tabAlerts: 'Price Alerts',
+        alertsTitle: 'Price Alerts',
+        alertsSub: 'Get notified when a currency hits your target',
+        alertsLoginTitle: 'Sign in to use Price Alerts',
+        alertsGateBtn: 'Sign In / Register',
+        alertsLimitNote: '',
+        alertCurrencyLabel: 'Currency code (e.g. usd)',
+        alertPriceLabel: 'Target price (Toman)',
+        alertDirectionLabel: 'Alert when price is',
+        alertAbove: 'Above target',
+        alertBelow: 'Below target',
+        alertSetBtn: 'Set Alert'
     },
     fa: {
         tabRates: 'نرخ‌ها', tabPredict: 'پیش‌بینی هوش مصنوعی', tabAccount: 'حساب',
@@ -74,7 +86,19 @@ const T = {
         justNow: 'همین الان', minutesAgo: 'دقیقه پیش', hoursAgo: 'ساعت پیش',
         predError: 'پیش‌بینی ناموفق بود. دوباره تلاش کنید.',
         noData: 'اطلاعاتی موجود نیست.',
-        dayLabels: { 7: '۷ روز', 14: '۱۴ روز', 30: '۳۰ روز' }
+        dayLabels: { 7: '۷ روز', 14: '۱۴ روز', 30: '۳۰ روز' },
+        tabAlerts: 'هشدار قیمت',
+        alertsTitle: 'هشدارهای قیمت',
+        alertsSub: 'هنگامی که ارز به قیمت هدف شما رسید مطلع شوید',
+        alertsLoginTitle: 'برای استفاده از هشدارها وارد شوید',
+        alertsGateBtn: 'ورود / ثبت‌نام',
+        alertsLimitNote: '',
+        alertCurrencyLabel: 'کد ارز (مثل usd)',
+        alertPriceLabel: 'قیمت هدف (تومان)',
+        alertDirectionLabel: 'هشدار وقتی قیمت',
+        alertAbove: 'بالاتر از هدف',
+        alertBelow: 'پایین‌تر از هدف',
+        alertSetBtn: 'تنظیم هشدار'
     }
 };
 
@@ -98,7 +122,7 @@ const auth = {
         localStorage.removeItem('gheymat_refresh');
         localStorage.removeItem('gheymat_user');
     },
-    isPremium()  { return this.user?.tier === 'premium'; },
+    isPremium()  { return ['premium','admin'].includes(this.user?.tier); },
     isLoggedIn() { return !!this.token && !!this.user; }
 };
 
@@ -144,6 +168,7 @@ function updateAllText() {
     // tabs
     setText('tabRatesLabel', tr.tabRates);
     setText('tabPredictLabel', tr.tabPredict);
+    setText('tabAlertsLabel', tr.tabAlerts);
     setText('tabAccountLabel', tr.tabAccount);
     // rates panel
     setText('ratesPanelTitle', tr.ratesTitle);
@@ -193,7 +218,7 @@ function setAttr(id, attr, val) { const el = $(id); if (el && val !== undefined)
 // ---- Tab switching ----
 function switchTab(name) {
     activeTab = name;
-    ['rates', 'predict', 'account'].forEach(n => {
+    ['rates', 'predict', 'alerts', 'account'].forEach(n => {
         const tab   = $(`tab${capitalize(n)}`);
         const panel = $(`panel${capitalize(n)}`);
         const active = n === name;
@@ -202,6 +227,7 @@ function switchTab(name) {
     });
     if (name === 'predict') renderPredictGate();
     if (name === 'account') renderAccountPanel();
+    if (name === 'alerts')  renderAlertTab();
 }
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -533,6 +559,126 @@ function switchAuthTab(tab) {
     }
 }
 
+// ---- Upgrade ----
+async function doUpgrade() {
+    const btn = $('upgradeCtaBtn');
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        const res  = await authFetch('/api/auth/upgrade', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upgrade failed');
+        // Update stored user with new tier
+        const stored = auth.user || {};
+        stored.tier = 'premium';
+        localStorage.setItem('gheymat_user', JSON.stringify(data.user || stored));
+        updateNavAuth();
+        renderAccountPanel();
+        renderPredictGate();
+    } catch (err) {
+        alert(err.message);
+    } finally {
+        btn.disabled = false; btn.textContent = orig;
+    }
+}
+
+// ---- Price Alerts ----
+let alertsData = [];
+
+function renderAlertTab() {
+    const gate    = $('alertsGate');
+    const content = $('alertsContent');
+    if (!auth.isLoggedIn()) { show(gate); hide(content); return; }
+    hide(gate); show(content);
+    loadAlerts();
+}
+
+async function loadAlerts() {
+    const list = $('alertsList');
+    if (!list) return;
+    list.innerHTML = '<div class="pred-loading">Loading alerts…</div>';
+    try {
+        const res  = await authFetch('/api/alerts');
+        const data = await res.json();
+        alertsData = data.alerts || [];
+        const limit = data.limit;
+        const tier  = data.tier || 'free';
+
+        const limitEl = $('alertsLimitNote');
+        if (limitEl) {
+            limitEl.textContent = tier === 'free'
+                ? `Free tier: ${alertsData.filter(a=>a.active).length}/${limit} active alerts`
+                : 'Premium: unlimited alerts';
+        }
+
+        if (!alertsData.length) {
+            list.innerHTML = '<p class="pred-loading">No alerts set. Add one below.</p>';
+            return;
+        }
+        list.innerHTML = alertsData.map(a => `
+            <div class="alert-row ${a.active ? '' : 'alert-triggered'}">
+                <div class="alert-info">
+                    <span class="alert-currency">${a.currency.toUpperCase()}</span>
+                    <span class="alert-dir ${a.direction === 'ABOVE' ? 'positive' : 'negative'}">
+                        ${a.direction === 'ABOVE' ? '↑ Above' : '↓ Below'}
+                    </span>
+                    <span class="alert-price">${fmt(a.targetPrice)}</span>
+                </div>
+                <div class="alert-status">
+                    ${a.active
+                        ? `<span class="alert-badge active">Active</span>`
+                        : `<span class="alert-badge triggered">Triggered ${a.triggeredAt ? new Date(a.triggeredAt).toLocaleDateString() : ''}</span>`
+                    }
+                    <button class="alert-del-btn" data-id="${a.id}" title="Delete">✕</button>
+                </div>
+            </div>`).join('');
+
+        list.querySelectorAll('.alert-del-btn').forEach(btn =>
+            btn.addEventListener('click', () => deleteAlert(btn.dataset.id))
+        );
+    } catch {
+        if (list) list.innerHTML = '<div class="pred-error">Failed to load alerts.</div>';
+    }
+}
+
+async function createAlert(e) {
+    e.preventDefault();
+    const currency    = ($('alertCurrency')?.value || '').trim().toLowerCase();
+    const targetPrice = parseFloat($('alertPrice')?.value || '0');
+    const direction   = $('alertDirection')?.value || 'ABOVE';
+    const errEl = $('alertError');
+    const btn   = $('alertSubmitBtn');
+
+    if (!currency) { if (errEl) errEl.textContent = 'Enter a currency code.'; return; }
+    if (!targetPrice || targetPrice <= 0) { if (errEl) errEl.textContent = 'Enter a valid price.'; return; }
+    if (errEl) errEl.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+    try {
+        const res  = await authFetch('/api/alerts', {
+            method: 'POST',
+            body: JSON.stringify({ currency, targetPrice, direction })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create alert');
+        $('alertCurrency').value = '';
+        $('alertPrice').value    = '';
+        await loadAlerts();
+    } catch (err) {
+        if (errEl) errEl.textContent = err.message;
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Set Alert'; }
+    }
+}
+
+async function deleteAlert(id) {
+    try {
+        const res = await authFetch(`/api/alerts/${id}`, { method: 'DELETE' });
+        if (res.ok) await loadAlerts();
+    } catch {}
+}
+
 // ---- DOM helpers ----
 function show(el) { if (el) el.style.display = ''; }
 function hide(el) { if (el) el.style.display = 'none'; }
@@ -551,6 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tab buttons
     $('tabRates')?.addEventListener('click',   () => switchTab('rates'));
     $('tabPredict')?.addEventListener('click', () => switchTab('predict'));
+    $('tabAlerts')?.addEventListener('click',  () => switchTab('alerts'));
     $('tabAccount')?.addEventListener('click', () => switchTab('account'));
 
     // Theme
@@ -567,7 +714,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('gateLoginBtn')?.addEventListener('click',    openAuthModal);
     $('gateUpgradeBtn')?.addEventListener('click',  () => switchTab('account'));
     $('accountLoginBtn')?.addEventListener('click', openAuthModal);
-    $('upgradeCtaBtn')?.addEventListener('click',   () => alert('Premium upgrade coming soon!'));
+    $('upgradeCtaBtn')?.addEventListener('click', doUpgrade);
     $('goPredictLink')?.addEventListener('click',   (e) => { e.preventDefault(); switchTab('predict'); });
 
     // Auth modal
@@ -616,6 +763,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Predict form
     $('predictForm')?.addEventListener('submit', runPrediction);
     $('bulkRunBtn')?.addEventListener('click', loadBulkPredictions);
+
+    // Alert form
+    $('alertForm')?.addEventListener('submit', createAlert);
+    $('alertsLoginBtn')?.addEventListener('click', openAuthModal);
 
     // Rates search
     $('ratesSearch')?.addEventListener('input', () => renderRates(allRatesData));

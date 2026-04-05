@@ -2778,3 +2778,133 @@ a:focus-visible {
     color: var(--text-secondary);
     margin-bottom: 20px;
 }
+
+/* ============================================================
+   PRICE ALERTS
+   ============================================================ */
+
+.alerts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 28px;
+}
+
+.alert-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-radius: 10px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    transition: border-color 0.2s;
+}
+
+.alert-row:hover { border-color: var(--color-accent); }
+
+.alert-row.alert-triggered {
+    opacity: 0.55;
+}
+
+.alert-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.alert-currency {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-primary);
+    min-width: 40px;
+}
+
+.alert-dir {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.alert-price {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.alert-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.alert-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.alert-badge.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--color-positive);
+}
+
+.alert-badge.triggered {
+    background: var(--hover-overlay);
+    color: var(--text-muted);
+}
+
+.alert-del-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.alert-del-btn:hover {
+    color: var(--color-negative);
+    background: rgba(239,68,68,0.1);
+}
+
+.alerts-form-wrap {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 22px 24px;
+    margin-top: 8px;
+}
+
+.alerts-form-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 16px;
+}
+
+.alert-form-row {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.alert-form-row .predict-field {
+    flex: 1;
+    min-width: 130px;
+}
+
+.alerts-limit-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--hover-overlay);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 5px 12px;
+}

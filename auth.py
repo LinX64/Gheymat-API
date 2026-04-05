@@ -54,6 +54,68 @@ def init_db():
             last_login  TEXT
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS price_alerts (
+            id          TEXT PRIMARY KEY,
+            user_id     TEXT NOT NULL,
+            currency    TEXT NOT NULL,
+            target_price REAL NOT NULL,
+            direction   TEXT NOT NULL,
+            active      INTEGER NOT NULL DEFAULT 1,
+            created_at  TEXT NOT NULL,
+            triggered_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    _seed_startup_users()
+
+
+def _seed_startup_users():
+    """
+    Seed test users from environment variables on every startup.
+    Users are upserted so they survive container restarts.
+
+    Env vars (all optional):
+      SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD / SEED_ADMIN_NAME
+      SEED_PREMIUM_EMAIL / SEED_PREMIUM_PASSWORD / SEED_PREMIUM_NAME
+    """
+    seeds = []
+
+    admin_email = os.environ.get('SEED_ADMIN_EMAIL')
+    admin_pass  = os.environ.get('SEED_ADMIN_PASSWORD')
+    admin_name  = os.environ.get('SEED_ADMIN_NAME', 'Admin')
+    if admin_email and admin_pass:
+        seeds.append((admin_email, admin_pass, admin_name, 'admin'))
+
+    prem_email = os.environ.get('SEED_PREMIUM_EMAIL')
+    prem_pass  = os.environ.get('SEED_PREMIUM_PASSWORD')
+    prem_name  = os.environ.get('SEED_PREMIUM_NAME', 'Premium Tester')
+    if prem_email and prem_pass:
+        seeds.append((prem_email, prem_pass, prem_name, 'premium'))
+
+    if not seeds:
+        return
+
+    conn = _get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    for email, password, name, tier in seeds:
+        existing = conn.execute('SELECT id, password_hash FROM users WHERE email = ?', (email,)).fetchone()
+        if existing:
+            # Update tier and refresh password hash so env-var changes take effect
+            conn.execute(
+                'UPDATE users SET tier = ?, password_hash = ? WHERE email = ?',
+                (tier, _make_password(password), email)
+            )
+            print(f"✓ Seeded user refreshed: {email} ({tier})")
+        else:
+            user_id = str(uuid.uuid4())
+            conn.execute(
+                'INSERT INTO users (id, email, name, password_hash, tier, created_at) VALUES (?,?,?,?,?,?)',
+                (user_id, email, name, _make_password(password), tier, now)
+            )
+            print(f"✓ Seeded user created: {email} ({tier})")
     conn.commit()
     conn.close()
 
@@ -369,3 +431,144 @@ def handle_refresh():
         'token_type': 'Bearer',
         'user': _user_public(dict(row))
     }), 200
+
+
+# ---------------------------------------------------------------------------
+# Upgrade handler (demo — no payment; in prod gate behind payment webhook)
+# ---------------------------------------------------------------------------
+
+def handle_upgrade():
+    """POST /api/auth/upgrade — upgrade current user to premium (demo mode)."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'AUTH_REQUIRED'}), 401
+    if user.get('tier') in ('premium', 'admin'):
+        return jsonify({'ok': True, 'message': 'Already premium', 'user': _user_public(user)}), 200
+    conn = _get_db()
+    conn.execute('UPDATE users SET tier = ? WHERE id = ?', ('premium', user['id']))
+    conn.commit()
+    row = conn.execute('SELECT * FROM users WHERE id = ?', (user['id'],)).fetchone()
+    conn.close()
+    return jsonify({'ok': True, 'message': 'Upgraded to premium', 'user': _user_public(dict(row))}), 200
+
+
+# ---------------------------------------------------------------------------
+# Price alerts handlers
+# ---------------------------------------------------------------------------
+
+FREE_ALERT_LIMIT = 2
+
+
+def handle_create_alert():
+    """POST /api/alerts — create a price alert."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'AUTH_REQUIRED'}), 401
+
+    data = request.get_json() or {}
+    currency = (data.get('currency') or '').strip().lower()
+    target_price = data.get('targetPrice')
+    direction = (data.get('direction') or '').upper()
+
+    if not currency:
+        return jsonify({'error': 'currency is required'}), 400
+    if target_price is None or not isinstance(target_price, (int, float)) or target_price <= 0:
+        return jsonify({'error': 'targetPrice must be a positive number'}), 400
+    if direction not in ('ABOVE', 'BELOW'):
+        return jsonify({'error': "direction must be 'ABOVE' or 'BELOW'"}), 400
+
+    conn = _get_db()
+    # Free tier: max 2 active alerts
+    if user.get('tier') == 'free':
+        count = conn.execute(
+            "SELECT COUNT(*) FROM price_alerts WHERE user_id = ? AND active = 1", (user['id'],)
+        ).fetchone()[0]
+        if count >= FREE_ALERT_LIMIT:
+            conn.close()
+            return jsonify({
+                'error': f'Free tier is limited to {FREE_ALERT_LIMIT} active alerts. Upgrade to Premium for unlimited alerts.',
+                'code': 'ALERT_LIMIT_REACHED'
+            }), 403
+
+    alert_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        'INSERT INTO price_alerts (id, user_id, currency, target_price, direction, active, created_at) VALUES (?,?,?,?,?,1,?)',
+        (alert_id, user['id'], currency, float(target_price), direction, now)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({
+        'ok': True,
+        'alert': {'id': alert_id, 'currency': currency, 'targetPrice': target_price,
+                  'direction': direction, 'active': True, 'createdAt': now}
+    }), 201
+
+
+def handle_list_alerts():
+    """GET /api/alerts — list current user's alerts."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'AUTH_REQUIRED'}), 401
+    conn = _get_db()
+    rows = conn.execute(
+        'SELECT * FROM price_alerts WHERE user_id = ? ORDER BY created_at DESC', (user['id'],)
+    ).fetchall()
+    conn.close()
+    alerts = [{
+        'id': r['id'], 'currency': r['currency'], 'targetPrice': r['target_price'],
+        'direction': r['direction'], 'active': bool(r['active']),
+        'createdAt': r['created_at'], 'triggeredAt': r['triggered_at']
+    } for r in rows]
+    tier = user.get('tier', 'free')
+    limit = None if tier in ('premium', 'admin') else FREE_ALERT_LIMIT
+    return jsonify({'alerts': alerts, 'tier': tier, 'limit': limit}), 200
+
+
+def handle_delete_alert(alert_id: str):
+    """DELETE /api/alerts/<id> — delete an alert belonging to current user."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Authentication required', 'code': 'AUTH_REQUIRED'}), 401
+    conn = _get_db()
+    result = conn.execute(
+        'DELETE FROM price_alerts WHERE id = ? AND user_id = ?', (alert_id, user['id'])
+    )
+    conn.commit()
+    conn.close()
+    if result.rowcount == 0:
+        return jsonify({'error': 'Alert not found'}), 404
+    return jsonify({'ok': True}), 200
+
+
+def check_and_trigger_alerts(latest_prices: dict):
+    """
+    Called periodically with current prices dict {currency_code: buy_price}.
+    Marks matching alerts as triggered.
+    Returns list of triggered alert dicts for optional notification.
+    """
+    if not latest_prices:
+        return []
+    conn = _get_db()
+    active = conn.execute(
+        "SELECT * FROM price_alerts WHERE active = 1"
+    ).fetchall()
+    triggered = []
+    now = datetime.now(timezone.utc).isoformat()
+    for alert in active:
+        currency = alert['currency']
+        price = latest_prices.get(currency)
+        if price is None:
+            continue
+        hit = (alert['direction'] == 'ABOVE' and price >= alert['target_price']) or \
+              (alert['direction'] == 'BELOW' and price <= alert['target_price'])
+        if hit:
+            conn.execute(
+                'UPDATE price_alerts SET active = 0, triggered_at = ? WHERE id = ?',
+                (now, alert['id'])
+            )
+            triggered.append(dict(alert))
+    if triggered:
+        conn.commit()
+    conn.close()
+    return triggered

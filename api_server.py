@@ -89,13 +89,69 @@ except ImportError:
 from auth import (
     init_db, require_premium, require_admin,
     handle_register, handle_login, handle_me, handle_refresh,
+    handle_upgrade,
+    handle_create_alert, handle_list_alerts, handle_delete_alert,
+    check_and_trigger_alerts,
     handle_admin_stats, handle_admin_list_users,
     handle_admin_update_user, handle_admin_delete_user,
     get_current_user
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='website', static_url_path='')
 CORS(app)
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for the predict endpoint
+# ---------------------------------------------------------------------------
+import time as _time
+from collections import defaultdict as _defaultdict
+import threading as _threading
+
+_predict_calls: dict = _defaultdict(list)   # user_id -> [timestamps]
+_rate_lock = _threading.Lock()
+PREDICT_RATE_LIMIT = 10     # max requests
+PREDICT_RATE_WINDOW = 3600  # per hour
+
+
+def _is_rate_limited(user_id: str) -> bool:
+    now = _time.time()
+    with _rate_lock:
+        calls = _predict_calls[user_id]
+        # Drop calls outside the window
+        calls[:] = [t for t in calls if now - t < PREDICT_RATE_WINDOW]
+        if len(calls) >= PREDICT_RATE_LIMIT:
+            return True
+        calls.append(now)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Background alert checker — runs every 60 s
+# ---------------------------------------------------------------------------
+def _alert_checker_loop():
+    """Periodically check price alerts against latest prices."""
+    import json as _json
+    while True:
+        _time.sleep(60)
+        try:
+            with open('api/latest.json', 'r') as f:
+                raw = _json.load(f)
+            prices = {}
+            for c in raw:
+                code = c.get('ab', '').lower()
+                ps = c.get('ps', [])
+                if code and ps:
+                    prices[code] = ps[0].get('bp', 0)
+            triggered = check_and_trigger_alerts(prices)
+            if triggered:
+                print(f"[alerts] {len(triggered)} alert(s) triggered: "
+                      f"{[a['currency'] for a in triggered]}")
+        except Exception as _e:
+            pass  # file not ready yet
+
+
+_alert_thread = _threading.Thread(target=_alert_checker_loop, daemon=True)
+_alert_thread.start()
 
 # Initialize user database on startup
 try:
@@ -1742,8 +1798,15 @@ def get_aed_correlations():
 @app.route('/api/v1/predict', methods=['POST'])
 @require_premium
 def predict():
-    """Generate AI predictions (premium users only)"""
+    """Generate AI predictions (premium users only, 10 req/hour)"""
     try:
+        user = request.current_user
+        if _is_rate_limited(user['id']):
+            return jsonify({
+                'error': 'Rate limit exceeded. Maximum 10 predictions per hour.',
+                'code': 'RATE_LIMITED'
+            }), 429
+
         data = request.get_json()
 
         if not data:
@@ -1836,6 +1899,63 @@ def admin_update_user(user_id):
 def admin_delete_user(user_id):
     """Admin: delete user"""
     return handle_admin_delete_user(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Upgrade route
+# ---------------------------------------------------------------------------
+
+@app.route('/api/auth/upgrade', methods=['POST'])
+def auth_upgrade():
+    """Upgrade current user to premium (demo mode — no payment required)."""
+    return handle_upgrade()
+
+
+# ---------------------------------------------------------------------------
+# Price alert routes
+# ---------------------------------------------------------------------------
+
+@app.route('/api/alerts', methods=['POST'])
+def create_alert():
+    """Create a new price alert (free: 2 max, premium: unlimited)."""
+    return handle_create_alert()
+
+
+@app.route('/api/alerts', methods=['GET'])
+def list_alerts():
+    """List current user's price alerts."""
+    return handle_list_alerts()
+
+
+@app.route('/api/alerts/<alert_id>', methods=['DELETE'])
+def delete_alert(alert_id):
+    """Delete a price alert owned by current user."""
+    return handle_delete_alert(alert_id)
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend pages (catch-all for SPA-style navigation)
+# ---------------------------------------------------------------------------
+
+@app.route('/dashboard')
+@app.route('/dashboard.html')
+def serve_dashboard():
+    from flask import send_from_directory
+    return send_from_directory('website', 'dashboard.html')
+
+
+@app.route('/admin')
+@app.route('/admin.html')
+def serve_admin():
+    from flask import send_from_directory
+    return send_from_directory('website', 'admin.html')
+
+
+@app.route('/prices')
+@app.route('/prices.html')
+def serve_prices():
+    from flask import send_from_directory
+    return send_from_directory('website', 'prices.html')
 
 
 if __name__ == '__main__':
