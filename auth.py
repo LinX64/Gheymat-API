@@ -478,8 +478,8 @@ def handle_create_alert():
         return jsonify({'error': "direction must be 'ABOVE' or 'BELOW'"}), 400
 
     conn = _get_db()
-    # Free tier: max 2 active alerts
-    if user.get('tier') == 'free':
+    # Free tier: max 2 active alerts (premium and admin bypass the limit)
+    if user.get('tier') not in ('premium', 'admin'):
         count = conn.execute(
             "SELECT COUNT(*) FROM price_alerts WHERE user_id = ? AND active = 1", (user['id'],)
         ).fetchone()[0]
@@ -550,25 +550,27 @@ def check_and_trigger_alerts(latest_prices: dict):
     if not latest_prices:
         return []
     conn = _get_db()
-    active = conn.execute(
-        "SELECT * FROM price_alerts WHERE active = 1"
-    ).fetchall()
-    triggered = []
-    now = datetime.now(timezone.utc).isoformat()
-    for alert in active:
-        currency = alert['currency']
-        price = latest_prices.get(currency)
-        if price is None:
-            continue
-        hit = (alert['direction'] == 'ABOVE' and price >= alert['target_price']) or \
-              (alert['direction'] == 'BELOW' and price <= alert['target_price'])
-        if hit:
-            conn.execute(
-                'UPDATE price_alerts SET active = 0, triggered_at = ? WHERE id = ?',
-                (now, alert['id'])
-            )
-            triggered.append(dict(alert))
-    if triggered:
-        conn.commit()
-    conn.close()
-    return triggered
+    try:
+        active = conn.execute(
+            "SELECT * FROM price_alerts WHERE active = 1"
+        ).fetchall()
+        triggered = []
+        now = datetime.now(timezone.utc).isoformat()
+        for alert in active:
+            currency = alert['currency']
+            price = latest_prices.get(currency)
+            if price is None:
+                continue
+            hit = (alert['direction'] == 'ABOVE' and price >= alert['target_price']) or \
+                  (alert['direction'] == 'BELOW' and price <= alert['target_price'])
+            if hit:
+                conn.execute(
+                    'UPDATE price_alerts SET active = 0, triggered_at = ? WHERE id = ?',
+                    (now, alert['id'])
+                )
+                triggered.append(dict(alert))
+        if triggered:
+            conn.commit()
+        return triggered
+    finally:
+        conn.close()

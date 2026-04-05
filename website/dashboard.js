@@ -45,8 +45,6 @@ const T = {
         alertsTitle: 'Price Alerts',
         alertsSub: 'Get notified when a currency hits your target',
         alertsLoginTitle: 'Sign in to use Price Alerts',
-        alertsGateBtn: 'Sign In / Register',
-        alertsLimitNote: '',
         alertCurrencyLabel: 'Currency code (e.g. usd)',
         alertPriceLabel: 'Target price (Toman)',
         alertDirectionLabel: 'Alert when price is',
@@ -91,8 +89,6 @@ const T = {
         alertsTitle: 'هشدارهای قیمت',
         alertsSub: 'هنگامی که ارز به قیمت هدف شما رسید مطلع شوید',
         alertsLoginTitle: 'برای استفاده از هشدارها وارد شوید',
-        alertsGateBtn: 'ورود / ثبت‌نام',
-        alertsLimitNote: '',
         alertCurrencyLabel: 'کد ارز (مثل usd)',
         alertPriceLabel: 'قیمت هدف (تومان)',
         alertDirectionLabel: 'هشدار وقتی قیمت',
@@ -569,10 +565,7 @@ async function doUpgrade() {
         const res  = await authFetch('/api/auth/upgrade', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Upgrade failed');
-        // Update stored user with new tier
-        const stored = auth.user || {};
-        stored.tier = 'premium';
-        localStorage.setItem('gheymat_user', JSON.stringify(data.user || stored));
+        auth.save(data);
         updateNavAuth();
         renderAccountPanel();
         renderPredictGate();
@@ -584,8 +577,6 @@ async function doUpgrade() {
 }
 
 // ---- Price Alerts ----
-let alertsData = [];
-
 function renderAlertTab() {
     const gate    = $('alertsGate');
     const content = $('alertsContent');
@@ -601,7 +592,7 @@ async function loadAlerts() {
     try {
         const res  = await authFetch('/api/alerts');
         const data = await res.json();
-        alertsData = data.alerts || [];
+        const alertsData = data.alerts || [];
         const limit = data.limit;
         const tier  = data.tier || 'free';
 

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from flask_swagger_ui import get_swaggerui_blueprint
 from datetime import datetime, timedelta
@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Tuple
 import json
 import math
 import os
+import sys
 import numpy as np
 from collections import defaultdict
 import re
@@ -117,11 +118,12 @@ def _is_rate_limited(user_id: str) -> bool:
     now = _time.time()
     with _rate_lock:
         calls = _predict_calls[user_id]
-        # Drop calls outside the window
         calls[:] = [t for t in calls if now - t < PREDICT_RATE_WINDOW]
+        if not calls:
+            del _predict_calls[user_id]
         if len(calls) >= PREDICT_RATE_LIMIT:
             return True
-        calls.append(now)
+        _predict_calls[user_id].append(now)
         return False
 
 
@@ -130,24 +132,22 @@ def _is_rate_limited(user_id: str) -> bool:
 # ---------------------------------------------------------------------------
 def _alert_checker_loop():
     """Periodically check price alerts against latest prices."""
-    import json as _json
     while True:
         _time.sleep(60)
         try:
             with open('api/latest.json', 'r') as f:
-                raw = _json.load(f)
-            prices = {}
-            for c in raw:
-                code = c.get('ab', '').lower()
-                ps = c.get('ps', [])
-                if code and ps:
-                    prices[code] = ps[0].get('bp', 0)
+                raw = json.load(f)
+            prices = {
+                c['ab'].lower(): c['ps'][0].get('bp', 0)
+                for c in raw
+                if c.get('ab') and c.get('ps')
+            }
             triggered = check_and_trigger_alerts(prices)
             if triggered:
                 print(f"[alerts] {len(triggered)} alert(s) triggered: "
                       f"{[a['currency'] for a in triggered]}")
         except Exception as _e:
-            pass  # file not ready yet
+            print(f"[alerts] Error checking alerts: {_e}", file=sys.stderr)
 
 
 _alert_thread = _threading.Thread(target=_alert_checker_loop, daemon=True)
@@ -1940,21 +1940,18 @@ def delete_alert(alert_id):
 @app.route('/dashboard')
 @app.route('/dashboard.html')
 def serve_dashboard():
-    from flask import send_from_directory
     return send_from_directory('website', 'dashboard.html')
 
 
 @app.route('/admin')
 @app.route('/admin.html')
 def serve_admin():
-    from flask import send_from_directory
     return send_from_directory('website', 'admin.html')
 
 
 @app.route('/prices')
 @app.route('/prices.html')
 def serve_prices():
-    from flask import send_from_directory
     return send_from_directory('website', 'prices.html')
 
 
