@@ -16,7 +16,9 @@ const translations = {
             download: 'Download App',
             login: 'Sign In',
             register: 'Get Started',
-            logout: 'Sign Out'
+            logout: 'Sign Out',
+            tierPremium: '★ Premium',
+            tierFree: 'Free'
         },
         auth: {
             loginTab: 'Sign In',
@@ -62,7 +64,10 @@ const translations = {
             viewAll: 'View All Rates',
             buy: 'Buy',
             sell: 'Sell',
-            dashboard: 'Open Dashboard'
+            dashboard: 'Open Dashboard',
+            retry: 'Retry',
+            toman: 'Toman',
+            loadError: 'Failed to load prices. Please try again.'
         },
         pricesPage: {
             title: 'All Currency Prices',
@@ -132,7 +137,9 @@ const translations = {
             download: 'دانلود اپلیکیشن',
             login: 'ورود',
             register: 'ثبت‌نام',
-            logout: 'خروج'
+            logout: 'خروج',
+            tierPremium: '★ پریمیوم',
+            tierFree: 'رایگان'
         },
         auth: {
             loginTab: 'ورود',
@@ -178,7 +185,10 @@ const translations = {
             viewAll: 'همه نرخ‌ها',
             buy: 'خرید',
             sell: 'فروش',
-            dashboard: 'باز کردن داشبورد'
+            dashboard: 'باز کردن داشبورد',
+            retry: 'تلاش مجدد',
+            toman: 'تومان',
+            loadError: 'خطا در بارگذاری قیمت‌ها. لطفاً دوباره تلاش کنید.'
         },
         pricesPage: {
             title: 'همه قیمت‌های ارز',
@@ -283,8 +293,8 @@ function updateLanguage(lang) {
         langToggle.textContent = lang === 'en' ? 'فا' : 'EN';
     }
 
-    // Refresh data
-    if (typeof updatePredictions === 'function') updatePredictions();
+    // Refresh data and nav
+    if (typeof updateNavAuth === 'function') updateNavAuth();
     if (typeof updatePrices === 'function') updatePrices();
 }
 
@@ -525,8 +535,11 @@ class NeuralNetwork {
 // Currency Data API
 // ==========================================
 
-const API_URL = 'https://linx64.github.io/CurrencyCapPortal/latest.json';
-const AUTH_API_URL = window.AUTH_API_URL || 'https://gheymat-api-production.up.railway.app';
+const _isGitHubPages = window.location.hostname.includes('github.io');
+const API_URL = _isGitHubPages
+    ? 'https://linx64.github.io/CurrencyCapPortal/api/latest.json'
+    : '/api/latest';
+const AUTH_API_URL = window.AUTH_API_URL || (_isGitHubPages ? 'https://gheymat-api-production.up.railway.app' : '');
 const FEATURED_CURRENCIES = ['usd', 'eur', 'gbp', 'try', 'aed', 'cny', 'cad', 'aud', 'rub', 'jpy', 'chf', 'sar'];
 const PREDICTION_CURRENCIES = ['usd', 'eur', 'gbp', 'try', 'aed', 'cny'];
 
@@ -573,7 +586,8 @@ function updateNavAuth() {
         navUser.style.display = 'flex';
         if (navUserName) navUserName.textContent = auth.user.name || auth.user.email;
         if (navUserTier) {
-            navUserTier.textContent = auth.isPremium() ? '★ Premium' : 'Free';
+            const tn = translations[currentLang].nav;
+            navUserTier.textContent = auth.isPremium() ? tn.tierPremium : tn.tierFree;
             navUserTier.className = 'nav-user-tier' + (auth.isPremium() ? ' premium' : '');
         }
     } else {
@@ -677,7 +691,7 @@ function createPriceCard(currency) {
 
     return `
         <div class="price-item" data-currency="${currency.ab}" role="listitem" tabindex="0"
-             aria-label="${currencyName}: ${formatPrice(sellPrice)} Toman">
+             aria-label="${currencyName}: ${formatPrice(sellPrice)} ${translations[currentLang].prices.toman}">
             <div class="price-item-header">
                 <div class="price-info">
                     <div class="currency-flag" aria-hidden="true">${currency.av || currency.ab.charAt(0).toUpperCase()}</div>
@@ -760,8 +774,8 @@ async function updatePrices() {
                     </svg>
                 </div>
                 <h3 class="state-title">${translations[currentLang].prices.error}</h3>
-                <p class="state-description">Failed to load prices. Please try again.</p>
-                <button class="retry-btn" onclick="updatePrices()">Retry</button>
+                <p class="state-description">${translations[currentLang].prices.loadError}</p>
+                <button class="retry-btn" onclick="updatePrices()">${translations[currentLang].prices.retry}</button>
             </div>
         `;
         return;

@@ -2,7 +2,10 @@
 // prices.js — Gheymat All Prices Page
 // ============================================================
 
-const API_URL = 'https://linx64.github.io/CurrencyCapPortal/latest.json';
+const _isGitHubPages = window.location.hostname.includes('github.io');
+const API_URL = _isGitHubPages
+    ? 'https://linx64.github.io/CurrencyCapPortal/api/latest.json'
+    : '/api/latest';
 
 const T = {
     en: {
