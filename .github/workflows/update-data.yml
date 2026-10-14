@@ -1,17 +1,10 @@
 name: Update Currency Data
 
+# Schedules and push triggers removed on 2026-10-14: the Gheymat static fallback (gheymat-latest.yml)
+# publishes prices now; this workflow stays available for manual runs only.
 on:
-  schedule:
-    # Run every 5 minutes
-    # NOTE: GitHub Actions scheduled workflows are subject to delays and may not run exactly every 5 minutes.
-    # Typical delays range from 3-60+ minutes during high load periods.
-    # See: https://github.com/orgs/community/discussions/147369
-    - cron: '*/5 * * * *'
 
   workflow_dispatch:
-  push:
-    branches:
-      - master
 
 jobs:
   update-and-deploy:

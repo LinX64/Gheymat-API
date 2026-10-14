@@ -1,0 +1,69 @@
+name: Gheymat static fallback
+
+on:
+  schedule:
+    - cron: '*/6 * * * *'
+  workflow_dispatch:
+    inputs:
+      history:
+        description: 'Also refresh history files'
+        type: boolean
+        default: false
+  push:
+    branches: [master]
+    paths:
+      - 'tools/**'
+      - '.github/workflows/gheymat-latest.yml'
+
+concurrency:
+  group: gheymat-static
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Carry over the current site
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install -q requests
+
+      - name: Decide whether to refresh history (first run of each hour, or on request)
+        id: plan
+        run: |
+          if [ "${{ github.event.inputs.history }}" = "true" ] || [ "$(date -u +%M)" -lt 6 ] || [ ! -d dist/v1/history ]; then
+            echo "flag=--history" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch bonbast and write the static API
+        run: |
+          rm -rf dist/.git
+          mkdir -p dist
+          cp -r website/. dist/
+          touch dist/.nojekyll
+          python tools/gheymat_snapshot.py --out dist ${{ steps.plan.outputs.flag }}
+          ls -la dist/v1 | head
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: 'Gheymat static fallback'
