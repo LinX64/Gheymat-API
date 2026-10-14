@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       history:
-        description: 'Also refresh history files'
+        description: 'Also refresh history files and backfill 200 archive days'
         type: boolean
         default: false
   push:
@@ -45,7 +45,7 @@ jobs:
         id: plan
         run: |
           if [ "${{ github.event.inputs.history }}" = "true" ] || [ "$(date -u +%M)" -lt 6 ] || [ ! -d dist/v1/history ]; then
-            echo "flag=--history" >> "$GITHUB_OUTPUT"
+            echo "flag=--history --backfill 200" >> "$GITHUB_OUTPUT"
           else
             echo "flag=" >> "$GITHUB_OUTPUT"
           fi

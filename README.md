@@ -9,7 +9,8 @@ bonbast.com every six minutes and publishes JSON to GitHub Pages. The old websit
 | `/health` | status, last fetch time, mode `static` |
 | `/v1/latest` | 37 instruments: buy/sell or price, toman unless `quote` is `usd` |
 | `/v1/instruments` | instrument table with English and Persian names |
-| `/v1/history/<code>` | 90 daily closes for the 28 currencies, refreshed hourly |
+| `/v1/history/<code>` | every daily close since 2012-10-09 (currencies + coins), filled from bonbast's archive page 200 days per hour until complete (about 26 hours for 2012→today) |
+| `/v1/longhistory/<code>` | coarse pre-2012 series (USD back to 1978, ~84 points) from the old archive, for the "All" chart range |
 | `/v1/intraday/<code>` | last 7 days of 6-minute samples for every instrument (ts, buy, sell, price) |
 
 Base URL: `https://linx64.github.io/CurrencyCapPortal`. Freshness is bounded by GitHub's cron (5 min nominal,

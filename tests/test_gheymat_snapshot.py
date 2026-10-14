@@ -45,3 +45,44 @@ def test_intraday_appends_and_trims(tmp_path):
     assert [p["ts"] for p in usd["points"]][0] == "2026-10-14T20:00:00Z"
     assert usd["points"][-1]["sell"] == 265200
     assert mod.append_intraday(tmp_path, snap) == 0
+
+
+FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "archive-2020-03-20.html"
+
+
+def test_parse_archive_fixture():
+    shown, values = mod.parse_archive(FIXTURE.read_text(encoding="utf-8"))
+    assert shown == "2020-03-20"
+    assert values["usd"] == (16000, 16100)
+    assert values["emami"] == (6000000, 6200000)
+    assert "half" in values and "quarter" in values and "gerami" in values
+    assert len(values) >= 30
+
+
+def test_fill_days_stops_on_identical_payload_run():
+    daily = {"start": "2012-10-09", "codes": {}}
+    same = {"usd": (1, 2), **{f"c{i}": (i, i + 1) for i in range(25)}}
+    dates = [f"2020-01-{d:02d}" for d in range(10, 0, -1)]
+    calls = []
+
+    def fake(date):
+        calls.append(date)
+        return date, same
+
+    got = mod.fill_days(None, daily, dates, pace=0, fetcher=fake)
+    assert got == 0 and len(calls) == mod.BLOCK_RUN + 1
+    assert daily["codes"] == {}
+
+
+def test_backfill_dates_walk_back_from_earliest_known():
+    daily = {"start": "2012-10-09", "codes": {"usd": {"2020-03-20": [1, 2], "2020-03-19": [1, 2]}}}
+    assert mod.backfill_dates(daily, 3) == ["2020-03-18", "2020-03-17", "2020-03-16"]
+    daily["start"] = "2020-03-18"
+    assert mod.backfill_dates(daily, 5) == ["2020-03-18"]
+
+
+def test_history_files_from_daily(tmp_path):
+    daily = {"start": "2012-10-09", "codes": {"usd": {"2020-03-20": [16000, 16100], "2020-03-19": [15900, 16000]}}}
+    assert mod.write_history_files(tmp_path, daily) == 1
+    h = __import__("json").loads((tmp_path / "v1" / "history" / "usd").read_text(encoding="utf-8"))
+    assert [p["date"] for p in h["points"]] == ["2020-03-19", "2020-03-20"] and h["points"][-1]["price"] == 16100.0

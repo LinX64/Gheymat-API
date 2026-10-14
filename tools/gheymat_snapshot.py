@@ -5,13 +5,16 @@ Mirrors Gheymat/server/gheymat_server/bonbast_client.py (same bonbast protocol, 
 Gheymat/CONTRACT.md) but runs as a one-shot script inside GitHub Actions and writes extensionless files
 that GitHub Pages serves at the same paths the app requests:
 
-  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/history/<code>, dist/v1/intraday/<code>, dist/index.html
+  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>, dist/index.html
+  dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
+  dist/v1/history/<code> (full daily series per instrument), dist/v1/longhistory/<code> (coarse 1978-> seed)
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import random
 import re
 import sys
 import time
@@ -124,35 +127,177 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
 
 
 
-def fetch_history(session: requests.Session, key: str, days: int) -> list[dict]:
-    end = datetime.now(timezone.utc).date()
-    start = end - timedelta(days=days)
-    r = session.post(f"{BASE}/graph", headers=headers(), cookies=COOKIES, timeout=30,
-                     data={"currency": key, "stdate": start.isoformat(), "endate": end.isoformat()})
-    r.raise_for_status()
-    sel = re.search(r'<option value="([^"]+)" selected', r.text)
-    if sel and sel.group(1) != key:
-        return []
-    m_data = re.search(r"data:\s*\[([^\]]*)\]", r.text)
-    m_labels = re.search(r"labels:\s*\[([^\]]*)\]", r.text)
-    if not m_data or not m_labels:
-        return []
-    prices = [p.strip() for p in m_data.group(1).split(",") if p.strip()]
-    labels = re.findall(r"\d{4}-\d{2}-\d{2}", m_labels.group(1))
-    points = []
-    for date, price in zip(labels, prices):
-        try:
-            points.append({"date": date, "price": float(price)})
-        except ValueError:
+ARCHIVE_START = "2012-10-09"
+COIN_NAMES = {"azadi": "azadi", "emami": "emami", "\u00bd azadi": "half", "\u00bc azadi": "quarter", "gerami": "gerami"}
+BLOCK_RUN = 4
+
+
+def _cells(fragment: str) -> list[str]:
+    import html as _html
+    return [_html.unescape(re.sub(r"<[^>]+>", "", c)).strip() for c in re.findall(r"<td.*?</td>", fragment, flags=re.S)]
+
+
+def parse_archive(page: str) -> tuple[str | None, dict[str, tuple[int | None, int | None]]]:
+    """Return (date shown on the page, {code: (buy, sell)}) from a bonbast /archive page."""
+    shown = re.search(r"\d{4}-\d{2}-\d{2}", page)
+    values: dict[str, tuple[int | None, int | None]] = {}
+    for table in re.findall(r"<table.*?</table>", page, flags=re.S):
+        rows = [_cells(tr) for tr in re.findall(r"<tr.*?</tr>", table, flags=re.S)]
+        rows = [r for r in rows if r]
+        if not rows:
             continue
-    return points
+        header = [c.lower() for c in rows[0]]
+        if header[:1] == ["code"]:
+            for r in rows[1:]:
+                if len(r) >= 4:
+                    values[r[0].lower()] = (to_int(r[3]), to_int(r[2]))
+        elif header[:1] == ["gold coins"]:
+            for r in rows[1:]:
+                if len(r) >= 3:
+                    code = COIN_NAMES.get(r[0].lower())
+                    if code:
+                        values[code] = (to_int(r[2]), to_int(r[1]))
+    return (shown.group(0) if shown else None), values
+
+
+def fetch_archive(session: requests.Session, date: str) -> tuple[str | None, dict]:
+    r = session.post(f"{BASE}/archive", headers=headers(), cookies=COOKIES, timeout=30, data={"date": date})
+    r.raise_for_status()
+    if "/cdn-cgi/challenge-platform" in r.text and "<table" not in r.text:
+        raise SystemExit("bonbast: challenge page on /archive")
+    return parse_archive(r.text)
+
+
+def load_daily(out: Path) -> dict:
+    path = out / "v1" / "daily.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            pass
+    return {"start": ARCHIVE_START, "codes": {}}
+
+
+def save_daily(out: Path, daily: dict) -> None:
+    write(out / "v1" / "daily.json", daily)
+
+
+def known_dates(daily: dict) -> set[str]:
+    dates: set[str] = set()
+    for series in daily["codes"].values():
+        dates.update(series.keys())
+    return dates
+
+
+def merge_day(daily: dict, date: str, values: dict[str, tuple[int | None, int | None]]) -> None:
+    for code, (buy, sell) in values.items():
+        if buy is None and sell is None:
+            continue
+        daily["codes"].setdefault(code, {})[date] = [buy, sell]
+
+
+def fill_days(session: requests.Session, daily: dict, dates: list[str], pace: float, fetcher=None) -> int:
+    """Fetch the given archive dates in order; stop on a suspected soft-block (BLOCK_RUN identical payloads)."""
+    fetcher = fetcher or (lambda d: fetch_archive(session, d))
+    fetched = 0
+    previous = None
+    identical_run = 0
+    pending: list[tuple[str, dict]] = []
+    for date in dates:
+        try:
+            shown, values = fetcher(date)
+        except (requests.RequestException, SystemExit) as e:
+            print(f"archive {date}: {e}", file=sys.stderr)
+            break
+        if shown != date or len(values) < 20:
+            print(f"archive {date}: page shows {shown}, {len(values)} values; stopping", file=sys.stderr)
+            break
+        if previous is not None and values == previous:
+            identical_run += 1
+        else:
+            identical_run = 0
+        previous = values
+        pending.append((date, values))
+        if identical_run >= BLOCK_RUN:
+            print(f"archive: {BLOCK_RUN + 1} identical payloads ending {date}; suspected soft-block, discarding them", file=sys.stderr)
+            pending = pending[: -(BLOCK_RUN + 1)]
+            break
+        time.sleep(max(0.0, pace + random.uniform(-0.4, 0.6)))
+    for date, values in pending:
+        merge_day(daily, date, values)
+        fetched += 1
+    return fetched
+
+
+def recent_missing_dates(daily: dict, days: int) -> list[str]:
+    have = known_dates(daily)
+    today = datetime.now(timezone.utc).date()
+    out = []
+    for i in range(1, days + 1):
+        d = (today - timedelta(days=i)).isoformat()
+        if d not in have:
+            out.append(d)
+    return out
+
+
+def backfill_dates(daily: dict, count: int) -> list[str]:
+    have = known_dates(daily)
+    today = datetime.now(timezone.utc).date()
+    earliest = min(have) if have else today.isoformat()
+    cursor = datetime.strptime(earliest, "%Y-%m-%d").date() - timedelta(days=1)
+    floor = datetime.strptime(daily.get("start", ARCHIVE_START), "%Y-%m-%d").date()
+    out = []
+    while len(out) < count and cursor >= floor:
+        d = cursor.isoformat()
+        if d not in have:
+            out.append(d)
+        cursor -= timedelta(days=1)
+    return out
+
+
+def write_history_files(out: Path, daily: dict) -> int:
+    written = 0
+    for code, series in daily["codes"].items():
+        points = []
+        for date in sorted(series):
+            buy, sell = series[date]
+            price = sell if sell is not None else buy
+            if price:
+                points.append({"date": date, "price": float(price), "buy": buy, "sell": sell})
+        if points:
+            write(out / "v1" / "history" / code, {"code": code, "days": len(points), "points": points})
+            written += 1
+    return written
+
+
+def write_long_history(out: Path, archive_file: Path) -> int:
+    """Coarse pre-2012 seed (hansha 'all' series kept in archive/all.json, USD back to 1978)."""
+    if not archive_file.exists():
+        return 0
+    try:
+        data = json.loads(archive_file.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return 0
+    written = 0
+    for item in data:
+        code = item.get("ab")
+        pts = []
+        for p in item.get("ps", []):
+            price = p.get("sp") or p.get("bp")
+            if code and price and p.get("ts"):
+                pts.append({"date": p["ts"][:10], "price": float(price)})
+        pts.sort(key=lambda x: x["date"])
+        if len(pts) >= 10:
+            write(out / "v1" / "longhistory" / code, {"code": code, "days": len(pts), "points": pts, "source": "coarse-archive"})
+            written += 1
+    return written
 
 
 INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</title>
 <p>Static fallback API for the Gheymat app. Endpoints: <a href="health">health</a>,
-<a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>.</p>
+<a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>,
+<code>v1/intraday/&lt;code&gt;</code>, <code>v1/longhistory/&lt;code&gt;</code>.</p>
 """
-
 
 INTRADAY_DAYS = 7
 
@@ -187,7 +332,9 @@ def write(path: Path, obj) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="dist")
-    ap.add_argument("--history", action="store_true", help="also refresh v1/history/<code> for currencies")
+    ap.add_argument("--history", action="store_true", help="fill missing recent days from the archive and rewrite v1/history/*")
+    ap.add_argument("--backfill", type=int, default=0, help="also fetch N older archive days (chunked backfill to 2012-10-09)")
+    ap.add_argument("--pace", type=float, default=2.5, help="seconds between archive requests")
     ap.add_argument("--days", type=int, default=90)
     args = ap.parse_args()
     out = Path(args.out)
@@ -211,21 +358,19 @@ def main() -> int:
     })
     print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot)} files updated")
-    if args.history:
-        done = 0
-        for ins in instruments:
-            if ins["kind"] != "currency":
-                continue
-            try:
-                points = fetch_history(session, ins["bonbast_key"], args.days)
-            except requests.RequestException as e:
-                print(f"history {ins['code']}: {e}", file=sys.stderr)
-                points = []
-            if points:
-                write(out / "v1" / "history" / ins["code"], {"code": ins["code"], "days": args.days, "points": points})
-                done += 1
-            time.sleep(1.0)
-        print(f"history: {done} currencies written")
+    if args.history or args.backfill:
+        daily = load_daily(out)
+        dates = recent_missing_dates(daily, 7) if args.history else []
+        if args.backfill:
+            dates += backfill_dates(daily, args.backfill)
+        dates = list(dict.fromkeys(dates))
+        fetched = fill_days(session, daily, dates, args.pace)
+        save_daily(out, daily)
+        files = write_history_files(out, daily)
+        long_files = write_long_history(out, HERE.parent / "archive" / "all.json")
+        have = known_dates(daily)
+        print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
+              f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     return 0
 
 
