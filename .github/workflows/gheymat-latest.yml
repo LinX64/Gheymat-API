@@ -13,38 +13,58 @@ on:
     branches: [master]
     paths:
       - 'tools/**'
+      - 'requirements.txt'
       - '.github/workflows/gheymat-latest.yml'
 
 concurrency:
   group: gheymat-static
   cancel-in-progress: false
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Carry over the current site
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         continue-on-error: true
         with:
           ref: gh-pages
           path: dist
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
-      - run: pip install -q requests cryptography
+      - run: pip install -q -r requirements.txt
+
+      - name: Mask the channel keys
+        env:
+          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
+          GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
+        run: |
+          if [ -z "$GHEYMAT_PAYLOAD_KEY" ] || [ -z "$GHEYMAT_SIGNING_KEY" ]; then
+            echo "GHEYMAT_PAYLOAD_KEY / GHEYMAT_SIGNING_KEY secrets are not set" >&2
+            exit 1
+          fi
+          echo "::add-mask::$GHEYMAT_PAYLOAD_KEY"
+          echo "::add-mask::$GHEYMAT_SIGNING_KEY"
 
       - name: "Plan this run (12 archive days of backfill per run; manual runs can ask for 40)"
         id: plan
+        env:
+          HISTORY: ${{ github.event.inputs.history }}
         run: |
-          if [ "${{ github.event.inputs.history }}" = "true" ]; then
+          if [ "$HISTORY" = "true" ]; then
             echo "flag=--history --backfill 40 --pace 3" >> "$GITHUB_OUTPUT"
           else
             echo "flag=--history --backfill 12 --pace 3" >> "$GITHUB_OUTPUT"
@@ -55,15 +75,21 @@ jobs:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_PLAIN: "1"
+          FLAGS: ${{ steps.plan.outputs.flag }}
         run: |
           rm -rf dist/.git
           mkdir -p dist
           touch dist/.nojekyll
-          python tools/gheymat_snapshot.py --out dist ${{ steps.plan.outputs.flag }}
-          ls -la dist/v1 | head
+          python tools/gheymat_snapshot.py --out dist $FLAGS
+          echo "plain files: $(find dist/v1 -type f | wc -l), sealed files: $(find dist/d -type f 2>/dev/null | wc -l)"
+
+      - name: Verify the sealed v1/latest envelope before deploying
+        env:
+          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
+        run: python tools/verify_sealed.py dist
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
