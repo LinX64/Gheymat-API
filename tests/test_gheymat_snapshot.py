@@ -86,3 +86,25 @@ def test_history_files_from_daily(tmp_path):
     assert mod.write_history_files(tmp_path, daily) == 1
     h = __import__("json").loads((tmp_path / "v1" / "history" / "usd").read_text(encoding="utf-8"))
     assert [p["date"] for p in h["points"]] == ["2020-03-19", "2020-03-20"] and h["points"][-1]["price"] == 16100.0
+
+
+def test_seal_roundtrip_and_tamper():
+    import base64, os, pytest
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    import sys as _sys
+    _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
+    import gheymat_seal as gs
+    priv = Ed25519PrivateKey.generate()
+    sealer = gs.Sealer(os.urandom(32), priv)
+    env = sealer.seal("v1/latest", {"seq": 1, "rates": []}, issued=1000)
+    assert env["path"] == "v1/latest" and env["v"] == 1
+    assert gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/latest") == {"seq": 1, "rates": []}
+    with pytest.raises(Exception):
+        gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/instruments")
+    bad = dict(env, ciphertext=base64.b64encode(b"x" + base64.b64decode(env["ciphertext"])[1:]).decode())
+    with pytest.raises(Exception):
+        gs.open_envelope(bad, sealer.payload_key, priv.public_key(), "v1/latest")
+    with pytest.raises(ValueError):
+        gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/latest", max_age=10)
+    p = sealer.opaque_path("v1/latest")
+    assert p.startswith("d/") and len(p) == 22 and p == sealer.opaque_path("v1/latest") and p != sealer.opaque_path("v1/health")

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import sys
@@ -22,6 +23,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gheymat_seal import Sealer  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -324,9 +328,33 @@ def append_intraday(out: Path, snapshot: dict) -> int:
     return written
 
 
+SEALER = None
+PLAIN_ALSO = True
+
+
 def write(path: Path, obj) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path."""
+    if PLAIN_ALSO or SEALER is None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    if SEALER is not None:
+        root = _dist_root(path)
+        logical = path.relative_to(root).as_posix()
+        sealed = root / SEALER.opaque_path(logical)
+        sealed.parent.mkdir(parents=True, exist_ok=True)
+        sealed.write_text(json.dumps(SEALER.seal(logical, obj), separators=(",", ":")), encoding="utf-8")
+
+
+_DIST_ROOT: Path | None = None
+
+
+def _dist_root(path: Path) -> Path:
+    if _DIST_ROOT is not None:
+        return _DIST_ROOT
+    for parent in path.parents:
+        if parent.name == "v1":
+            return parent.parent
+    return path.parent
 
 
 def main() -> int:
@@ -338,6 +366,11 @@ def main() -> int:
     ap.add_argument("--days", type=int, default=90)
     args = ap.parse_args()
     out = Path(args.out)
+    global SEALER, PLAIN_ALSO, _DIST_ROOT
+    _DIST_ROOT = out
+    SEALER = Sealer.from_env()
+    PLAIN_ALSO = os.environ.get("GHEYMAT_PLAIN", "1") == "1"
+    print("sealed channel:", "on" if SEALER else "off (no keys)", "| plain files:", "on" if PLAIN_ALSO or SEALER is None else "off")
     instruments = load_instruments()
     session = requests.Session()
     raw = fetch_raw(session)

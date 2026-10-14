@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: pip install -q requests
+      - run: pip install -q requests cryptography
 
       - name: "Plan this run (12 archive days of backfill per run; manual runs can ask for 40)"
         id: plan
@@ -51,6 +51,10 @@ jobs:
           fi
 
       - name: Fetch bonbast and write the static API
+        env:
+          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
+          GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
+          GHEYMAT_PLAIN: "1"
         run: |
           rm -rf dist/.git
           mkdir -p dist
