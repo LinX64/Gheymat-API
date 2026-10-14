@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       history:
-        description: 'Also refresh history files and backfill 200 archive days'
+        description: 'Backfill 40 archive days instead of 12 in this run'
         type: boolean
         default: false
   push:
@@ -41,13 +41,13 @@ jobs:
 
       - run: pip install -q requests
 
-      - name: Decide whether to refresh history (first run of each hour, or on request)
+      - name: "Plan this run (12 archive days of backfill per run; manual runs can ask for 40)"
         id: plan
         run: |
-          if [ "${{ github.event.inputs.history }}" = "true" ] || [ "$(date -u +%M)" -lt 6 ] || [ ! -d dist/v1/history ]; then
-            echo "flag=--history --backfill 200" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event.inputs.history }}" = "true" ]; then
+            echo "flag=--history --backfill 40 --pace 3" >> "$GITHUB_OUTPUT"
           else
-            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "flag=--history --backfill 12 --pace 3" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Fetch bonbast and write the static API
