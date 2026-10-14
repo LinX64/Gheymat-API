@@ -70,6 +70,11 @@ jobs:
             echo "flag=--history --backfill 12 --pace 3" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Drop legacy site files carried over from the old branch (keep v1 and d only)
+        run: |
+          mkdir -p dist
+          find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name .git -exec rm -rf {} +
+
       - name: Fetch bonbast and write the static API
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
