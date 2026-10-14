@@ -5,7 +5,7 @@ Mirrors Gheymat/server/gheymat_server/bonbast_client.py (same bonbast protocol, 
 Gheymat/CONTRACT.md) but runs as a one-shot script inside GitHub Actions and writes extensionless files
 that GitHub Pages serves at the same paths the app requests:
 
-  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/history/<code>, dist/index.html
+  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/history/<code>, dist/v1/intraday/<code>, dist/index.html
 """
 from __future__ import annotations
 
@@ -154,6 +154,31 @@ INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</
 """
 
 
+INTRADAY_DAYS = 7
+
+
+def append_intraday(out: Path, snapshot: dict) -> int:
+    """Append this run's sample to v1/intraday/<code> (last INTRADAY_DAYS days, oldest first). Returns files written."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    written = 0
+    for r in snapshot["rates"]:
+        path = out / "v1" / "intraday" / r["code"]
+        points = []
+        if path.exists():
+            try:
+                points = json.loads(path.read_text(encoding="utf-8")).get("points", [])
+            except (ValueError, OSError):
+                points = []
+        sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
+        if points and points[-1].get("ts") == sample["ts"]:
+            continue
+        points = [p for p in points if isinstance(p, dict) and p.get("ts", "") >= cutoff]
+        points.append(sample)
+        write(path, {"code": r["code"], "days": INTRADAY_DAYS, "points": points})
+        written += 1
+    return written
+
+
 def write(path: Path, obj) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -185,6 +210,7 @@ def main() -> int:
         "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
     })
     print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
+    print(f"intraday: {append_intraday(out, snapshot)} files updated")
     if args.history:
         done = 0
         for ins in instruments:

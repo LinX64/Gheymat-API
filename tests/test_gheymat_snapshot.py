@@ -30,3 +30,18 @@ def test_build_snapshot_maps_currency_coin_gold_and_crypto():
 def test_refuses_thin_payload():
     snap = mod.build_snapshot({"usd1": "1", "usd2": "1"}, mod.load_instruments())
     assert len(snap["rates"]) < 29
+
+
+def test_intraday_appends_and_trims(tmp_path):
+    snap = mod.build_snapshot(RAW, mod.load_instruments())
+    old = {"code": "usd", "days": 7, "points": [
+        {"ts": "2026-09-01T00:00:00Z", "buy": 1, "sell": 2, "price": None},
+        {"ts": "2026-10-14T20:00:00Z", "buy": 264000, "sell": 264200, "price": None},
+    ]}
+    (tmp_path / "v1" / "intraday").mkdir(parents=True)
+    (tmp_path / "v1" / "intraday" / "usd").write_text(__import__("json").dumps(old), encoding="utf-8")
+    assert mod.append_intraday(tmp_path, snap) == len(snap["rates"])
+    usd = __import__("json").loads((tmp_path / "v1" / "intraday" / "usd").read_text(encoding="utf-8"))
+    assert [p["ts"] for p in usd["points"]][0] == "2026-10-14T20:00:00Z"
+    assert usd["points"][-1]["sell"] == 265200
+    assert mod.append_intraday(tmp_path, snap) == 0
