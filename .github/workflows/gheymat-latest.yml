@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -54,7 +54,6 @@ jobs:
         run: |
           rm -rf dist/.git
           mkdir -p dist
-          cp -r website/. dist/
           touch dist/.nojekyll
           python tools/gheymat_snapshot.py --out dist ${{ steps.plan.outputs.flag }}
           ls -la dist/v1 | head

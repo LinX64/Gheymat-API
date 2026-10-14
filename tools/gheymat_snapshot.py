@@ -5,8 +5,7 @@ Mirrors Gheymat/server/gheymat_server/bonbast_client.py (same bonbast protocol, 
 Gheymat/CONTRACT.md) but runs as a one-shot script inside GitHub Actions and writes extensionless files
 that GitHub Pages serves at the same paths the app requests:
 
-  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/history/<code>   (new app contract)
-  dist/latest.json                                                           (legacy website shape)
+  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/history/<code>, dist/index.html
 """
 from __future__ import annotations
 
@@ -124,18 +123,6 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
     }
 
 
-def legacy_latest(snapshot: dict) -> list[dict]:
-    ty = {"currency": "cu", "gold": "go", "coin": "co", "crypto": "cc"}
-    out = []
-    for r in snapshot["rates"]:
-        sp = r["sell"] if r["sell"] is not None else r["price"]
-        point = {"sp": sp, "ts": snapshot["fetchedAt"]}
-        if r["buy"] is not None:
-            point["bp"] = r["buy"]
-        out.append({"ab": r["code"], "av": r["flag"], "en": r["en"], "fa": r["fa"],
-                    "ty": ty[r["kind"]], "ps": [point]})
-    return out
-
 
 def fetch_history(session: requests.Session, key: str, days: int) -> list[dict]:
     end = datetime.now(timezone.utc).date()
@@ -159,6 +146,12 @@ def fetch_history(session: requests.Session, key: str, days: int) -> list[dict]:
         except ValueError:
             continue
     return points
+
+
+INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</title>
+<p>Static fallback API for the Gheymat app. Endpoints: <a href="health">health</a>,
+<a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>.</p>
+"""
 
 
 def write(path: Path, obj) -> None:
@@ -185,7 +178,7 @@ def main() -> int:
         sort_keys=True).encode()).hexdigest()[:12]
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
-    write(out / "latest.json", legacy_latest(snapshot))
+    (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
         "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
