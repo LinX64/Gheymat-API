@@ -25,7 +25,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gheymat_seal import Sealer  # noqa: E402
+from gheymat_seal import Sealer, load_published  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -172,14 +172,25 @@ def fetch_archive(session: requests.Session, date: str) -> tuple[str | None, dic
     return parse_archive(r.text)
 
 
+ARCHIVE_GUARD_DAYS = 1000
+
+
 def load_daily(out: Path) -> dict:
-    path = out / "v1" / "daily.json"
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            pass
+    """The archive state: the plain v1/daily.json while it is still published, else the sealed copy at its opaque path."""
+    daily = load_published(out, "v1/daily.json", SEALER)
+    if isinstance(daily, dict) and isinstance(daily.get("codes"), dict) and isinstance(daily.get("start"), str):
+        return daily
     return {"start": ARCHIVE_START, "codes": {}}
+
+
+def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
+    """(previous, current) when the previously published health reported a large archive and this run loaded under half of it."""
+    previous = load_published(out, "health", SEALER)
+    before = previous.get("archiveDays") if isinstance(previous, dict) else None
+    if isinstance(before, bool) or not isinstance(before, int) or before < ARCHIVE_GUARD_DAYS:
+        return None
+    now = len(known_dates(daily))
+    return (before, now) if now < before // 2 else None
 
 
 def save_daily(out: Path, daily: dict) -> None:
@@ -312,12 +323,10 @@ def append_intraday(out: Path, snapshot: dict) -> int:
     written = 0
     for r in snapshot["rates"]:
         path = out / "v1" / "intraday" / r["code"]
-        points = []
-        if path.exists():
-            try:
-                points = json.loads(path.read_text(encoding="utf-8")).get("points", [])
-            except (ValueError, OSError):
-                points = []
+        previous = load_published(out, f"v1/intraday/{r['code']}", SEALER)
+        points = previous.get("points", []) if isinstance(previous, dict) else []
+        if not isinstance(points, list):
+            points = []
         sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
         if points and points[-1].get("ts") == sample["ts"]:
             continue
@@ -333,10 +342,15 @@ PLAIN_ALSO = True
 
 
 def write(path: Path, obj) -> None:
-    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path."""
+    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path.
+
+    Once plain files are off, a plain copy carried over from an earlier publish is removed so it cannot shadow
+    the sealed state that load_published reads back on the next run."""
     if PLAIN_ALSO or SEALER is None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    elif path.exists():
+        path.unlink()
     if SEALER is not None:
         root = _dist_root(path)
         logical = path.relative_to(root).as_posix()
@@ -381,18 +395,17 @@ def main() -> int:
     fingerprint = hashlib.sha256(json.dumps(
         {k: v for k, v in raw.items() if k[-1] in "12" or k in ("gol18", "mithqal", "ounce", "bitcoin")},
         sort_keys=True).encode()).hexdigest()[:12]
+    daily = load_daily(out)
+    shrank = archive_shrank(out, daily)
+    if shrank is not None:
+        print(f"archive state shrank from {shrank[0]} to {shrank[1]} days; refusing to publish", file=sys.stderr)
+        return 3
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
-    write(out / "health", {
-        "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
-        "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
-        "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
-    })
     print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot)} files updated")
     if args.history or args.backfill:
-        daily = load_daily(out)
         dates = recent_missing_dates(daily, 7) if args.history else []
         if args.backfill:
             dates += backfill_dates(daily, args.backfill)
@@ -404,6 +417,12 @@ def main() -> int:
         have = known_dates(daily)
         print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
+    write(out / "health", {
+        "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
+        "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
+        "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
+        "archiveDays": len(known_dates(daily)),
+    })
     return 0
 
 

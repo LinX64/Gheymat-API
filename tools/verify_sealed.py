@@ -2,8 +2,9 @@
 """Integrity gate for the sealed static channel (run in CI after gheymat_snapshot.py, before deploy).
 
 Opens the sealed `v1/latest` envelope in the dist directory using only the Ed25519 PUBLIC key for
-signature verification and the payload key (GHEYMAT_PAYLOAD_KEY) for the opaque path and decryption.
-The signing secret is never read. Prints a single fixed line and never any key, path or exception text.
+signature verification and the master payload key (GHEYMAT_PAYLOAD_KEY) for the opaque path and the
+decryption subkey. The signing secret is never read. Prints a single fixed line and never any key, path
+or exception text.
 
 Usage: python tools/verify_sealed.py dist [--expect-rates 37] [--max-age 900] [--public-key <b64>]
 Exit 0 only when the envelope verifies, decrypts, matches the logical path and carries the expected rates.
@@ -17,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gheymat_seal import OPAQUE_LEN, OPAQUE_PREFIX, open_envelope, unb64  # noqa: E402
+from gheymat_seal import DEFAULT_KID, KEY_LEN, MAX_ENVELOPE_BYTES, open_envelope, opaque_path, unb64  # noqa: E402
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey  # noqa: E402
 
@@ -27,17 +28,12 @@ EXPECTED_RATES = 37
 MAX_AGE_SECONDS = 900
 
 
-def _opaque_path(payload_key: bytes, logical: str) -> str:
-    import hashlib
-    import hmac
-    digest = hmac.new(payload_key, logical.encode("utf-8"), hashlib.sha256).hexdigest()
-    return OPAQUE_PREFIX + digest[:OPAQUE_LEN]
-
-
-def verify(dist: Path, payload_key: bytes, public_key: Ed25519PublicKey, expect_rates: int, max_age: int) -> int:
-    sealed = dist / _opaque_path(payload_key, LOGICAL)
-    envelope = json.loads(sealed.read_text(encoding="utf-8"))
-    snapshot = open_envelope(envelope, payload_key, public_key, LOGICAL, max_age=max_age)
+def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicKey], expect_rates: int, max_age: int) -> int:
+    sealed = dist / opaque_path(payload_key, LOGICAL)
+    text = sealed.read_text(encoding="utf-8")
+    if len(text) > MAX_ENVELOPE_BYTES:
+        raise ValueError("envelope too large")
+    snapshot = open_envelope(json.loads(text), payload_key, public_keys, LOGICAL, max_age=max_age)
     rates = snapshot.get("rates")
     if not isinstance(rates, list):
         raise ValueError("no rates")
@@ -54,7 +50,7 @@ def main() -> int:
     ap.add_argument("dist")
     ap.add_argument("--expect-rates", type=int, default=EXPECTED_RATES)
     ap.add_argument("--max-age", type=int, default=MAX_AGE_SECONDS)
-    ap.add_argument("--public-key", default=PUBLIC_KEY_B64, help="base64 Ed25519 public key (tests only)")
+    ap.add_argument("--public-key", default=PUBLIC_KEY_B64, help="base64 Ed25519 public key for kid 1 (tests only)")
     args = ap.parse_args()
     raw = os.environ.get("GHEYMAT_PAYLOAD_KEY")
     if not raw:
@@ -62,10 +58,10 @@ def main() -> int:
         return 1
     try:
         payload_key = unb64(raw)
-        if len(payload_key) != 32:
+        if len(payload_key) != KEY_LEN:
             raise ValueError("bad key length")
-        public_key = Ed25519PublicKey.from_public_bytes(unb64(args.public_key))
-        count = verify(Path(args.dist), payload_key, public_key, args.expect_rates, args.max_age)
+        public_keys = {DEFAULT_KID: Ed25519PublicKey.from_public_bytes(unb64(args.public_key))}
+        count = verify(Path(args.dist), payload_key, public_keys, args.expect_rates, args.max_age)
     except Exception:
         print(f"verify_sealed: sealed {LOGICAL} FAILED verification; not deploying", file=sys.stderr)
         return 1

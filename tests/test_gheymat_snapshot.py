@@ -97,14 +97,85 @@ def test_seal_roundtrip_and_tamper():
     priv = Ed25519PrivateKey.generate()
     sealer = gs.Sealer(os.urandom(32), priv)
     env = sealer.seal("v1/latest", {"seq": 1, "rates": []}, issued=1000)
-    assert env["path"] == "v1/latest" and env["v"] == 1
-    assert gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/latest") == {"seq": 1, "rates": []}
-    with pytest.raises(Exception):
-        gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/instruments")
+    assert env["v"] == 2 and env["kid"] == 1 and "path" not in env
+    assert gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/latest", max_age=None) == {"seq": 1, "rates": []}
+    with pytest.raises(gs.EnvelopeError):
+        gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/instruments", max_age=None)
     bad = dict(env, ciphertext=base64.b64encode(b"x" + base64.b64decode(env["ciphertext"])[1:]).decode())
-    with pytest.raises(Exception):
-        gs.open_envelope(bad, sealer.payload_key, priv.public_key(), "v1/latest")
-    with pytest.raises(ValueError):
+    with pytest.raises(gs.EnvelopeError):
+        gs.open_envelope(bad, sealer.payload_key, priv.public_key(), "v1/latest", max_age=None)
+    with pytest.raises(gs.EnvelopeError):
         gs.open_envelope(env, sealer.payload_key, priv.public_key(), "v1/latest", max_age=10)
     p = sealer.opaque_path("v1/latest")
-    assert p.startswith("d/") and len(p) == 22 and p == sealer.opaque_path("v1/latest") and p != sealer.opaque_path("v1/health")
+    assert p.startswith("d/") and len(p) == 34 and p == sealer.opaque_path("v1/latest") and p != sealer.opaque_path("v1/health")
+
+
+def test_write_seals_at_the_opaque_path_and_the_state_reads_back(tmp_path):
+    import os
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    import gheymat_seal as gs
+    sealer = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
+    mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = tmp_path, sealer, False
+    try:
+        daily = {"start": "2012-10-09", "codes": {"usd": {"2020-03-20": [16000, 16100]}}}
+        mod.save_daily(tmp_path, daily)
+        assert not (tmp_path / "v1" / "daily.json").exists()
+        assert (tmp_path / sealer.opaque_path("v1/daily.json")).exists()
+        assert gs.load_published(tmp_path, "v1/daily.json", sealer) == daily
+        assert mod.load_daily(tmp_path) == daily
+        snap = mod.build_snapshot(RAW, mod.load_instruments())
+        assert mod.append_intraday(tmp_path, snap) == len(snap["rates"])
+        assert not (tmp_path / "v1" / "intraday" / "usd").exists()
+        assert mod.append_intraday(tmp_path, snap) == 0
+        later = dict(snap, fetchedAt="2026-10-15T09:00:00Z")
+        assert mod.append_intraday(tmp_path, later) == len(snap["rates"])
+        usd = gs.load_published(tmp_path, "v1/intraday/usd", sealer)
+        assert [p["ts"] for p in usd["points"]] == [snap["fetchedAt"], "2026-10-15T09:00:00Z"]
+        mod.SEALER = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
+        assert mod.load_daily(tmp_path) == {"start": mod.ARCHIVE_START, "codes": {}}
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+
+
+def test_stale_plain_state_is_removed_once_plain_files_are_off(tmp_path):
+    import json, os
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    import gheymat_seal as gs
+    sealer = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
+    stale = {"start": "2012-10-09", "codes": {"usd": {"2020-03-20": [1, 2]}}}
+    fresh = {"start": "2012-10-09", "codes": {"usd": {"2020-03-20": [1, 2], "2020-03-21": [3, 4]}}}
+    plain = tmp_path / "v1" / "daily.json"
+    plain.parent.mkdir(parents=True)
+    plain.write_text(json.dumps(stale), encoding="utf-8")
+    mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = tmp_path, sealer, False
+    try:
+        assert mod.load_daily(tmp_path) == stale
+        mod.save_daily(tmp_path, fresh)
+        assert not plain.exists()
+        assert mod.load_daily(tmp_path) == fresh
+        mod.save_daily(tmp_path, stale)
+        assert mod.load_daily(tmp_path) == stale and not plain.exists()
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+
+
+def test_archive_guard_refuses_a_shrunken_state(tmp_path):
+    import os
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    import gheymat_seal as gs
+    sealer = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
+    mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = tmp_path, sealer, False
+    try:
+        small = {"start": "2012-10-09", "codes": {"usd": {f"2020-01-{d:02d}": [1, 2] for d in range(1, 10)}}}
+        assert mod.archive_shrank(tmp_path, small) is None
+        mod.write(tmp_path / "health", {"ok": True, "archiveDays": 999})
+        assert mod.archive_shrank(tmp_path, small) is None
+        mod.write(tmp_path / "health", {"ok": True, "archiveDays": 4000})
+        assert mod.archive_shrank(tmp_path, small) == (4000, 9)
+        assert mod.archive_shrank(tmp_path, {"start": "2012-10-09", "codes": {}}) == (4000, 0)
+        big = {"start": "2012-10-09", "codes": {"usd": {f"d{i}": [1, 2] for i in range(2000)}}}
+        assert mod.archive_shrank(tmp_path, big) is None
+        mod.write(tmp_path / "health", {"ok": True, "archiveDays": "4000"})
+        assert mod.archive_shrank(tmp_path, small) is None
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
