@@ -312,6 +312,60 @@ INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</
 <p>Static fallback API for the Gheymat app. Endpoints: <a href="health">health</a>,
 <a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>,
 <code>v1/intraday/&lt;code&gt;</code>, <code>v1/longhistory/&lt;code&gt;</code>.</p>
+<p><a href="privacy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>
+"""
+
+PRIVACY_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Privacy Policy</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
+h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
+<h1>Gheymat Privacy Policy</h1>
+<p>Last updated: 2026-10-15</p>
+<p>Gheymat is an iOS app that shows Iranian free-market currency, gold and crypto prices. This policy covers the
+Gheymat app only.</p>
+<h2>Data we collect</h2>
+<p><strong>None.</strong> Gheymat has no user accounts, no sign-in, no analytics SDK, no advertising SDK, and no
+crash-reporting SDK. The app does not know who you are and cannot identify you.</p>
+<h2>Data stored on your device</h2>
+<p>Your favourites, your chosen list/grid layout, your appearance setting, and a local cache of the latest prices
+are stored only in the app's local storage on your device. This data never leaves your device and is not visible
+to us.</p>
+<h2>Network requests</h2>
+<p>The app fetches currency, gold and crypto prices from Gheymat's own data feed. These requests carry no
+account identifier, advertising identifier, or other data that identifies you. Standard network metadata (such
+as your IP address) is visible to the hosting infrastructure the way it is for any web request, and is not
+logged or retained by us in a way that is linked to you.</p>
+<h2>Price data source</h2>
+<p>Prices are sourced from bonbast.com's public market page. Gheymat is an independent app and is not affiliated
+with, endorsed by, or operated by bonbast.com.</p>
+<h2>Children</h2>
+<p>Gheymat is not directed at children and does not knowingly collect data from anyone, including children,
+because it does not collect data from anyone.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the date above will change. Material changes will be reflected in the app's release
+notes.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: <a href="mailto:mohsen.rezaniaa75@gmail.com">mohsen.rezaniaa75@gmail.com</a></p>
+<footer><a href="index.html">Gheymat static API</a> · <a href="support.html">Support</a></footer>
+"""
+
+SUPPORT_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Support</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
+h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
+<h1>Gheymat Support</h1>
+<h2>Contact</h2>
+<p>For help, feedback or bug reports: <a href="mailto:mohsen.rezaniaa75@gmail.com">mohsen.rezaniaa75@gmail.com</a></p>
+<h2>Prices look stale or wrong</h2>
+<p>Gheymat shows a freshness indicator at the top of the Prices screen. The upstream market data updates on its
+own schedule and is not always live by the second; the app shows exactly when it last updated. If it has been
+stuck for a long time, pull down on the Prices screen to refresh, or check your internet connection.</p>
+<h2>Is this financial advice?</h2>
+<p>No. Gheymat shows market prices and a simple trend line computed from recent history. Nothing in the app is
+financial advice, and the trend estimate is not a prediction you should rely on for financial decisions.</p>
+<h2>Why can't I see 40 years of history for gold or coins?</h2>
+<p>Daily history going back to 2012 is available for currencies. Gold, coins and crypto currently only have the
+history the app itself has collected since you started using it; older daily history for those is on our
+roadmap.</p>
+<footer><a href="index.html">Gheymat static API</a> · <a href="privacy.html">Privacy Policy</a></footer>
 """
 
 INTRADAY_DAYS = 7
@@ -403,6 +457,8 @@ def main() -> int:
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
+    (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
+    (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
     print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot)} files updated")
     if args.history or args.backfill:
