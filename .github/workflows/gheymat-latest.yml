@@ -2,7 +2,7 @@ name: Gheymat static fallback
 
 on:
   schedule:
-    - cron: '*/6 * * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       history:
@@ -25,7 +25,7 @@ permissions: {}
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 350
     permissions:
       contents: write
     steps:
@@ -59,45 +59,41 @@ jobs:
           echo "::add-mask::$GHEYMAT_PAYLOAD_KEY"
           echo "::add-mask::$GHEYMAT_SIGNING_KEY"
 
-      - name: "Plan this run (12 archive days of backfill per run; manual runs can ask for 40)"
-        id: plan
-        env:
-          HISTORY: ${{ github.event.inputs.history }}
-        run: |
-          if [ "$HISTORY" = "true" ]; then
-            echo "flag=--history --backfill 40 --pace 3" >> "$GITHUB_OUTPUT"
-          else
-            echo "flag=--history --backfill 12 --pace 3" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Drop legacy site files carried over from the old branch (keep v1 and d only)
-        run: |
-          mkdir -p dist
-          find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name .git -exec rm -rf {} +
-
-      - name: Fetch bonbast and write the static API
+      - name: Publish loop (fetch, backfill 12 archive days, verify, push to gh-pages; every 6.5 minutes for ~5.5 hours)
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_PLAIN: "1"
-          FLAGS: ${{ steps.plan.outputs.flag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTRA: ${{ github.event.inputs.history == 'true' && '--backfill 40' || '--backfill 12' }}
         run: |
-          rm -rf dist/.git
-          mkdir -p dist
-          touch dist/.nojekyll
-          python tools/gheymat_snapshot.py --out dist $FLAGS
-          echo "plain files: $(find dist/v1 -type f | wc -l), sealed files: $(find dist/d -type f 2>/dev/null | wc -l)"
-
-      - name: Verify the sealed v1/latest envelope before deploying
-        env:
-          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
-        run: python tools/verify_sealed.py dist
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          publish_branch: gh-pages
-          force_orphan: true
-          commit_message: 'Gheymat static fallback'
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 330*60 ))
+          iteration=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            iteration=$((iteration + 1))
+            started=$(date +%s)
+            rm -rf dist && mkdir -p dist
+            if git fetch -q --depth 1 origin gh-pages 2>/dev/null; then
+              git --work-tree=dist checkout -q FETCH_HEAD -- . || true
+              git reset -q
+            fi
+            find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
+            touch dist/.nojekyll
+            python tools/gheymat_snapshot.py --out dist --history $EXTRA --pace 3
+            python tools/verify_sealed.py dist
+            (
+              cd dist
+              git init -q
+              git checkout -q -b gh-pages
+              git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A
+              git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Gheymat static fallback (iteration $iteration)"
+              git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+            )
+            rm -rf dist/.git
+            echo "iteration $iteration published at $(date -u +%FT%TZ)"
+            elapsed=$(( $(date +%s) - started ))
+            sleep_for=$(( 390 - elapsed ))
+            if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
+            [ "$sleep_for" -gt 0 ] && sleep "$sleep_for"
+          done
