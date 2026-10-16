@@ -8,12 +8,18 @@ that GitHub Pages serves at the same paths the app requests:
   dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>, dist/index.html
   dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
   dist/v1/history/<code> (full daily series per instrument), dist/v1/longhistory/<code> (coarse 1978-> seed)
+
+dist/v1/latest additionally carries up to 8 computed cross-rate rows (Rate.computed=true) derived from
+bonbast's separate /converter endpoint - CONTRACT.md "Computed cross-rates". See fetch_converter,
+compute_cross_rates, fetch_computed_rates and merge_rates below; stateless per run, by design (no
+persisted converter table), so a bad fetch just drops the 8 rows for that publish, never the other 37.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -25,7 +31,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gheymat_seal import Sealer  # noqa: E402
+from gheymat_seal import Sealer, load_published  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -95,11 +101,14 @@ def to_int(v) -> int | None:
 def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
     rates = []
     for ins in instruments:
+        if ins.get("computed"):
+            continue  # direct-only here; computed cross-rates come from fetch_computed_rates/compute_cross_rates
         key = ins["bonbast_key"]
         rate = {
             "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
             "buy": None, "sell": None, "price": None,
-            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"],
+            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"], "computed": False,
+            "buyRaw": None, "sellRaw": None,
         }
         if ins["kind"] == "currency":
             sell, buy = to_int(raw.get(f"{key}1")), to_int(raw.get(f"{key}2"))
@@ -129,6 +138,99 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
         "rates": rates,
     }
 
+
+def parse_converter_table(obj) -> dict | None:
+    """Defensive float-coerce a bonbast /converter body into {UPPERCASE code: units per 1 EUR}, or None
+    when `obj` isn't a JSON object. Mirrors Gheymat/server/gheymat_server/converter_client._coerce_table."""
+    if not isinstance(obj, dict):
+        return None
+    table: dict[str, float] = {}
+    for k, v in obj.items():
+        try:
+            table[str(k).upper()] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return table
+
+
+def fetch_converter(session: requests.Session) -> dict | None:
+    """POST /converter: bonbast's separate 174-currency EUR-pivoted forex table, used for the 8 computed
+    cross-rate instruments (CONTRACT.md "Computed cross-rates"). Unlike /json this needs no `param` token
+    and no cookies - mirrors converter_client.py's exact request shape (base headers + accept +
+    x-requested-with, no content-type since there is no body). Never raises: a failed/blocked/non-JSON
+    fetch here must stay non-fatal to the whole publish run, unlike fetch_raw's token handling."""
+    h = headers()
+    h["x-requested-with"] = "XMLHttpRequest"
+    h["accept"] = "application/json, text/javascript, */*; q=0.01"
+    try:
+        r = session.post(f"{BASE}/converter", headers=h, timeout=20)
+        r.raise_for_status()
+        raw = r.json()
+    except (requests.RequestException, ValueError) as e:
+        print(f"converter: {e}", file=sys.stderr)
+        return None
+    table = parse_converter_table(raw)
+    if table is None:
+        print("converter: /converter did not return a JSON object", file=sys.stderr)
+        return None
+    return table
+
+
+def compute_cross_rates(table: dict, eur_buy, eur_sell, instruments: list[dict]) -> list[dict]:
+    """One rate per `computed` instrument: buy/sell = round(unit * eur.{buy,sell} * conv["EUR"]/conv[key]).
+
+    Returns [] whenever the result would be untrustworthy: EUR's own direct quote is missing this run, or
+    the pivot check fails (bonbast re-based /converter - conv["EUR"] must be exactly 1.0). A single
+    instrument's own converter key being absent or non-positive only skips that one row, never the other 7.
+    """
+    if eur_buy is None or eur_sell is None:
+        return []
+    if table.get("EUR") != 1.0:
+        print('converter: pivot check failed (EUR != 1.0); dropping computed rows', file=sys.stderr)
+        return []
+    pivot = table["EUR"]
+    rates = []
+    for ins in instruments:
+        if not ins.get("computed"):
+            continue
+        rate = table.get(ins["bonbast_key"])
+        if rate is None or not math.isfinite(rate) or rate <= 0:
+            continue
+        k = pivot / rate
+        buy_raw = ins["unit"] * eur_buy * k
+        sell_raw = ins["unit"] * eur_sell * k
+        if not (math.isfinite(buy_raw) and math.isfinite(sell_raw)):
+            continue
+        rates.append({
+            "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
+            "buy": round(buy_raw), "sell": round(sell_raw), "price": None,
+            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"], "computed": True,
+            "buyRaw": buy_raw, "sellRaw": sell_raw,
+        })
+    return rates
+
+
+def fetch_computed_rates(session: requests.Session, direct_rates: list[dict], instruments: list[dict],
+                          fetcher=None) -> list[dict]:
+    """Thin orchestrator: skip the /converter call entirely when this run's own EUR quote can't be used to
+    pivot it, else fetch+compute. `fetcher` is an injection seam for tests (same convention as
+    fill_days(..., fetcher=...)); defaults to fetch_converter."""
+    eur = next((r for r in direct_rates if r["code"] == "eur"), None)
+    if eur is None or eur["buy"] is None or eur["sell"] is None:
+        return []
+    table = (fetcher or fetch_converter)(session)
+    if table is None:
+        return []
+    return compute_cross_rates(table, eur["buy"], eur["sell"], instruments)
+
+
+def merge_rates(direct_rates: list[dict], computed_rates: list[dict], instruments: list[dict]) -> list[dict]:
+    """Append computed_rates onto direct_rates and reorder to instruments.json's own order (parity with
+    the Gheymat server's merge_computed_rates); a no-op when there are no computed rows this run."""
+    if not computed_rates:
+        return direct_rates
+    by_code = {r["code"]: r for r in direct_rates + computed_rates}
+    return [by_code[i["code"]] for i in instruments if i["code"] in by_code]
 
 
 ARCHIVE_START = "2012-10-09"
@@ -172,14 +274,25 @@ def fetch_archive(session: requests.Session, date: str) -> tuple[str | None, dic
     return parse_archive(r.text)
 
 
+ARCHIVE_GUARD_DAYS = 1000
+
+
 def load_daily(out: Path) -> dict:
-    path = out / "v1" / "daily.json"
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            pass
+    """The archive state: the plain v1/daily.json while it is still published, else the sealed copy at its opaque path."""
+    daily = load_published(out, "v1/daily.json", SEALER)
+    if isinstance(daily, dict) and isinstance(daily.get("codes"), dict) and isinstance(daily.get("start"), str):
+        return daily
     return {"start": ARCHIVE_START, "codes": {}}
+
+
+def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
+    """(previous, current) when the previously published health reported a large archive and this run loaded under half of it."""
+    previous = load_published(out, "health", SEALER)
+    before = previous.get("archiveDays") if isinstance(previous, dict) else None
+    if isinstance(before, bool) or not isinstance(before, int) or before < ARCHIVE_GUARD_DAYS:
+        return None
+    now = len(known_dates(daily))
+    return (before, now) if now < before // 2 else None
 
 
 def save_daily(out: Path, daily: dict) -> None:
@@ -301,6 +414,60 @@ INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</
 <p>Static fallback API for the Gheymat app. Endpoints: <a href="health">health</a>,
 <a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>,
 <code>v1/intraday/&lt;code&gt;</code>, <code>v1/longhistory/&lt;code&gt;</code>.</p>
+<p><a href="privacy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>
+"""
+
+PRIVACY_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Privacy Policy</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
+h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
+<h1>Gheymat Privacy Policy</h1>
+<p>Last updated: 2026-10-15</p>
+<p>Gheymat is an iOS app that shows Iranian free-market currency, gold and crypto prices. This policy covers the
+Gheymat app only.</p>
+<h2>Data we collect</h2>
+<p><strong>None.</strong> Gheymat has no user accounts, no sign-in, no analytics SDK, no advertising SDK, and no
+crash-reporting SDK. The app does not know who you are and cannot identify you.</p>
+<h2>Data stored on your device</h2>
+<p>Your favourites, your chosen list/grid layout, your appearance setting, and a local cache of the latest prices
+are stored only in the app's local storage on your device. This data never leaves your device and is not visible
+to us.</p>
+<h2>Network requests</h2>
+<p>The app fetches currency, gold and crypto prices from Gheymat's own data feed. These requests carry no
+account identifier, advertising identifier, or other data that identifies you. Standard network metadata (such
+as your IP address) is visible to the hosting infrastructure the way it is for any web request, and is not
+logged or retained by us in a way that is linked to you.</p>
+<h2>Price data source</h2>
+<p>Prices are sourced from bonbast.com's public market page. Gheymat is an independent app and is not affiliated
+with, endorsed by, or operated by bonbast.com.</p>
+<h2>Children</h2>
+<p>Gheymat is not directed at children and does not knowingly collect data from anyone, including children,
+because it does not collect data from anyone.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the date above will change. Material changes will be reflected in the app's release
+notes.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: <a href="mailto:mohsen.rezaniaa75@gmail.com">mohsen.rezaniaa75@gmail.com</a></p>
+<footer><a href="index.html">Gheymat static API</a> · <a href="support.html">Support</a></footer>
+"""
+
+SUPPORT_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Support</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
+h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
+<h1>Gheymat Support</h1>
+<h2>Contact</h2>
+<p>For help, feedback or bug reports: <a href="mailto:mohsen.rezaniaa75@gmail.com">mohsen.rezaniaa75@gmail.com</a></p>
+<h2>Prices look stale or wrong</h2>
+<p>Gheymat shows a freshness indicator at the top of the Prices screen. The upstream market data updates on its
+own schedule and is not always live by the second; the app shows exactly when it last updated. If it has been
+stuck for a long time, pull down on the Prices screen to refresh, or check your internet connection.</p>
+<h2>Is this financial advice?</h2>
+<p>No. Gheymat shows market prices and a simple trend line computed from recent history. Nothing in the app is
+financial advice, and the trend estimate is not a prediction you should rely on for financial decisions.</p>
+<h2>Why can't I see 40 years of history for gold or coins?</h2>
+<p>Daily history going back to 2012 is available for currencies. Gold, coins and crypto currently only have the
+history the app itself has collected since you started using it; older daily history for those is on our
+roadmap.</p>
+<footer><a href="index.html">Gheymat static API</a> · <a href="privacy.html">Privacy Policy</a></footer>
 """
 
 INTRADAY_DAYS = 7
@@ -311,13 +478,13 @@ def append_intraday(out: Path, snapshot: dict) -> int:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     written = 0
     for r in snapshot["rates"]:
+        if r.get("computed"):
+            continue  # CONTRACT.md: no server-side ticks are kept for computed codes
         path = out / "v1" / "intraday" / r["code"]
-        points = []
-        if path.exists():
-            try:
-                points = json.loads(path.read_text(encoding="utf-8")).get("points", [])
-            except (ValueError, OSError):
-                points = []
+        previous = load_published(out, f"v1/intraday/{r['code']}", SEALER)
+        points = previous.get("points", []) if isinstance(previous, dict) else []
+        if not isinstance(points, list):
+            points = []
         sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
         if points and points[-1].get("ts") == sample["ts"]:
             continue
@@ -333,10 +500,15 @@ PLAIN_ALSO = True
 
 
 def write(path: Path, obj) -> None:
-    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path."""
+    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path.
+
+    Once plain files are off, a plain copy carried over from an earlier publish is removed so it cannot shadow
+    the sealed state that load_published reads back on the next run."""
     if PLAIN_ALSO or SEALER is None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    elif path.exists():
+        path.unlink()
     if SEALER is not None:
         root = _dist_root(path)
         logical = path.relative_to(root).as_posix()
@@ -381,18 +553,25 @@ def main() -> int:
     fingerprint = hashlib.sha256(json.dumps(
         {k: v for k, v in raw.items() if k[-1] in "12" or k in ("gol18", "mithqal", "ounce", "bitcoin")},
         sort_keys=True).encode()).hexdigest()[:12]
+    daily = load_daily(out)
+    shrank = archive_shrank(out, daily)
+    if shrank is not None:
+        print(f"archive state shrank from {shrank[0]} to {shrank[1]} days; refusing to publish", file=sys.stderr)
+        return 3
+    try:
+        computed_rates = fetch_computed_rates(session, snapshot["rates"], instruments)
+    except (ValueError, OverflowError, ArithmeticError) as e:
+        print(f"converter: unexpected error computing cross-rates: {e}", file=sys.stderr)
+        computed_rates = []
+    snapshot["rates"] = merge_rates(snapshot["rates"], computed_rates, instruments)
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
-    write(out / "health", {
-        "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
-        "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
-        "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
-    })
+    (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
+    (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
     print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot)} files updated")
     if args.history or args.backfill:
-        daily = load_daily(out)
         dates = recent_missing_dates(daily, 7) if args.history else []
         if args.backfill:
             dates += backfill_dates(daily, args.backfill)
@@ -404,6 +583,14 @@ def main() -> int:
         have = known_dates(daily)
         print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
+    write(out / "health", {
+        "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
+        "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
+        "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
+        "archiveDays": len(known_dates(daily)),
+        "converter": {"fetchedAt": utc_now_iso() if computed_rates else None,
+                      "ageSeconds": 0.0 if computed_rates else None, "stale": not bool(computed_rates)},
+    })
     return 0
 
 
