@@ -59,7 +59,7 @@ jobs:
           echo "::add-mask::$GHEYMAT_PAYLOAD_KEY"
           echo "::add-mask::$GHEYMAT_SIGNING_KEY"
 
-      - name: Publish loop (fetch, backfill 12 archive days, verify, push to gh-pages; every 15 minutes for ~5.5 hours, well under GitHub Pages's 10-builds/hour soft limit on legacy branch-based Pages)
+      - name: Publish loop (fetch, backfill 12 archive days, verify, push to gh-pages; every 6 minutes for ~5.5 hours, at GitHub Pages's 10-builds/hour soft limit on legacy branch-based Pages)
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
@@ -93,7 +93,7 @@ jobs:
             rm -rf dist/.git
             echo "iteration $iteration published at $(date -u +%FT%TZ)"
             elapsed=$(( $(date +%s) - started ))
-            sleep_for=$(( 900 - elapsed ))
+            sleep_for=$(( 360 - elapsed ))
             if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
             [ "$sleep_for" -gt 0 ] && sleep "$sleep_for"
           done

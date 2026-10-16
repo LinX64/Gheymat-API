@@ -7,7 +7,12 @@ decryption subkey. The signing secret is never read. Prints a single fixed line 
 or exception text.
 
 Usage: python tools/verify_sealed.py dist [--expect-rates 37] [--max-age 900] [--public-key <b64>]
-Exit 0 only when the envelope verifies, decrypts, matches the logical path and carries the expected rates.
+Exit 0 only when the envelope verifies, decrypts, matches the logical path and carries acceptable rates.
+Without --expect-rates (the normal, workflow-invoked path): every direct (non-computed) code in
+tools/instruments.json must be present exactly once, and every present code must be a known direct or
+computed code - so a 37-rate (no computed rows fetched) or a 38..45-rate (some/all computed rows present)
+publish both pass, but a missing direct code or an unrecognized code still fails closed. --expect-rates
+stays as a legacy exact-count override (tests only).
 """
 from __future__ import annotations
 
@@ -22,13 +27,22 @@ from gheymat_seal import DEFAULT_KID, KEY_LEN, MAX_ENVELOPE_BYTES, open_envelope
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey  # noqa: E402
 
+HERE = Path(__file__).resolve().parent
 PUBLIC_KEY_B64 = "W4Sr3k2r9u76QrRcY94/Npv7Z9JolJjrrW25Z45y5J8="
 LOGICAL = "v1/latest"
-EXPECTED_RATES = 37
 MAX_AGE_SECONDS = 900
 
 
-def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicKey], expect_rates: int, max_age: int) -> int:
+def load_instrument_codes() -> tuple[set[str], set[str]]:
+    """(direct codes, computed codes) from tools/instruments.json."""
+    data = json.loads((HERE / "instruments.json").read_text(encoding="utf-8"))
+    direct = {d["code"] for d in data if not d.get("computed")}
+    computed = {d["code"] for d in data if d.get("computed")}
+    return direct, computed
+
+
+def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicKey],
+           expect_rates: int | None, max_age: int) -> int:
     sealed = dist / opaque_path(payload_key, LOGICAL)
     text = sealed.read_text(encoding="utf-8")
     if len(text) > MAX_ENVELOPE_BYTES:
@@ -38,8 +52,16 @@ def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicK
     if not isinstance(rates, list):
         raise ValueError("no rates")
     codes = [r.get("code") for r in rates if isinstance(r, dict)]
-    if len(codes) != expect_rates or len(set(codes)) != expect_rates or not all(codes):
-        raise ValueError("unexpected rate count")
+    if len(codes) != len(rates) or not all(codes) or len(set(codes)) != len(codes):
+        raise ValueError("bad rate codes")
+    if expect_rates is not None:
+        if len(codes) != expect_rates:
+            raise ValueError("unexpected rate count")
+    else:
+        direct, computed = load_instrument_codes()
+        code_set = set(codes)
+        if not direct.issubset(code_set) or not code_set.issubset(direct | computed):
+            raise ValueError("unexpected rate codes")
     if snapshot.get("source") != "bonbast" or not snapshot.get("fetchedAt"):
         raise ValueError("unexpected snapshot shape")
     return len(codes)
@@ -48,7 +70,9 @@ def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicK
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("dist")
-    ap.add_argument("--expect-rates", type=int, default=EXPECTED_RATES)
+    ap.add_argument("--expect-rates", type=int, default=None,
+                     help="legacy exact-count override; default is the instrument-table-driven check "
+                          "described above")
     ap.add_argument("--max-age", type=int, default=MAX_AGE_SECONDS)
     ap.add_argument("--public-key", default=PUBLIC_KEY_B64, help="base64 Ed25519 public key for kid 1 (tests only)")
     args = ap.parse_args()

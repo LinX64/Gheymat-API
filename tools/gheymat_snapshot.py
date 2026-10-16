@@ -8,12 +8,18 @@ that GitHub Pages serves at the same paths the app requests:
   dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>, dist/index.html
   dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
   dist/v1/history/<code> (full daily series per instrument), dist/v1/longhistory/<code> (coarse 1978-> seed)
+
+dist/v1/latest additionally carries up to 8 computed cross-rate rows (Rate.computed=true) derived from
+bonbast's separate /converter endpoint - CONTRACT.md "Computed cross-rates". See fetch_converter,
+compute_cross_rates, fetch_computed_rates and merge_rates below; stateless per run, by design (no
+persisted converter table), so a bad fetch just drops the 8 rows for that publish, never the other 37.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -95,11 +101,14 @@ def to_int(v) -> int | None:
 def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
     rates = []
     for ins in instruments:
+        if ins.get("computed"):
+            continue  # direct-only here; computed cross-rates come from fetch_computed_rates/compute_cross_rates
         key = ins["bonbast_key"]
         rate = {
             "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
             "buy": None, "sell": None, "price": None,
-            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"],
+            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"], "computed": False,
+            "buyRaw": None, "sellRaw": None,
         }
         if ins["kind"] == "currency":
             sell, buy = to_int(raw.get(f"{key}1")), to_int(raw.get(f"{key}2"))
@@ -129,6 +138,99 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
         "rates": rates,
     }
 
+
+def parse_converter_table(obj) -> dict | None:
+    """Defensive float-coerce a bonbast /converter body into {UPPERCASE code: units per 1 EUR}, or None
+    when `obj` isn't a JSON object. Mirrors Gheymat/server/gheymat_server/converter_client._coerce_table."""
+    if not isinstance(obj, dict):
+        return None
+    table: dict[str, float] = {}
+    for k, v in obj.items():
+        try:
+            table[str(k).upper()] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return table
+
+
+def fetch_converter(session: requests.Session) -> dict | None:
+    """POST /converter: bonbast's separate 174-currency EUR-pivoted forex table, used for the 8 computed
+    cross-rate instruments (CONTRACT.md "Computed cross-rates"). Unlike /json this needs no `param` token
+    and no cookies - mirrors converter_client.py's exact request shape (base headers + accept +
+    x-requested-with, no content-type since there is no body). Never raises: a failed/blocked/non-JSON
+    fetch here must stay non-fatal to the whole publish run, unlike fetch_raw's token handling."""
+    h = headers()
+    h["x-requested-with"] = "XMLHttpRequest"
+    h["accept"] = "application/json, text/javascript, */*; q=0.01"
+    try:
+        r = session.post(f"{BASE}/converter", headers=h, timeout=20)
+        r.raise_for_status()
+        raw = r.json()
+    except (requests.RequestException, ValueError) as e:
+        print(f"converter: {e}", file=sys.stderr)
+        return None
+    table = parse_converter_table(raw)
+    if table is None:
+        print("converter: /converter did not return a JSON object", file=sys.stderr)
+        return None
+    return table
+
+
+def compute_cross_rates(table: dict, eur_buy, eur_sell, instruments: list[dict]) -> list[dict]:
+    """One rate per `computed` instrument: buy/sell = round(unit * eur.{buy,sell} * conv["EUR"]/conv[key]).
+
+    Returns [] whenever the result would be untrustworthy: EUR's own direct quote is missing this run, or
+    the pivot check fails (bonbast re-based /converter - conv["EUR"] must be exactly 1.0). A single
+    instrument's own converter key being absent or non-positive only skips that one row, never the other 7.
+    """
+    if eur_buy is None or eur_sell is None:
+        return []
+    if table.get("EUR") != 1.0:
+        print('converter: pivot check failed (EUR != 1.0); dropping computed rows', file=sys.stderr)
+        return []
+    pivot = table["EUR"]
+    rates = []
+    for ins in instruments:
+        if not ins.get("computed"):
+            continue
+        rate = table.get(ins["bonbast_key"])
+        if rate is None or not math.isfinite(rate) or rate <= 0:
+            continue
+        k = pivot / rate
+        buy_raw = ins["unit"] * eur_buy * k
+        sell_raw = ins["unit"] * eur_sell * k
+        if not (math.isfinite(buy_raw) and math.isfinite(sell_raw)):
+            continue
+        rates.append({
+            "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
+            "buy": round(buy_raw), "sell": round(sell_raw), "price": None,
+            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"], "computed": True,
+            "buyRaw": buy_raw, "sellRaw": sell_raw,
+        })
+    return rates
+
+
+def fetch_computed_rates(session: requests.Session, direct_rates: list[dict], instruments: list[dict],
+                          fetcher=None) -> list[dict]:
+    """Thin orchestrator: skip the /converter call entirely when this run's own EUR quote can't be used to
+    pivot it, else fetch+compute. `fetcher` is an injection seam for tests (same convention as
+    fill_days(..., fetcher=...)); defaults to fetch_converter."""
+    eur = next((r for r in direct_rates if r["code"] == "eur"), None)
+    if eur is None or eur["buy"] is None or eur["sell"] is None:
+        return []
+    table = (fetcher or fetch_converter)(session)
+    if table is None:
+        return []
+    return compute_cross_rates(table, eur["buy"], eur["sell"], instruments)
+
+
+def merge_rates(direct_rates: list[dict], computed_rates: list[dict], instruments: list[dict]) -> list[dict]:
+    """Append computed_rates onto direct_rates and reorder to instruments.json's own order (parity with
+    the Gheymat server's merge_computed_rates); a no-op when there are no computed rows this run."""
+    if not computed_rates:
+        return direct_rates
+    by_code = {r["code"]: r for r in direct_rates + computed_rates}
+    return [by_code[i["code"]] for i in instruments if i["code"] in by_code]
 
 
 ARCHIVE_START = "2012-10-09"
@@ -376,6 +478,8 @@ def append_intraday(out: Path, snapshot: dict) -> int:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     written = 0
     for r in snapshot["rates"]:
+        if r.get("computed"):
+            continue  # CONTRACT.md: no server-side ticks are kept for computed codes
         path = out / "v1" / "intraday" / r["code"]
         previous = load_published(out, f"v1/intraday/{r['code']}", SEALER)
         points = previous.get("points", []) if isinstance(previous, dict) else []
@@ -454,6 +558,12 @@ def main() -> int:
     if shrank is not None:
         print(f"archive state shrank from {shrank[0]} to {shrank[1]} days; refusing to publish", file=sys.stderr)
         return 3
+    try:
+        computed_rates = fetch_computed_rates(session, snapshot["rates"], instruments)
+    except (ValueError, OverflowError, ArithmeticError) as e:
+        print(f"converter: unexpected error computing cross-rates: {e}", file=sys.stderr)
+        computed_rates = []
+    snapshot["rates"] = merge_rates(snapshot["rates"], computed_rates, instruments)
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
@@ -478,6 +588,8 @@ def main() -> int:
         "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
         "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
         "archiveDays": len(known_dates(daily)),
+        "converter": {"fetchedAt": utc_now_iso() if computed_rates else None,
+                      "ageSeconds": 0.0 if computed_rates else None, "stale": not bool(computed_rates)},
     })
     return 0
 
