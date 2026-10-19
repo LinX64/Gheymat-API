@@ -63,7 +63,7 @@ jobs:
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
-          GHEYMAT_PLAIN: "1"
+          GHEYMAT_PLAIN: "0"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EXTRA: ${{ github.event.inputs.history == 'true' && '--backfill 40' || '--backfill 12' }}
         run: |
