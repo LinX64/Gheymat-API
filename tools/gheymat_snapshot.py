@@ -410,10 +410,8 @@ def write_long_history(out: Path, archive_file: Path) -> int:
     return written
 
 
-INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat static API</title>
-<p>Static fallback API for the Gheymat app. Endpoints: <a href="health">health</a>,
-<a href="v1/latest">v1/latest</a>, <a href="v1/instruments">v1/instruments</a>, <code>v1/history/&lt;code&gt;</code>,
-<code>v1/intraday/&lt;code&gt;</code>, <code>v1/longhistory/&lt;code&gt;</code>.</p>
+INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat</title>
+<p>Data for the Gheymat iPhone app, served only over its encrypted, signed channel.</p>
 <p><a href="privacy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>
 """
 
