@@ -198,15 +198,18 @@ def test_intraday_skips_computed_rows(tmp_path):
 
 def test_intraday_appends_and_trims(tmp_path):
     snap = mod.build_snapshot(RAW, mod.load_instruments())
+    now = mod.datetime.now(mod.timezone.utc)
+    stamp = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731 - relative, so the test never date-rots
+    recent = stamp(mod.timedelta(hours=1))
     old = {"code": "usd", "days": 7, "points": [
-        {"ts": "2026-09-01T00:00:00Z", "buy": 1, "sell": 2, "price": None},
-        {"ts": "2026-10-14T20:00:00Z", "buy": 264000, "sell": 264200, "price": None},
+        {"ts": stamp(mod.timedelta(days=30)), "buy": 1, "sell": 2, "price": None},
+        {"ts": recent, "buy": 264000, "sell": 264200, "price": None},
     ]}
     (tmp_path / "v1" / "intraday").mkdir(parents=True)
     (tmp_path / "v1" / "intraday" / "usd").write_text(__import__("json").dumps(old), encoding="utf-8")
     assert mod.append_intraday(tmp_path, snap) == len(snap["rates"])
     usd = __import__("json").loads((tmp_path / "v1" / "intraday" / "usd").read_text(encoding="utf-8"))
-    assert [p["ts"] for p in usd["points"]][0] == "2026-10-14T20:00:00Z"
+    assert [p["ts"] for p in usd["points"]][0] == recent
     assert usd["points"][-1]["sell"] == 265200
     assert mod.append_intraday(tmp_path, snap) == 0
 
@@ -291,10 +294,12 @@ def test_write_seals_at_the_opaque_path_and_the_state_reads_back(tmp_path):
         assert mod.append_intraday(tmp_path, snap) == len(snap["rates"])
         assert not (tmp_path / "v1" / "intraday" / "usd").exists()
         assert mod.append_intraday(tmp_path, snap) == 0
-        later = dict(snap, fetchedAt="2026-10-15T09:00:00Z")
+        later_ts = (mod.datetime.strptime(snap["fetchedAt"], "%Y-%m-%dT%H:%M:%SZ")
+                    + mod.timedelta(minutes=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        later = dict(snap, fetchedAt=later_ts)
         assert mod.append_intraday(tmp_path, later) == len(snap["rates"])
         usd = gs.load_published(tmp_path, "v1/intraday/usd", sealer)
-        assert [p["ts"] for p in usd["points"]] == [snap["fetchedAt"], "2026-10-15T09:00:00Z"]
+        assert [p["ts"] for p in usd["points"]] == [snap["fetchedAt"], later_ts]
         mod.SEALER = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
         assert mod.load_daily(tmp_path) == {"start": mod.ARCHIVE_START, "codes": {}}
     finally:

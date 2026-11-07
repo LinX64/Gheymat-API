@@ -20,8 +20,8 @@ SIGNING = Ed25519PrivateKey.from_private_bytes(bytes(range(60, 92)))
 PUBLIC_B64 = base64.b64encode(SIGNING.public_key().public_bytes_raw()).decode()
 OTHER = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
 
-DIRECT, COMPUTED = vs.load_instrument_codes()
-DIRECT, COMPUTED = sorted(DIRECT), sorted(COMPUTED)  # fixed order for deterministic test fixtures
+DIRECT, OPTIONAL = vs.load_instrument_codes()
+DIRECT, OPTIONAL = sorted(DIRECT), sorted(OPTIONAL)  # fixed order for deterministic test fixtures
 
 
 def snapshot(codes: list[str] | None = None) -> dict:
@@ -73,9 +73,9 @@ def test_gate_fails_closed(tmp_path, monkeypatch, capsys):
     code, text = run(monkeypatch, capsys, tmp_path, key=None)
     assert code == 1 and "GHEYMAT_PAYLOAD_KEY is not set" in text
 
-    sealed = publish(tmp_path, snapshot(DIRECT[:-1]))  # one direct code missing
+    sealed = publish(tmp_path, snapshot(DIRECT[:28]))  # under the 29-direct floor
     assert run(monkeypatch, capsys, tmp_path) == (1, failed)
-    assert run(monkeypatch, capsys, tmp_path, "--expect-rates", "36") == (0, "verify_sealed: sealed v1/latest ok, 36 rates\n")
+    assert run(monkeypatch, capsys, tmp_path, "--expect-rates", "28") == (0, "verify_sealed: sealed v1/latest ok, 28 rates\n")
 
     publish(tmp_path, snapshot(), issued=int(time.time()) - 2 * 3600)
     assert run(monkeypatch, capsys, tmp_path) == (1, failed)
@@ -113,18 +113,28 @@ def test_production_public_key_constant_is_a_valid_ed25519_key():
     raw = base64.b64decode(vs.PUBLIC_KEY_B64)
     assert len(raw) == 32 and Ed25519PublicKey.from_public_bytes(raw)
     assert vs.LOGICAL == "v1/latest" and vs.MAX_AGE_SECONDS == 900
-    assert len(DIRECT) == 37 and len(COMPUTED) == 8
+    assert len(DIRECT) == 37 and len(OPTIONAL) == 14
+    assert {"eth", "xrp", "bch", "ltc", "bnb", "usdt", "pln"} <= set(OPTIONAL) and "btc" in DIRECT
 
 
-def test_gate_passes_with_some_or_all_computed_rows_present(tmp_path, monkeypatch, capsys):
-    # some computed rows this run (a few /converter keys were missing) ...
-    publish(tmp_path, snapshot(DIRECT + COMPUTED[:3]))
+def test_gate_passes_with_some_or_all_optional_rows_present(tmp_path, monkeypatch, capsys):
+    # some computed / hansha-only rows this run ...
+    publish(tmp_path, snapshot(DIRECT + OPTIONAL[:3]))
     code, text = run(monkeypatch, capsys, tmp_path)
     assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 40 rates\n"
-    # ... and all 8, on a clean fetch
-    publish(tmp_path, snapshot(DIRECT + COMPUTED))
+    # ... and all 14, on a clean fetch from both sources
+    publish(tmp_path, snapshot(DIRECT + OPTIONAL))
     code, text = run(monkeypatch, capsys, tmp_path)
-    assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 45 rates\n"
+    assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 51 rates\n"
+
+
+def test_gate_passes_a_hansha_snapshot_missing_the_bonbast_only_codes(tmp_path, monkeypatch, capsys):
+    """bonbast down: hansha alone has no ounce and no usd-quoted btc, which must still deploy."""
+    snap = snapshot([c for c in DIRECT if c not in ("ounce", "btc")] + ["eth", "usdt"])
+    snap["source"] = "hansha"
+    publish(tmp_path, snap)
+    code, text = run(monkeypatch, capsys, tmp_path)
+    assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 37 rates\n"
 
 
 def test_gate_fails_closed_on_an_unrecognized_code(tmp_path, monkeypatch, capsys):

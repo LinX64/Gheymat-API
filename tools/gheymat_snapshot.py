@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Static fallback publisher for the Gheymat app.
+"""Static channel publisher for the Gheymat app (its only data path).
 
-Mirrors Gheymat/server/gheymat_server/bonbast_client.py (same bonbast protocol, same wire shapes as
-Gheymat/CONTRACT.md) but runs as a one-shot script inside GitHub Actions and writes extensionless files
-that GitHub Pages serves at the same paths the app requests:
+Combines several sources in priority order (GHEYMAT_SOURCES, default "hansha,bonbast"; CONTRACT.md "Static
+publisher sources"): every source is fetched, each code takes its value from the first source that supplies
+one, and a source that fails or goes stale is skipped. Same wire shapes as Gheymat/CONTRACT.md; runs as a
+one-shot script inside GitHub Actions and writes extensionless files that GitHub Pages serves at the same
+paths the app requests:
 
   dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>, dist/index.html
   dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
@@ -39,6 +41,16 @@ UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like
 COOKIES = {"cookieconsent_status": "true", "st_bb": "0"}
 TOKEN_RE = re.compile(r'param\s*[=:]\s*"([^"]+)"')
 HERE = Path(__file__).resolve().parent
+HANSHA = "https://hansha.online"
+SOURCES_ENV = "GHEYMAT_SOURCES"
+DEFAULT_SOURCES = ("hansha", "bonbast")
+MIN_DIRECT = 29  # publish floor on combined direct rates (unchanged from the bonbast-only publisher)
+STALE_SOURCE_SECONDS = 30 * 60  # a source whose newest observation is older than this is skipped
+FUTURE_SLACK_SECONDS = 5 * 60
+
+
+class SourceError(RuntimeError):
+    """A source failed as a whole (HTTP error, challenge page, bad body, stale feed); the run moves on."""
 
 
 def utc_now_iso() -> str:
@@ -63,10 +75,10 @@ def get_token(session: requests.Session) -> str:
     r = session.get(f"{BASE}/", headers=headers(), cookies=COOKIES, timeout=20)
     r.raise_for_status()
     if "/cdn-cgi/challenge-platform" in r.text or "Just a moment" in r.text:
-        raise SystemExit("bonbast: challenge page instead of the homepage")
+        raise SourceError("bonbast: challenge page instead of the homepage")
     m = TOKEN_RE.search(r.text)
     if not m:
-        raise SystemExit("bonbast: token not found")
+        raise SourceError("bonbast: token not found")
     return m.group(1)
 
 
@@ -79,11 +91,13 @@ def fetch_raw(session: requests.Session) -> dict:
         try:
             raw = r.json()
         except ValueError:
-            raise SystemExit("bonbast: /json did not return JSON")
+            raise SourceError("bonbast: /json did not return JSON")
+        if not isinstance(raw, dict):
+            raise SourceError("bonbast: /json is not a JSON object")
         if "reset" not in raw:
             return raw
         time.sleep(2)
-    raise SystemExit("bonbast: token expired twice")
+    raise SourceError("bonbast: token expired twice")
 
 
 def load_instruments() -> list[dict]:
@@ -103,7 +117,9 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
     for ins in instruments:
         if ins.get("computed"):
             continue  # direct-only here; computed cross-rates come from fetch_computed_rates/compute_cross_rates
-        key = ins["bonbast_key"]
+        key = ins.get("bonbast_key")
+        if not key:
+            continue  # hansha-only instrument (CONTRACT.md "Static publisher sources")
         rate = {
             "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
             "buy": None, "sell": None, "price": None,
@@ -137,6 +153,171 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
         "flags": ["static"],
         "rates": rates,
     }
+
+
+def normalize_ts(value) -> str | None:
+    """A source timestamp as CONTRACT.md's `%Y-%m-%dT%H:%M:%SZ` UTC, clamped to now if it is in the future;
+    None when it is missing or unparseable."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    if dt > now + timedelta(seconds=FUTURE_SLACK_SECONDS):
+        return None
+    return min(dt.astimezone(timezone.utc), now).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def age_seconds(stamp: str) -> float:
+    dt = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds()
+
+
+def positive(v) -> float | None:
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n if math.isfinite(n) and n > 0 else None
+
+
+def fetch_hansha(session: requests.Session) -> list:
+    r = session.get(f"{HANSHA}/latest", headers={"user-agent": UA, "accept": "application/json"}, timeout=20)
+    r.raise_for_status()
+    try:
+        rows = r.json()
+    except ValueError:
+        raise SourceError("hansha: /latest did not return JSON")
+    if not isinstance(rows, list):
+        raise SourceError("hansha: /latest is not a JSON array")
+    return rows
+
+
+def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
+    """Map hansha /latest rows onto our instrument table (CONTRACT.md "Static publisher sources").
+
+    `ab` is our code and `ps[0]` the newest point. Hansha has no `ounce` and prices `btc` in toman while ours
+    quotes usd, so usd-quoted instruments are never taken from here. Names and glyphs always come from our
+    table, never hansha's `en`/`fa`/`av`. fetchedAt is the oldest observation used, sourceModified the newest."""
+    by_ab = {row["ab"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("ab"), str)}
+    rates, stamps = [], []
+    for ins in instruments:
+        if ins.get("computed") or ins["quote"] != "toman":
+            continue
+        row = by_ab.get(ins["code"])
+        ps = row.get("ps") if isinstance(row, dict) else None
+        point = ps[0] if isinstance(ps, list) and ps and isinstance(ps[0], dict) else None
+        stamp = normalize_ts(point.get("ts")) if point else None
+        if stamp is None:
+            continue  # no point, or no trustworthy observation time for it
+        rate = {
+            "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
+            "buy": None, "sell": None, "price": None,
+            "en": ins["en"], "fa": ins["fa"], "flag": ins["flag"], "computed": False,
+            "buyRaw": None, "sellRaw": None,
+        }
+        if ins["kind"] in ("currency", "coin"):
+            buy, sell = positive(point.get("bp")), positive(point.get("sp"))
+            if buy is None or sell is None:
+                continue
+            rate["buy"], rate["sell"] = int(buy), int(sell)
+        else:
+            price = positive(point.get("sp"))
+            if price is None:
+                continue
+            rate["price"] = float(int(price))
+        rates.append(rate)
+        stamps.append(stamp)
+    if stamps:  # a row frozen far behind the feed counts as missing (the next source fills it), so one stale
+        newest = max(stamps)  # row never drags the whole snapshot's fetchedAt back
+        keep = [i for i, s in enumerate(stamps) if age_seconds(s) - age_seconds(newest) <= STALE_SOURCE_SECONDS]
+        rates, stamps = [rates[i] for i in keep], [stamps[i] for i in keep]
+    return {
+        "seq": int(time.time()),
+        "fetchedAt": min(stamps) if stamps else utc_now_iso(),
+        "sourceModified": max(stamps) if stamps else None,
+        "source": "hansha",
+        "flags": ["static"],
+        "rates": rates,
+    }
+
+
+def source_order(raw: str | None = None) -> list[str]:
+    """GHEYMAT_SOURCES as a de-duplicated list of known source names; the default when empty or unknown."""
+    raw = os.environ.get(SOURCES_ENV, "") if raw is None else raw
+    names = [n.strip().lower() for n in raw.split(",") if n.strip()]
+    known = [n for n in dict.fromkeys(names) if n in DEFAULT_SOURCES]
+    return known or list(DEFAULT_SOURCES)
+
+
+def fetch_source(name: str, session: requests.Session, instruments: list[dict]) -> dict:
+    if name == "hansha":
+        snap = build_hansha_snapshot(fetch_hansha(session), instruments)
+        if not snap["rates"]:
+            raise SourceError("hansha: no usable rows")
+        age = age_seconds(snap["sourceModified"])
+        if age > STALE_SOURCE_SECONDS:
+            raise SourceError(f"hansha: newest point is {int(age // 60)} min old")
+        return snap
+    if name == "bonbast":
+        return build_snapshot(fetch_raw(session), instruments)
+    raise SourceError(f"unknown source {name}")
+
+
+def collect_sources(session: requests.Session, instruments: list[dict], order: list[str],
+                    fetch=fetch_source) -> list[dict]:
+    """One snapshot per source that worked, in priority order; a failed or stale source is logged and skipped."""
+    results = []
+    for name in order:
+        try:
+            snap = fetch(name, session, instruments)
+        except (SourceError, requests.RequestException, ValueError) as e:
+            print(f"source {name}: skipped ({type(e).__name__}: {e})", file=sys.stderr)
+            continue
+        print(f"source {name}: {len(snap['rates'])} rates, observed {snap['fetchedAt']}")
+        results.append(snap)
+    return results
+
+
+def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict, dict[str, int]]:
+    """Per-instrument fill: each code from the first snapshot (priority order) that carries it.
+
+    Returns the combined snapshot and per-source counts. `source` is the source that supplied the most rates
+    (ties go to the higher priority), `sourceModified` is its stamp, and `fetchedAt` is the OLDEST observation
+    among the sources used, so the app never shows a republished value as fresher than it is."""
+    chosen: dict[str, tuple[dict, str]] = {}
+    for snap in results:
+        for r in snap["rates"]:
+            chosen.setdefault(r["code"], (r, snap["source"]))
+    counts: dict[str, int] = {}
+    for _, src in chosen.values():
+        counts[src] = counts.get(src, 0) + 1
+    order = [i["code"] for i in instruments if not i.get("computed")]
+    rates = [chosen[c][0] for c in order if c in chosen]
+    used = [s for s in results if counts.get(s["source"])]
+    if not used:
+        return {"seq": int(time.time()), "fetchedAt": utc_now_iso(), "sourceModified": None,
+                "source": "none", "flags": ["static"], "rates": []}, {}
+    primary = max(used, key=lambda s: counts[s["source"]])
+    snapshot = {
+        "seq": int(time.time()),
+        "fetchedAt": min(s["fetchedAt"] for s in used),
+        "sourceModified": primary["sourceModified"],
+        "source": primary["source"],
+        "flags": ["static"],
+        "rates": rates,
+    }
+    return snapshot, {s["source"]: counts[s["source"]] for s in used}
+
+
+def rates_fingerprint(rates: list[dict]) -> str:
+    """Short hash of the published values only (never timestamps), whichever source supplied them."""
+    values = {r["code"]: [r.get("buy"), r.get("sell"), r.get("price")] for r in rates}
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:12]
 
 
 def parse_converter_table(obj) -> dict | None:
@@ -419,7 +600,7 @@ PRIVACY_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" con
 <style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
 h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
 <h1>Gheymat Privacy Policy</h1>
-<p>Last updated: 2026-10-15</p>
+<p>Last updated: 2026-11-07</p>
 <p>Gheymat is an iOS app that shows Iranian free-market currency, gold and crypto prices. This policy covers the
 Gheymat app only.</p>
 <h2>Data we collect</h2>
@@ -435,8 +616,9 @@ account identifier, advertising identifier, or other data that identifies you. S
 as your IP address) is visible to the hosting infrastructure the way it is for any web request, and is not
 logged or retained by us in a way that is linked to you.</p>
 <h2>Price data source</h2>
-<p>Prices are sourced from bonbast.com's public market page. Gheymat is an independent app and is not affiliated
-with, endorsed by, or operated by bonbast.com.</p>
+<p>Prices are sourced from public Iranian market pages: hansha.online first, with bonbast.com filling anything it
+does not carry and taking over when it is unavailable. Gheymat is an independent app and is not affiliated with,
+endorsed by, or operated by either site.</p>
 <h2>Children</h2>
 <p>Gheymat is not directed at children and does not knowingly collect data from anyone, including children,
 because it does not collect data from anyone.</p>
@@ -484,8 +666,8 @@ def append_intraday(out: Path, snapshot: dict) -> int:
         if not isinstance(points, list):
             points = []
         sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
-        if points and points[-1].get("ts") == sample["ts"]:
-            continue
+        if points and str(points[-1].get("ts", "")) >= sample["ts"]:
+            continue  # an unchanged (or older, after a source switch) observation adds no point
         points = [p for p in points if isinstance(p, dict) and p.get("ts", "") >= cutoff]
         points.append(sample)
         write(path, {"code": r["code"], "days": INTRADAY_DAYS, "points": points})
@@ -543,14 +725,13 @@ def main() -> int:
     print("sealed channel:", "on" if SEALER else "off (no keys)", "| plain files:", "on" if PLAIN_ALSO or SEALER is None else "off")
     instruments = load_instruments()
     session = requests.Session()
-    raw = fetch_raw(session)
-    snapshot = build_snapshot(raw, instruments)
-    if len(snapshot["rates"]) < 29:
-        print(f"only {len(snapshot['rates'])} rates parsed; refusing to publish", file=sys.stderr)
+    order = source_order()
+    print("sources:", " > ".join(order))
+    snapshot, counts = combine_sources(collect_sources(session, instruments, order), instruments)
+    if len(snapshot["rates"]) < MIN_DIRECT:
+        print(f"only {len(snapshot['rates'])} rates from all sources; refusing to publish", file=sys.stderr)
         return 2
-    fingerprint = hashlib.sha256(json.dumps(
-        {k: v for k, v in raw.items() if k[-1] in "12" or k in ("gol18", "mithqal", "ounce", "bitcoin")},
-        sort_keys=True).encode()).hexdigest()[:12]
+    fingerprint = rates_fingerprint(snapshot["rates"])
     daily = load_daily(out)
     shrank = archive_shrank(out, daily)
     if shrank is not None:
@@ -567,7 +748,9 @@ def main() -> int:
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
     (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
-    print(f"latest: {len(snapshot['rates'])} rates, usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, fp {fingerprint}")
+    print(f"latest: {len(snapshot['rates'])} rates ({', '.join(f'{k} {v}' for k, v in counts.items())}), "
+          f"usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, observed {snapshot['fetchedAt']}, "
+          f"fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot)} files updated")
     if args.history or args.backfill:
         dates = recent_missing_dates(daily, 7) if args.history else []
@@ -582,9 +765,11 @@ def main() -> int:
         print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     write(out / "health", {
-        "ok": True, "lastFetchAt": snapshot["fetchedAt"], "ageSeconds": 0.0, "consecutiveFailures": 0,
+        "ok": True, "lastFetchAt": snapshot["fetchedAt"],
+        "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
         "proxyPool": {"size": 0, "healthy": 0, "inUse": None, "enabled": False, "paidConfigured": False},
-        "seq": snapshot["seq"], "source": "bonbast", "mode": "static", "fingerprint": fingerprint,
+        "seq": snapshot["seq"], "source": snapshot["source"], "sources": counts, "mode": "static",
+        "fingerprint": fingerprint,
         "archiveDays": len(known_dates(daily)),
         "converter": {"fetchedAt": utc_now_iso() if computed_rates else None,
                       "ageSeconds": 0.0 if computed_rates else None, "stale": not bool(computed_rates)},

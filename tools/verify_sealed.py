@@ -8,11 +8,12 @@ or exception text.
 
 Usage: python tools/verify_sealed.py dist [--expect-rates 37] [--max-age 900] [--public-key <b64>]
 Exit 0 only when the envelope verifies, decrypts, matches the logical path and carries acceptable rates.
-Without --expect-rates (the normal, workflow-invoked path): every direct (non-computed) code in
-tools/instruments.json must be present exactly once, and every present code must be a known direct or
-computed code - so a 37-rate (no computed rows fetched) or a 38..45-rate (some/all computed rows present)
-publish both pass, but a missing direct code or an unrecognized code still fails closed. --expect-rates
-stays as a legacy exact-count override (tests only).
+Without --expect-rates (the normal, workflow-invoked path): every present code must be a known code from
+tools/instruments.json and appear once, at least MIN_DIRECT (29) of the direct codes (those with a bonbast key)
+must be present, and `source` must be one of the publisher's sources (CONTRACT.md "Static publisher sources"):
+a source outage may drop a few direct codes (hansha has no ounce or usd-quoted btc), so a full 37 is no longer
+required, but a thin publish or an unrecognized code still fails closed. --expect-rates stays as a legacy
+exact-count override (tests only).
 """
 from __future__ import annotations
 
@@ -33,12 +34,19 @@ LOGICAL = "v1/latest"
 MAX_AGE_SECONDS = 900
 
 
+MIN_DIRECT = 29  # same floor gheymat_snapshot.py publishes at
+SOURCES = {"hansha", "bonbast"}
+
+
 def load_instrument_codes() -> tuple[set[str], set[str]]:
-    """(direct codes, computed codes) from tools/instruments.json."""
+    """(direct codes, optional codes) from tools/instruments.json.
+
+    Direct = the free-market quotes every source combination aims to carry (they have a bonbast key);
+    optional = computed cross-rates plus the hansha-only rows, which may be absent from any given publish."""
     data = json.loads((HERE / "instruments.json").read_text(encoding="utf-8"))
-    direct = {d["code"] for d in data if not d.get("computed")}
-    computed = {d["code"] for d in data if d.get("computed")}
-    return direct, computed
+    direct = {d["code"] for d in data if not d.get("computed") and d.get("bonbast_key")}
+    optional = {d["code"] for d in data} - direct
+    return direct, optional
 
 
 def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicKey],
@@ -58,11 +66,11 @@ def verify(dist: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicK
         if len(codes) != expect_rates:
             raise ValueError("unexpected rate count")
     else:
-        direct, computed = load_instrument_codes()
+        direct, optional = load_instrument_codes()
         code_set = set(codes)
-        if not direct.issubset(code_set) or not code_set.issubset(direct | computed):
+        if len(code_set & direct) < MIN_DIRECT or not code_set.issubset(direct | optional):
             raise ValueError("unexpected rate codes")
-    if snapshot.get("source") != "bonbast" or not snapshot.get("fetchedAt"):
+    if snapshot.get("source") not in SOURCES or not snapshot.get("fetchedAt"):
         raise ValueError("unexpected snapshot shape")
     return len(codes)
 
