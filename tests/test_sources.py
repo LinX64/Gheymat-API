@@ -34,6 +34,13 @@ def hansha_rows(minutes_ago: float = 2) -> list[dict]:
         {"ab": "btc", "av": "💰", "en": "Bitcoin", "fa": "بیتکوین", "ty": "cc", "ps": [{"sp": 20352630000, "ts": ts}]},
         {"ab": "eth", "av": "🔊", "en": "Ethereum", "fa": "اتریوم", "ty": "cc", "ps": [{"sp": 600379000, "ts": ts}]},
         {"ab": "usdt", "av": "🪙", "en": "Tether USDT", "fa": "تتر", "ty": "cc", "ps": [{"sp": 267700, "ts": ts}]},
+        # hansha quotes these per 1 unit; our table (bonbast's convention) quotes per 10, 10 and 100
+        {"ab": "jpy", "av": "🇯🇵", "en": "Japanese Yen", "fa": "ین ژاپن", "ty": "cu",
+         "ps": [{"bp": 1670.0, "sp": 1680.0, "ts": ts}]},
+        {"ab": "amd", "av": "🇦🇲", "en": "Armenian Dram", "fa": "درام ارمنستان", "ty": "cu",
+         "ps": [{"bp": 737.0, "sp": 737.5, "ts": ts}]},
+        {"ab": "iqd", "av": "🇮🇶", "en": "Iraqi Dinar", "fa": "دینار عراق", "ty": "cu",
+         "ps": [{"bp": 174.5, "sp": 175.5, "ts": ts}]},
         {"ab": "zzz", "av": "?", "en": "Unknown", "fa": "?", "ty": "cu", "ps": [{"bp": 1, "sp": 2, "ts": ts}]},
         "not a row",
     ]
@@ -41,7 +48,8 @@ def hansha_rows(minutes_ago: float = 2) -> list[dict]:
 
 def bonbast_snapshot() -> dict:
     raw = {"usd1": "265200", "usd2": "265000", "eur1": "294800", "eur2": "294600", "ounce": "4094.2",
-           "bitcoin": "81476.39", "gol18": "26136940", "last_modified": "November 7, 2026 15:40"}
+           "bitcoin": "81476.39", "gol18": "26136940", "jpy1": "16800", "jpy2": "16700", "amd1": "7375",
+           "amd2": "7370", "iqd1": "17550", "iqd2": "17450", "last_modified": "November 7, 2026 15:40"}
     return mod.build_snapshot(raw, INSTRUMENTS)
 
 
@@ -120,7 +128,7 @@ def test_combine_takes_hansha_first_and_fills_ounce_and_btc_from_bonbast():
     assert by["usd"]["sell"] == 266600 and by["gram"]["price"] == 25709865.0  # hansha wins
     assert by["ounce"]["price"] == 4094.2 and by["btc"]["price"] == 81476.39  # only bonbast has them
     assert "eth" in by and "usdt" in by
-    assert counts == {"hansha": 6, "bonbast": 2} and snap["source"] == "hansha"
+    assert counts == {"hansha": 9, "bonbast": 2} and snap["source"] == "hansha"
     assert snap["fetchedAt"] == min(bon["fetchedAt"], snap["sourceModified"])  # oldest observation used
     assert [r["code"] for r in snap["rates"]] == [i["code"] for i in INSTRUMENTS if i["code"] in by]
 
@@ -130,7 +138,7 @@ def test_combine_in_bonbast_first_order_keeps_bonbast_values_and_adds_hansha_onl
     snap, counts = mod.combine_sources([bon, mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS)], INSTRUMENTS)
     by = {r["code"]: r for r in snap["rates"]}
     assert by["usd"]["sell"] == 265200 and by["eth"]["price"] == 600379000.0
-    assert counts == {"bonbast": 5, "hansha": 3} and snap["source"] == "bonbast"
+    assert counts == {"bonbast": 8, "hansha": 3} and snap["source"] == "bonbast"
     assert snap["sourceModified"] == "November 7, 2026 15:40"
 
 
@@ -179,7 +187,7 @@ def test_fetch_source_hansha_end_to_end_and_its_failure_modes():
     s = _Session(_Resp(hansha_rows()))
     snap = mod.fetch_source("hansha", s, INSTRUMENTS)
     assert s.calls[0][0] == "https://hansha.online/latest" and "data" not in s.calls[0][1]
-    assert len(snap["rates"]) == 6
+    assert len(snap["rates"]) == 9
     with pytest.raises(mod.SourceError, match="min old"):
         mod.fetch_source("hansha", _Session(_Resp(hansha_rows(minutes_ago=45))), INSTRUMENTS)
     with pytest.raises(mod.SourceError, match="not a JSON array"):
@@ -208,3 +216,74 @@ def test_intraday_adds_no_point_for_an_unchanged_or_older_observation(tmp_path):
     assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T12:17:30Z", "rates": rates}) == 1
     usd = json.loads((tmp_path / "v1" / "intraday" / "usd").read_text(encoding="utf-8"))
     assert [p["ts"] for p in usd["points"]] == ["2026-11-07T12:11:07Z", "2026-11-07T12:17:30Z"]
+
+
+def test_hansha_per_one_quotes_are_scaled_to_our_unit():
+    by = {r["code"]: r for r in mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS)["rates"]}
+    assert (by["jpy"]["unit"], by["jpy"]["buy"], by["jpy"]["sell"]) == (10, 16700, 16800)
+    assert (by["amd"]["unit"], by["amd"]["buy"], by["amd"]["sell"]) == (10, 7370, 7375)  # rounded, not truncated
+    assert (by["iqd"]["unit"], by["iqd"]["buy"], by["iqd"]["sell"]) == (100, 17450, 17550)
+    assert (by["usd"]["buy"], by["usd"]["sell"]) == (266400, 266600)  # unit 1 untouched
+
+
+def test_every_code_both_sources_carry_agrees_within_five_percent():
+    """A unit or quote mismatch between the sources (10x, 100x, usd vs toman) can never pass silently."""
+    hansha = {r["code"]: r for r in mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS)["rates"]}
+    bonbast = {r["code"]: r for r in bonbast_snapshot()["rates"]}
+    both = sorted(set(hansha) & set(bonbast))
+    assert {"usd", "eur", "gram", "jpy", "amd", "iqd"} <= set(both)
+    for code in both:
+        h = hansha[code]["sell"] or hansha[code]["price"]
+        b = bonbast[code]["sell"] or bonbast[code]["price"]
+        assert 0.95 <= h / b <= 1.05, (code, h, b)
+
+
+def _intraday(tmp_path, code, points):
+    path = tmp_path / "v1" / "intraday" / code
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"code": code, "days": 7, "points": points}), encoding="utf-8")
+    return path
+
+
+def test_intraday_repair_drops_only_the_unscaled_jpy_points_in_the_window(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "INTRADAY_DAYS", 100_000)  # keep the 2026-11-07 fixture inside the retention window
+    good_before = {"ts": "2026-11-07T11:55:00Z", "buy": 16650, "sell": 16750, "price": None}
+    bad = [{"ts": f"2026-11-07T1{h}:20:00Z", "buy": 1670, "sell": 1680, "price": None} for h in (2, 4, 6)]
+    jpy = _intraday(tmp_path, "jpy", [good_before, *bad])
+    usd_points = [{"ts": "2026-11-07T12:20:00Z", "buy": 266400, "sell": 266600, "price": None}]
+    usd = _intraday(tmp_path, "usd", usd_points)
+    rates = [{"code": "jpy", "buy": 16700, "sell": 16800, "price": None, "computed": False},
+             {"code": "usd", "buy": 266400, "sell": 266600, "price": None, "computed": False}]
+    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T17:00:00Z", "rates": rates}) == 2
+    pts = json.loads(jpy.read_text(encoding="utf-8"))["points"]
+    assert [p["sell"] for p in pts] == [16750, 16800]  # bad window points gone, good history and new sample kept
+    assert len(json.loads(usd.read_text(encoding="utf-8"))["points"]) == 2  # other codes untouched
+
+
+def test_intraday_repair_writes_even_when_the_observation_is_unchanged(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "INTRADAY_DAYS", 100_000)
+    jpy = _intraday(tmp_path, "jpy", [{"ts": "2026-11-07T12:20:00Z", "buy": 1670, "sell": 1680, "price": None},
+                                      {"ts": "2026-11-07T17:00:00Z", "buy": 16700, "sell": 16800, "price": None}])
+    rates = [{"code": "jpy", "buy": 16700, "sell": 16800, "price": None, "computed": False}]
+    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T17:00:00Z", "rates": rates}) == 1
+    assert [p["sell"] for p in json.loads(jpy.read_text(encoding="utf-8"))["points"]] == [16800]
+    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T17:00:00Z", "rates": rates}) == 0
+
+
+def test_intraday_repair_ignores_points_outside_the_window_or_codes(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "INTRADAY_DAYS", 100_000)
+    early = {"ts": "2026-11-06T12:20:00Z", "buy": 1670, "sell": 1680, "price": None}  # before the window
+    assert mod.drop_unscaled_points("jpy", [early], 16800.0) == [early]
+    inside = {"ts": "2026-11-07T12:20:00Z", "buy": 1, "sell": 2, "price": None}
+    assert mod.drop_unscaled_points("usd", [inside], 266600.0) == [inside]  # not a repaired code
+    assert mod.drop_unscaled_points("jpy", [inside], None) == [inside]  # no reference, no drop
+
+
+def test_long_history_is_scaled_to_our_unit(tmp_path):
+    archive = tmp_path / "all.json"
+    series = [{"sp": 150.5, "ts": f"2024-01-{d:02d}T00:00:00Z"} for d in range(1, 12)]
+    archive.write_text(json.dumps([{"ab": "jpy", "ps": series}, {"ab": "usd", "ps": series}]), encoding="utf-8")
+    assert mod.write_long_history(tmp_path, archive, {i["code"]: i["unit"] for i in INSTRUMENTS}) == 2
+    jpy = json.loads((tmp_path / "v1" / "longhistory" / "jpy").read_text(encoding="utf-8"))
+    usd = json.loads((tmp_path / "v1" / "longhistory" / "usd").read_text(encoding="utf-8"))
+    assert jpy["points"][0]["price"] == 1505.0 and usd["points"][0]["price"] == 150.5

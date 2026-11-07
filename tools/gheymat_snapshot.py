@@ -202,7 +202,9 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
 
     `ab` is our code and `ps[0]` the newest point. Hansha has no `ounce` and prices `btc` in toman while ours
     quotes usd, so usd-quoted instruments are never taken from here. Names and glyphs always come from our
-    table, never hansha's `en`/`fa`/`av`. fetchedAt is the oldest observation used, sourceModified the newest."""
+    table, never hansha's `en`/`fa`/`av`. fetchedAt is the oldest observation used, sourceModified the newest.
+    Hansha quotes every row per 1 unit while our table quotes amd/jpy per 10 and iqd per 100 (bonbast's
+    convention), so values are scaled to the instrument's `unit`."""
     by_ab = {row["ab"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("ab"), str)}
     rates, stamps = [], []
     for ins in instruments:
@@ -224,12 +226,12 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
             buy, sell = positive(point.get("bp")), positive(point.get("sp"))
             if buy is None or sell is None:
                 continue
-            rate["buy"], rate["sell"] = int(buy), int(sell)
+            rate["buy"], rate["sell"] = round(buy * ins["unit"]), round(sell * ins["unit"])
         else:
             price = positive(point.get("sp"))
             if price is None:
                 continue
-            rate["price"] = float(int(price))
+            rate["price"] = float(round(price * ins["unit"]))
         rates.append(rate)
         stamps.append(stamp)
     if stamps:  # a row frozen far behind the feed counts as missing (the next source fills it), so one stale
@@ -322,7 +324,7 @@ def rates_fingerprint(rates: list[dict]) -> str:
 
 def parse_converter_table(obj) -> dict | None:
     """Defensive float-coerce a bonbast /converter body into {UPPERCASE code: units per 1 EUR}, or None
-    when `obj` isn't a JSON object. Mirrors Gheymat/server/gheymat_server/converter_client._coerce_table."""
+    when `obj` isn't a JSON object."""
     if not isinstance(obj, dict):
         return None
     table: dict[str, float] = {}
@@ -568,22 +570,27 @@ def write_history_files(out: Path, daily: dict) -> int:
     return written
 
 
-def write_long_history(out: Path, archive_file: Path) -> int:
-    """Coarse pre-2012 seed (hansha 'all' series kept in archive/all.json, USD back to 1978)."""
+def write_long_history(out: Path, archive_file: Path, units: dict[str, int] | None = None) -> int:
+    """Coarse pre-2012 seed (hansha 'all' series kept in archive/all.json, USD back to 1978).
+
+    Hansha quotes per 1 unit, so each price is scaled to our table's `unit` (`units`: code -> unit) to match
+    v1/history and v1/latest (jpy/amd per 10, iqd per 100)."""
     if not archive_file.exists():
         return 0
     try:
         data = json.loads(archive_file.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return 0
+    units = units or {}
     written = 0
     for item in data:
         code = item.get("ab")
+        unit = units.get(code, 1)
         pts = []
         for p in item.get("ps", []):
             price = p.get("sp") or p.get("bp")
             if code and price and p.get("ts"):
-                pts.append({"date": p["ts"][:10], "price": float(price)})
+                pts.append({"date": p["ts"][:10], "price": float(price) * unit})
         pts.sort(key=lambda x: x["date"])
         if len(pts) >= 10:
             write(out / "v1" / "longhistory" / code, {"code": code, "days": len(pts), "points": pts, "source": "coarse-archive"})
@@ -644,13 +651,39 @@ stuck for a long time, pull down on the Prices screen to refresh, or check your 
 <p>No. Gheymat shows market prices and a simple trend line computed from recent history. Nothing in the app is
 financial advice, and the trend estimate is not a prediction you should rely on for financial decisions.</p>
 <h2>Why can't I see 40 years of history for gold or coins?</h2>
-<p>Daily history going back to 2012 is available for currencies. Gold, coins and crypto currently only have the
+<p>Daily history going back to 2018 is available for currencies. Gold, coins and crypto currently only have the
 history the app itself has collected since you started using it; older daily history for those is on our
 roadmap.</p>
 <footer><a href="index.html">Gheymat static API</a> · <a href="privacy.html">Privacy Policy</a></footer>
 """
 
 INTRADAY_DAYS = 7
+
+# One-off repair (2026-11-07): from 12:19Z until the unit fix, hansha's per-1 quotes for these per-10/per-100
+# codes were published unscaled, so their intraday points sit 10x/100x below the rest of the series. They are
+# dropped now instead of aging out over 7 days. Bounded by code, by time window and by a value test (more than 3x
+# below the current scaled sample); it matches nothing once the window has aged out, so remove it after 2026-11-15.
+UNSCALED_REPAIR_CODES = frozenset({"amd", "jpy", "iqd"})
+UNSCALED_REPAIR_WINDOW = ("2026-11-07T12:00:00Z", "2026-11-08T00:00:00Z")
+
+
+def _level(point) -> float | None:
+    if not isinstance(point, dict):
+        return None
+    v = point.get("sell") or point.get("price") or point.get("buy")
+    return float(v) if isinstance(v, (int, float)) and v > 0 else None
+
+
+def drop_unscaled_points(code: str, points: list, reference: float | None) -> list:
+    """The UNSCALED_REPAIR points removed from `points`; `reference` is this run's (scaled) sample level."""
+    if code not in UNSCALED_REPAIR_CODES or not reference:
+        return points
+    lo, hi = UNSCALED_REPAIR_WINDOW
+
+    def unscaled(p) -> bool:
+        level = _level(p)
+        return level is not None and lo <= str(p.get("ts", "")) < hi and level * 3 < reference
+    return [p for p in points if not unscaled(p)]
 
 
 def append_intraday(out: Path, snapshot: dict) -> int:
@@ -666,10 +699,14 @@ def append_intraday(out: Path, snapshot: dict) -> int:
         if not isinstance(points, list):
             points = []
         sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
-        if points and str(points[-1].get("ts", "")) >= sample["ts"]:
+        kept = drop_unscaled_points(r["code"], points, _level(sample))
+        repaired, points = len(kept) != len(points), kept
+        fresh = not points or str(points[-1].get("ts", "")) < sample["ts"]
+        if not fresh and not repaired:
             continue  # an unchanged (or older, after a source switch) observation adds no point
         points = [p for p in points if isinstance(p, dict) and p.get("ts", "") >= cutoff]
-        points.append(sample)
+        if fresh:
+            points.append(sample)
         write(path, {"code": r["code"], "days": INTRADAY_DAYS, "points": points})
         written += 1
     return written
@@ -760,7 +797,8 @@ def main() -> int:
         fetched = fill_days(session, daily, dates, args.pace)
         save_daily(out, daily)
         files = write_history_files(out, daily)
-        long_files = write_long_history(out, HERE.parent / "archive" / "all.json")
+        long_files = write_long_history(out, HERE.parent / "archive" / "all.json",
+                                        {i["code"]: i["unit"] for i in instruments})
         have = known_dates(daily)
         print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
