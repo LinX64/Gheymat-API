@@ -287,13 +287,16 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
                     fetch=fetch_source) -> list[dict]:
     """One snapshot per source that worked, in priority order; a failed or stale source is logged and skipped."""
     results = []
-    for name in order:
+    for index, name in enumerate(order, start=1):
         try:
             snap = fetch(name, session, instruments)
         except (SourceError, requests.RequestException, ValueError) as e:
-            print(f"source {name}: skipped ({type(e).__name__}: {e})", file=sys.stderr)
+            detail = str(e)
+            for other_index, other in enumerate(order, start=1):
+                detail = detail.replace(other, f"source {other_index}")
+            print(f"source {index}: skipped ({type(e).__name__}: {detail})", file=sys.stderr)
             continue
-        print(f"source {name}: {len(snap['rates'])} rates, observed {snap['fetchedAt']}")
+        print(f"source {index}: {len(snap['rates'])} rates, observed {snap['fetchedAt']}")
         results.append(snap)
     return results
 
@@ -816,9 +819,9 @@ def main() -> int:
     ap.add_argument("--backfill", type=int, default=0, help="also fetch N older archive days (chunked backfill to 2012-10-09)")
     ap.add_argument("--pace", type=float, default=2.5, help="seconds between archive requests")
     ap.add_argument("--days", type=int, default=90)
-    ap.add_argument("--hansha-mark", action="store_true", help="print hansha's newest observation time and exit")
+    ap.add_argument("--mark", action="store_true", help="print the primary source's newest observation time and exit")
     args = ap.parse_args()
-    if args.hansha_mark:
+    if args.mark:
         mark = hansha_mark(fetch_hansha(requests.Session()))
         if mark is None:
             return 1
@@ -833,7 +836,6 @@ def main() -> int:
     instruments = load_instruments()
     session = requests.Session()
     order = source_order()
-    print("sources:", " > ".join(order))
     snapshot, counts, observed = combine_sources(collect_sources(session, instruments, order), instruments)
     if len(snapshot["rates"]) < MIN_DIRECT:
         print(f"only {len(snapshot['rates'])} rates from all sources; refusing to publish", file=sys.stderr)
@@ -855,7 +857,7 @@ def main() -> int:
     (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
     (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
-    print(f"latest: {len(snapshot['rates'])} rates ({', '.join(f'{k} {v}' for k, v in counts.items())}), "
+    print(f"latest: {len(snapshot['rates'])} rates ({' + '.join(str(v) for v in counts.values())} + {len(computed_rates)} computed), "
           f"usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, observed {snapshot['fetchedAt']}, "
           f"fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot, observed)} files updated")

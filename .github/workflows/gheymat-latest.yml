@@ -1,4 +1,4 @@
-name: Gheymat static fallback
+name: Publish rates
 
 on:
   schedule:
@@ -31,11 +31,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Carry over the current site
+      - name: Restore site
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         continue-on-error: true
         with:
@@ -43,13 +44,15 @@ jobs:
           path: dist
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
-      - run: pip install -q -r requirements.txt
+      - name: Install
+        run: pip install -q -r requirements.txt
 
-      - name: Mask the channel keys
+      - name: Mask keys
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
@@ -61,11 +64,10 @@ jobs:
           echo "::add-mask::$GHEYMAT_PAYLOAD_KEY"
           echo "::add-mask::$GHEYMAT_SIGNING_KEY"
 
-      - name: Publish loop (fetch hansha then bonbast, combine, backfill 12 archive days, verify, push to gh-pages; every 6 minutes for ~5.5 hours, at GitHub Pages's 10-builds/hour soft limit on legacy branch-based Pages)
+      - name: Publish
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
-          GHEYMAT_SOURCES: "hansha,bonbast"
           GHEYMAT_PLAIN: "0"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EXTRA: ${{ github.event.inputs.history == 'true' && '--backfill 40' || '--backfill 12' }}
@@ -77,7 +79,7 @@ jobs:
           last_mark=""
           last_publish=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
-            mark=$(python tools/gheymat_snapshot.py --hansha-mark 2>/dev/null) || mark=""
+            mark=$(python tools/gheymat_snapshot.py --mark 2>/dev/null) || mark=""
             now=$(date +%s)
             since=$(( now - last_publish ))
             if [ "$since" -lt 360 ] && { [ -z "$mark" ] || [ "$mark" = "$last_mark" ] || [ "$since" -lt 120 ]; }; then
@@ -98,13 +100,13 @@ jobs:
                 && git init -q \
                 && git checkout -q -b gh-pages \
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
-                && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Gheymat static fallback (iteration $iteration)" \
+                && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish $iteration" \
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
               failures=0
-              echo "iteration $iteration published at $(date -u +%FT%TZ) (hansha ${mark:-unreachable})"
+              echo "#$iteration published $(date -u +%H:%M:%SZ)"
             else
               failures=$((failures + 1))
-              echo "iteration $iteration failed ($failures in a row); the last good snapshot stays live" >&2
+              echo "#$iteration failed ($failures in a row)" >&2
               if [ "$failures" -ge 5 ]; then exit 1; fi
             fi
             rm -rf dist/.git
