@@ -10,13 +10,12 @@ Pages. The app reads only that JSON. The old website lives outside the repo (`..
 | `/health` | status, last fetch time, mode `static` |
 | `/v1/latest` | up to 51 instruments: 37 direct, up to 8 computed cross-rates (`computed: true`) and up to 6 hansha-only crypto rows (eth, xrp, bch, ltc, bnb, usdt, toman-quoted); buy/sell or price, toman unless `quote` is `usd`. Optional rows may be missing on a given publish (Gheymat's `CONTRACT.md`, "Computed cross-rates" and "Static publisher sources") |
 | `/v1/instruments` | instrument table with English and Persian names |
-| `/v1/history/<code>` | every daily close since 2012-10-09 (currencies + coins), filled from bonbast's archive page 12 days per publish (the job loops for 5.5 hours and publishes every 6 minutes, an hourly cron queues the successor; about 2 days to reach 2012) |
-| `/v1/longhistory/<code>` | coarse pre-2012 series (USD back to 1978, ~84 points) from the old archive, for the "All" chart range |
+| `/v1/history/<code>` | daily closes for currencies and coins from bonbast's archive, 12 days per publish (the job loops for 5.5 hours and publishes every 6 minutes, an hourly cron queues the successor); the published series starts 2018-03-28 (verified 2026-10-19, backfill toward 2012-10-09 unfinished, so no pre-2018 claims until `health.archiveDays` proves it). Gold, crypto and computed cross-rates have none; the app itself charts daily history for the 28 direct currencies only |
+| `/v1/longhistory/<code>` | coarse long series (USD back to 1978, ~84 points) from the old archive, for the "All" chart range, scaled to the instrument's unit |
 | `/v1/intraday/<code>` | last 7 days of 6-minute samples for every instrument (ts, buy, sell, price); computed cross-rate codes are excluded |
 
 Base URL: `https://linx64.github.io/CurrencyCapPortal`. Freshness is bounded by the Actions publish loop
-(~6 min nominal, often longer under GitHub Pages' build queue); the real-time stream lives in the Gheymat
-server.
+(~6 min nominal, often longer under GitHub Pages' build queue); there is no real-time stream, the app polls.
 
 ```bash
 pip install -r requirements.txt
