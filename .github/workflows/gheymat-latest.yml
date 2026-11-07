@@ -17,8 +17,7 @@ on:
       - '.github/workflows/gheymat-latest.yml'
 
 # A push to master pre-empts the running loop, so a fix goes live in minutes instead of after the loop's 5.5 h;
-# scheduled and manual runs still queue behind each other. The cron fires every 15 minutes so a cancelled, failed or
-# timed-out loop is replaced within 15 minutes (GitHub skipped hourly ticks on 2026-11-07 and the feed went dark).
+# scheduled and manual runs still queue behind each other.
 concurrency:
   group: gheymat-static
   cancel-in-progress: ${{ github.event_name == 'push' }}
