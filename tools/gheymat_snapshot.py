@@ -204,7 +204,8 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
     quotes usd, so usd-quoted instruments are never taken from here. Names and glyphs always come from our
     table, never hansha's `en`/`fa`/`av`. fetchedAt is the oldest observation used, sourceModified the newest.
     Hansha quotes every row per 1 unit while our table quotes amd/jpy per 10 and iqd per 100 (bonbast's
-    convention), so values are scaled to the instrument's `unit`."""
+    convention), so values are scaled to the instrument's `unit`. `observed` maps each kept code to its own
+    `ps[0].ts`; it is internal (combine_sources reads it for the intraday keys) and never published."""
     by_ab = {row["ab"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("ab"), str)}
     rates, stamps = [], []
     for ins in instruments:
@@ -245,6 +246,7 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
         "source": "hansha",
         "flags": ["static"],
         "rates": rates,
+        "observed": {r["code"]: s for r, s in zip(rates, stamps)},
     }
 
 
@@ -285,25 +287,28 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
     return results
 
 
-def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict, dict[str, int]]:
+def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict, dict[str, int], dict[str, str]]:
     """Per-instrument fill: each code from the first snapshot (priority order) that carries it.
 
-    Returns the combined snapshot and per-source counts. `source` is the source that supplied the most rates
-    (ties go to the higher priority), `sourceModified` is its stamp, and `fetchedAt` is the OLDEST observation
-    among the sources used, so the app never shows a republished value as fresher than it is."""
-    chosen: dict[str, tuple[dict, str]] = {}
+    Returns the combined snapshot, per-source counts and {code: observation stamp} for the chosen rows (a hansha
+    row's own `ps[0].ts`, else its source's fetchedAt, which for bonbast is the fetch time). The stamps key the
+    intraday samples and stay out of the snapshot, so v1/latest keeps its shape. `source` is the source that supplied
+    the most rates (ties go to the higher priority), `sourceModified` is its stamp, and `fetchedAt` is the OLDEST
+    observation among the sources used, so the app never shows a republished value as fresher than it is."""
+    chosen: dict[str, tuple[dict, str, str]] = {}
     for snap in results:
+        observed = snap.get("observed", {})
         for r in snap["rates"]:
-            chosen.setdefault(r["code"], (r, snap["source"]))
+            chosen.setdefault(r["code"], (r, snap["source"], observed.get(r["code"], snap["fetchedAt"])))
     counts: dict[str, int] = {}
-    for _, src in chosen.values():
+    for _, src, _ in chosen.values():
         counts[src] = counts.get(src, 0) + 1
     order = [i["code"] for i in instruments if not i.get("computed")]
     rates = [chosen[c][0] for c in order if c in chosen]
     used = [s for s in results if counts.get(s["source"])]
     if not used:
         return {"seq": int(time.time()), "fetchedAt": utc_now_iso(), "sourceModified": None,
-                "source": "none", "flags": ["static"], "rates": []}, {}
+                "source": "none", "flags": ["static"], "rates": []}, {}, {}
     primary = max(used, key=lambda s: counts[s["source"]])
     snapshot = {
         "seq": int(time.time()),
@@ -313,7 +318,7 @@ def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict,
         "flags": ["static"],
         "rates": rates,
     }
-    return snapshot, {s["source"]: counts[s["source"]] for s in used}
+    return snapshot, {s["source"]: counts[s["source"]] for s in used}, {c: chosen[c][2] for c in order if c in chosen}
 
 
 def rates_fingerprint(rates: list[dict]) -> str:
@@ -658,13 +663,7 @@ roadmap.</p>
 """
 
 INTRADAY_DAYS = 7
-
-# One-off repair (2026-11-07): from 12:19Z until the unit fix, hansha's per-1 quotes for these per-10/per-100
-# codes were published unscaled, so their intraday points sit 10x/100x below the rest of the series. They are
-# dropped now instead of aging out over 7 days. Bounded by code, by time window and by a value test (more than 3x
-# below the current scaled sample); it matches nothing once the window has aged out, so remove it after 2026-11-15.
-UNSCALED_REPAIR_CODES = frozenset({"amd", "jpy", "iqd"})
-UNSCALED_REPAIR_WINDOW = ("2026-11-07T12:00:00Z", "2026-11-08T00:00:00Z")
+INTRADAY_REPAIRS = HERE / "intraday_repairs.json"
 
 
 def _level(point) -> float | None:
@@ -674,21 +673,73 @@ def _level(point) -> float | None:
     return float(v) if isinstance(v, (int, float)) and v > 0 else None
 
 
-def drop_unscaled_points(code: str, points: list, reference: float | None) -> list:
-    """The UNSCALED_REPAIR points removed from `points`; `reference` is this run's (scaled) sample level."""
-    if code not in UNSCALED_REPAIR_CODES or not reference:
+def _utc_stamp(value) -> str:
+    """An ISO timestamp as a `%Y-%m-%dT%H:%M:%SZ` UTC stamp (comparable with intraday `ts`); no future clamp."""
+    if not isinstance(value, str):
+        raise ValueError(f"{value!r} is not an ISO timestamp")
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_repairs(path: Path | None = None) -> list[dict]:
+    """tools/intraday_repairs.json (CONTRACT.md "Static publisher sources"): a list of {"codes", "from", "to",
+    "belowFactor" (optional), "note"} entries, returned with UTC stamps. A missing file means no repairs; a malformed
+    one is logged and ignored as a whole, so it never stops a publish."""
+    path = path or INTRADAY_REPAIRS
+    try:
+        if not path.exists():
+            return []
+        entries = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(entries, list):
+            raise ValueError("not a JSON list")
+        repairs = []
+        for entry in entries:
+            codes, factor = entry["codes"], entry.get("belowFactor")
+            if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+                raise ValueError("codes must be a list of strings")
+            if factor is not None and (isinstance(factor, bool) or not isinstance(factor, (int, float))
+                                       or not factor > 0):
+                raise ValueError("belowFactor must be a positive number")
+            repairs.append({"codes": set(codes), "from": _utc_stamp(entry["from"]), "to": _utc_stamp(entry["to"]),
+                            "belowFactor": factor})
+        return repairs
+    except (OSError, ValueError, TypeError, KeyError, OverflowError) as e:
+        print(f"intraday repairs: {path.name} ignored ({type(e).__name__}: {e})", file=sys.stderr)
+        return []
+
+
+def drop_repaired_points(code: str, points: list, reference: float | None, repairs: list[dict]) -> list:
+    """`points` without those a repair entry for `code` covers (from <= ts < to); an entry with belowFactor takes
+    only points whose level times belowFactor is below `reference`, this run's sample level."""
+    if not repairs:
         return points
-    lo, hi = UNSCALED_REPAIR_WINDOW
 
-    def unscaled(p) -> bool:
-        level = _level(p)
-        return level is not None and lo <= str(p.get("ts", "")) < hi and level * 3 < reference
-    return [p for p in points if not unscaled(p)]
+    def repaired(p) -> bool:
+        if not isinstance(p, dict):
+            return False
+        ts, level = str(p.get("ts", "")), _level(p)
+        for e in repairs:
+            if code not in e["codes"] or not e["from"] <= ts < e["to"]:
+                continue
+            if e["belowFactor"] is None:
+                return True
+            if level is not None and reference is not None and level * e["belowFactor"] < reference:
+                return True
+        return False
+    return [p for p in points if not repaired(p)]
 
 
-def append_intraday(out: Path, snapshot: dict) -> int:
-    """Append this run's sample to v1/intraday/<code> (last INTRADAY_DAYS days, oldest first). Returns files written."""
+def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None = None) -> int:
+    """Append this run's sample to v1/intraday/<code> (last INTRADAY_DAYS days, oldest first). Returns files written.
+
+    Each sample is keyed by its row's own observation stamp (`observed`, from combine_sources; the snapshot's
+    fetchedAt when absent), so an older or equal observation adds no point for that code only. Repair entries still
+    inside the retention drop their points first, and a repair rewrites the file even without a new sample."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    repairs = [e for e in load_repairs() if e["to"] > cutoff]  # an entry whose window aged out is a no-op
+    observed = observed or {}
     written = 0
     for r in snapshot["rates"]:
         if r.get("computed"):
@@ -698,8 +749,9 @@ def append_intraday(out: Path, snapshot: dict) -> int:
         points = previous.get("points", []) if isinstance(previous, dict) else []
         if not isinstance(points, list):
             points = []
-        sample = {"ts": snapshot["fetchedAt"], "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
-        kept = drop_unscaled_points(r["code"], points, _level(sample))
+        sample = {"ts": observed.get(r["code"], snapshot["fetchedAt"]),
+                  "buy": r["buy"], "sell": r["sell"], "price": r["price"]}
+        kept = drop_repaired_points(r["code"], points, _level(sample), repairs)
         repaired, points = len(kept) != len(points), kept
         fresh = not points or str(points[-1].get("ts", "")) < sample["ts"]
         if not fresh and not repaired:
@@ -764,7 +816,7 @@ def main() -> int:
     session = requests.Session()
     order = source_order()
     print("sources:", " > ".join(order))
-    snapshot, counts = combine_sources(collect_sources(session, instruments, order), instruments)
+    snapshot, counts, observed = combine_sources(collect_sources(session, instruments, order), instruments)
     if len(snapshot["rates"]) < MIN_DIRECT:
         print(f"only {len(snapshot['rates'])} rates from all sources; refusing to publish", file=sys.stderr)
         return 2
@@ -788,7 +840,7 @@ def main() -> int:
     print(f"latest: {len(snapshot['rates'])} rates ({', '.join(f'{k} {v}' for k, v in counts.items())}), "
           f"usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, observed {snapshot['fetchedAt']}, "
           f"fp {fingerprint}")
-    print(f"intraday: {append_intraday(out, snapshot)} files updated")
+    print(f"intraday: {append_intraday(out, snapshot, observed)} files updated")
     if args.history or args.backfill:
         dates = recent_missing_dates(daily, 7) if args.history else []
         if args.backfill:

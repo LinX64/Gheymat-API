@@ -1,0 +1,9 @@
+[
+  {
+    "codes": ["amd", "jpy", "iqd"],
+    "from": "2026-11-07T12:00:00Z",
+    "to": "2026-11-08T00:00:00Z",
+    "belowFactor": 3,
+    "note": "2026-11-07: from 12:19Z until the unit fix (4e02873d7) hansha's per-1 quotes for these per-10/per-100 codes were published unscaled, 10x/100x below the rest of the series; drops points more than 3x below the current scaled sample. A no-op once the window is older than the 7-day retention."
+  }
+]

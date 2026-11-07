@@ -9,6 +9,13 @@ SPEC = importlib.util.spec_from_file_location(
 mod = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mod)
 
+
+@pytest.fixture(autouse=True)
+def no_repairs(monkeypatch, tmp_path):
+    """Hermetic: the committed tools/intraday_repairs.json never reaches these tests."""
+    monkeypatch.setattr(mod, "INTRADAY_REPAIRS", tmp_path / "no-repairs.json")
+
+
 RAW = {
     "usd1": "265200", "usd2": "265000", "eur1": "294800", "eur2": "294600", "jpy1": "17750", "jpy2": "17700",
     "emami1": "268000000", "emami12": "265000000", "azadi1": "258000000", "azadi12": "253000000",
