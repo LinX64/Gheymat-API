@@ -74,9 +74,17 @@ jobs:
           deadline=$(( $(date +%s) + 330*60 ))
           iteration=0
           failures=0
+          last_mark=""
+          last_publish=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
+            mark=$(python tools/gheymat_snapshot.py --hansha-mark 2>/dev/null) || mark=""
+            now=$(date +%s)
+            since=$(( now - last_publish ))
+            if [ "$since" -lt 360 ] && { [ -z "$mark" ] || [ "$mark" = "$last_mark" ] || [ "$since" -lt 120 ]; }; then
+              sleep 30
+              continue
+            fi
             iteration=$((iteration + 1))
-            started=$(date +%s)
             rm -rf dist && mkdir -p dist
             if git fetch -q --depth 1 origin gh-pages 2>/dev/null; then
               git --work-tree=dist checkout -q FETCH_HEAD -- . || true
@@ -84,9 +92,6 @@ jobs:
             fi
             find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
             touch dist/.nojekyll
-            # A failed iteration (both sources down, a refused publish, a push hiccup) costs one 6-minute slot and the
-            # last good snapshot stays live; five in a row end the job. Every step is chained with && because errexit
-            # does not apply inside an if condition, and verify_sealed must stay a hard gate before the push.
             if python tools/gheymat_snapshot.py --out dist --history $EXTRA --pace 3 \
               && python tools/verify_sealed.py dist \
               && ( cd dist \
@@ -96,15 +101,13 @@ jobs:
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Gheymat static fallback (iteration $iteration)" \
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
               failures=0
-              echo "iteration $iteration published at $(date -u +%FT%TZ)"
+              echo "iteration $iteration published at $(date -u +%FT%TZ) (hansha ${mark:-unreachable})"
             else
               failures=$((failures + 1))
               echo "iteration $iteration failed ($failures in a row); the last good snapshot stays live" >&2
               if [ "$failures" -ge 5 ]; then exit 1; fi
             fi
             rm -rf dist/.git
-            elapsed=$(( $(date +%s) - started ))
-            sleep_for=$(( 360 - elapsed ))
-            if [ "$(date +%s)" -ge "$deadline" ]; then break; fi
-            [ "$sleep_for" -gt 0 ] && sleep "$sleep_for"
+            last_mark=$mark
+            last_publish=$now
           done

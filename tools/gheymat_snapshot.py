@@ -197,6 +197,17 @@ def fetch_hansha(session: requests.Session) -> list:
     return rows
 
 
+def hansha_mark(rows: list) -> str | None:
+    stamps = []
+    for row in rows:
+        ps = row.get("ps") if isinstance(row, dict) else None
+        if isinstance(ps, list) and ps and isinstance(ps[0], dict):
+            stamp = normalize_ts(ps[0].get("ts"))
+            if stamp:
+                stamps.append(stamp)
+    return max(stamps) if stamps else None
+
+
 def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
     """Map hansha /latest rows onto our instrument table (CONTRACT.md "Static publisher sources").
 
@@ -805,7 +816,14 @@ def main() -> int:
     ap.add_argument("--backfill", type=int, default=0, help="also fetch N older archive days (chunked backfill to 2012-10-09)")
     ap.add_argument("--pace", type=float, default=2.5, help="seconds between archive requests")
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--hansha-mark", action="store_true", help="print hansha's newest observation time and exit")
     args = ap.parse_args()
+    if args.hansha_mark:
+        mark = hansha_mark(fetch_hansha(requests.Session()))
+        if mark is None:
+            return 1
+        print(mark)
+        return 0
     out = Path(args.out)
     global SEALER, PLAIN_ALSO, _DIST_ROOT
     _DIST_ROOT = out

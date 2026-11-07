@@ -355,3 +355,16 @@ def test_archive_guard_refuses_a_shrunken_state(tmp_path):
         assert mod.archive_shrank(tmp_path, small) is None
     finally:
         mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+
+
+def test_hansha_mark_is_the_newest_first_point():
+    rows = [
+        {"ab": "usd", "ps": [{"ts": "2026-11-07T20:01:45Z"}, {"ts": "2026-11-07T21:00:00Z"}]},
+        {"ab": "eur", "ps": [{"ts": "2026-11-07T20:03:10Z"}]},
+        {"ab": "gbp", "ps": []},
+        {"ab": "aed"},
+        {"ab": "try", "ps": [{"ts": "not a time"}]},
+        "junk",
+    ]
+    assert mod.hansha_mark(rows) == "2026-11-07T20:03:10Z"
+    assert mod.hansha_mark([]) is None
