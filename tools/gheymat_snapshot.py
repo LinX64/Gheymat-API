@@ -7,7 +7,7 @@ one, and a source that fails or goes stale is skipped. Same wire shapes as Gheym
 one-shot script inside GitHub Actions and writes extensionless files that GitHub Pages serves at the same
 paths the app requests:
 
-  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>, dist/index.html
+  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>
   dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
   dist/v1/history/<code> (full daily series per instrument), dist/v1/longhistory/<code> (coarse 1978-> seed)
 
@@ -617,11 +617,6 @@ def write_long_history(out: Path, archive_file: Path, units: dict[str, int] | No
     return written
 
 
-INDEX_HTML = """<!doctype html><meta charset="utf-8"><title>Gheymat</title>
-<p>Data for the Gheymat iPhone app, served only over its encrypted, signed channel.</p>
-<p><a href="privacy.html">Privacy Policy</a> · <a href="support.html">Support</a></p>
-"""
-
 PRIVACY_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Privacy Policy</title>
 <style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
 h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
@@ -642,9 +637,8 @@ account identifier, advertising identifier, or other data that identifies you. S
 as your IP address) is visible to the hosting infrastructure the way it is for any web request, and is not
 logged or retained by us in a way that is linked to you.</p>
 <h2>Price data source</h2>
-<p>Prices are sourced from public Iranian market pages: hansha.online first, with bonbast.com filling anything it
-does not carry and taking over when it is unavailable. Gheymat is an independent app and is not affiliated with,
-endorsed by, or operated by either site.</p>
+<p>Prices come from public Iranian market data. Gheymat is an independent app and is not affiliated with, endorsed
+by, or operated by any market or exchange.</p>
 <h2>Children</h2>
 <p>Gheymat is not directed at children and does not knowingly collect data from anyone, including children,
 because it does not collect data from anyone.</p>
@@ -653,7 +647,7 @@ because it does not collect data from anyone.</p>
 notes.</p>
 <h2>Contact</h2>
 <p>Questions about this policy: <a href="mailto:mohsen.rezaniaa75@gmail.com">mohsen.rezaniaa75@gmail.com</a></p>
-<footer><a href="index.html">Gheymat static API</a> · <a href="support.html">Support</a></footer>
+<footer><a href="support.html">Support</a></footer>
 """
 
 SUPPORT_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gheymat Support</title>
@@ -673,7 +667,7 @@ financial advice, and the trend estimate is not a prediction you should rely on 
 <p>Daily history going back to 2018 is available for currencies. Gold, coins and crypto currently only have the
 history the app itself has collected since you started using it; older daily history for those is on our
 roadmap.</p>
-<footer><a href="index.html">Gheymat static API</a> · <a href="privacy.html">Privacy Policy</a></footer>
+<footer><a href="privacy.html">Privacy Policy</a></footer>
 """
 
 INTRADAY_DAYS = 7
@@ -854,7 +848,6 @@ def main() -> int:
     snapshot["rates"] = merge_rates(snapshot["rates"], computed_rates, instruments)
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
-    (out / "index.html").write_text(INDEX_HTML, encoding="utf-8")
     (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
     (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
     print(f"latest: {len(snapshot['rates'])} rates ({' + '.join(str(v) for v in counts.values())} + {len(computed_rates)} computed), "
