@@ -22,12 +22,12 @@ def points_from_daily(series: dict) -> list[dict]:
     return points
 
 
-def diagnose(points: list[dict], today: date) -> dict:
+def diagnose(points: list[dict], today: date, method: str = fc.DEFAULT_METHOD) -> dict:
     closes = fc.clean_series(points)
     if not closes:
         return {"days": 0}
     series = fc.Series(closes)
-    weeks = fc.backtest(series, series.horizon_returns())
+    weeks = fc.backtest(series, series.horizon_returns(), method)
     out = {"days": len(closes), "first": closes[0][0].isoformat(), "last": closes[-1][0].isoformat(),
            "weeks": len(weeks)}
     if weeks:
@@ -41,13 +41,13 @@ def diagnose(points: list[dict], today: date) -> dict:
     return out
 
 
-def report(daily: dict, today: date, generated_at: str) -> list[str]:
-    lines = [f"{'code':8} {'result':20} {'days':>5} {'weeks':>5} {'cov':>6} {'52w':>6} {'mape':>6} {'naive':>6}  "
+def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT_METHOD) -> list[str]:
+    lines = [f"method: {fc.METHODS[method]}", f"{'code':8} {'result':20} {'days':>5} {'weeks':>5} {'cov':>6} {'52w':>6} {'mape':>6} {'naive':>6}  "
              f"likely (low-high) vs basis"]
     for code in sorted(daily.get("codes", {})):
         points = points_from_daily(daily["codes"][code])
-        doc, reason = fc.build_forecast(code, points, today, generated_at)
-        d = diagnose(points, today)
+        doc, reason = fc.build_forecast(code, points, today, generated_at, method=method)
+        d = diagnose(points, today, method)
         cov = f"{d['coverage']:.3f}" if "coverage" in d else "-"
         rec = f"{d['recent']:.3f}" if "recent" in d else "-"
         mape = f"{d['mape']:.2f}" if "mape" in d else "-"
@@ -66,6 +66,7 @@ def report(daily: dict, today: date, generated_at: str) -> list[str]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pages", required=True, help="a local checkout of the gh-pages branch")
+    ap.add_argument("--method", choices=sorted(fc.METHODS), default=fc.DEFAULT_METHOD)
     ap.add_argument("--today", help="Tehran trading day to evaluate as (YYYY-MM-DD); default: today UTC")
     args = ap.parse_args(argv)
     sealer = Sealer.from_env()
@@ -76,7 +77,7 @@ def main(argv=None) -> int:
         return 2
     today = date.fromisoformat(args.today) if args.today else datetime.now(timezone.utc).date()
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    print("\n".join(report(daily, today, generated_at)))
+    print("\n".join(report(daily, today, generated_at, args.method)))
     return 0
 
 

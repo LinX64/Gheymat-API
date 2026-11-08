@@ -38,7 +38,7 @@ def test_random_walk_is_calibrated_and_sane():
     assert 0 < doc["low"] <= doc["likely"] <= doc["high"]
     assert doc["backtestWeeks"] >= fc.MIN_BACKTEST_WEEKS
     assert doc["target"] == (date.fromisoformat(doc["basis"]["date"]) + timedelta(days=7)).isoformat()
-    assert doc["band"] == 0.8 and doc["horizonDays"] == 7 and doc["method"] == "empirical-quantile-v1"
+    assert doc["band"] == 0.8 and doc["horizonDays"] == 7 and doc["method"] == "filtered-quantile-v1"
     assert doc["track"] == [] and doc["signals"] == [] and doc["unusual"] is False
     assert doc["generatedAt"] == NOW
 
@@ -49,11 +49,11 @@ def test_band_ignores_future_data():
     while basis.weekday() == fc.FRIDAY:
         basis += timedelta(days=1)
     before = fc.Series(fc.clean_series(points))
-    band_before = fc.band_at(before.horizon_returns(), basis)
+    band_before = fc.band_at(before.horizon_returns(), basis, before.sigma_at(basis))
     cut = basis.isoformat()
     perturbed = [p if p["date"] <= cut else {"date": p["date"], "price": p["price"] * 3.7} for p in points]
     after = fc.Series(fc.clean_series(perturbed))
-    band_after = fc.band_at(after.horizon_returns(), basis)
+    band_after = fc.band_at(after.horizon_returns(), basis, after.sigma_at(basis))
     assert band_before is not None
     assert band_before == band_after
 
@@ -97,20 +97,45 @@ def test_basis_must_match_published_history_close():
     assert doc is None and reason == "basis-mismatch"
 
 
-def test_volatility_shift_fails_calibration():
+def test_volatility_shift_fails_plain_quantiles_but_not_filtered():
     shift = END - timedelta(days=420)
     points = walk(vol=lambda d: 0.03 if d >= shift else 0.004)
-    doc, reason = fc.build_forecast("usd", points, TODAY, NOW)
+    doc, reason = fc.build_forecast("usd", points, TODAY, NOW, method="eq")
     assert doc is None and reason in ("calibration", "calibration-recent")
+    series = fc.Series(fc.clean_series(points))
+    weeks = fc.backtest(series, series.horizon_returns(), "fhs")
+    recent = fc.coverage(weeks[-fc.RECENT_WEEKS:])
+    assert abs(recent - fc.BAND) <= 0.10
+
+
+def test_plain_quantile_method_still_available():
+    doc, reason = fc.build_forecast("usd", walk(), TODAY, NOW, method="eq")
+    assert reason is None and doc["method"] == "empirical-quantile-v1"
+
+
+def test_ewma_sigma_uses_only_past_prices():
+    prices = [100.0 * math.exp(0.01 * (i % 5 - 2)) for i in range(200)]
+    base = fc.ewma_sigma(prices)
+    changed = fc.ewma_sigma(prices[:120] + [p * 2 for p in prices[120:]])
+    assert base[:120] == changed[:120]
+    assert all(s >= fc.MIN_SIGMA for s in base)
 
 
 def test_unusual_week_is_flagged_without_changing_numbers():
     points = walk()
     for p in points[-3:]:
-        p["price"] = round(p["price"] * 1.25, 2)
+        p["price"] = round(p["price"] * 1.07, 2)
     doc, reason = fc.build_forecast("usd", points, TODAY, NOW)
     assert reason is None and doc["unusual"] is True
     assert doc["basis"]["price"] == points[-1]["price"]
+
+
+def test_shock_beyond_history_is_withheld_by_sanity_gate():
+    points = walk()
+    for p in points[-3:]:
+        p["price"] = round(p["price"] * 1.25, 2)
+    doc, reason = fc.build_forecast("usd", points, TODAY, NOW)
+    assert doc is None and reason == "sanity"
 
 
 def test_skill_rule_falls_back_to_no_change():

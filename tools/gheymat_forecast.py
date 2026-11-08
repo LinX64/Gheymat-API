@@ -1,4 +1,4 @@
-"""7-day empirical-quantile forecast with walk-forward backtest and the AC-F gates (Gheymat CONTRACT.md "AI feed")."""
+"""7-day quantile forecast (filtered historical simulation by default) with walk-forward backtest and the AC-F gates (Gheymat CONTRACT.md "AI feed")."""
 from __future__ import annotations
 
 import math
@@ -6,7 +6,12 @@ from bisect import bisect_right
 from datetime import date, timedelta
 from statistics import median
 
-METHOD = "empirical-quantile-v1"
+METHODS = {"fhs": "filtered-quantile-v1", "eq": "empirical-quantile-v1"}
+DEFAULT_METHOD = "fhs"
+METHOD = METHODS[DEFAULT_METHOD]
+EWMA_LAMBDA = 0.94
+EWMA_SEED_RETURNS = 30
+MIN_SIGMA = 1e-5
 HORIZON_DAYS = 7
 BAND = 0.8
 Q_LOW, Q_MID, Q_HIGH = 0.1, 0.5, 0.9
@@ -48,6 +53,11 @@ class Series:
     def __init__(self, closes):
         self.dates = [d for d, _ in closes]
         self.prices = [p for _, p in closes]
+        self.sigma = ewma_sigma(self.prices)
+
+    def sigma_at(self, day):
+        i = bisect_right(self.dates, day) - 1
+        return self.sigma[i] if i >= 0 else None
 
     def close_on_or_before(self, day, earliest):
         i = bisect_right(self.dates, day) - 1
@@ -57,23 +67,42 @@ class Series:
 
     def horizon_returns(self):
         out = []
-        for d, p in zip(self.dates, self.prices):
+        for d, p, s in zip(self.dates, self.prices, self.sigma):
             target = d + timedelta(days=HORIZON_DAYS)
             hit = self.close_on_or_before(target, target - timedelta(days=TARGET_SLACK_DAYS))
             if hit is not None and hit[0] > d:
-                out.append((d, hit[0], math.log(hit[1] / p)))
+                out.append((d, hit[0], math.log(hit[1] / p), s))
         return out
 
 
-def band_at(returns, basis_date):
+def ewma_sigma(prices):
+    if not prices:
+        return []
+    rets = [math.log(b / a) for a, b in zip(prices, prices[1:])]
+    seed = rets[:EWMA_SEED_RETURNS]
+    var = sum(r * r for r in seed) / len(seed) if seed else MIN_SIGMA ** 2
+    out = [max(math.sqrt(var), MIN_SIGMA)]
+    for r in rets:
+        var = EWMA_LAMBDA * var + (1 - EWMA_LAMBDA) * r * r
+        out.append(max(math.sqrt(var), MIN_SIGMA))
+    return out
+
+
+def band_at(returns, basis_date, sigma_now=None, method=DEFAULT_METHOD):
     earliest = basis_date - timedelta(days=LOOKBACK_DAYS)
-    usable = sorted(r for b, t, r in returns if t <= basis_date and b >= earliest)
-    if len(usable) < MIN_RETURNS_FOR_BAND:
+    window = [(r, s) for b, t, r, s in returns if t <= basis_date and b >= earliest]
+    if len(window) < MIN_RETURNS_FOR_BAND:
         return None
+    if method == "fhs":
+        if sigma_now is None:
+            return None
+        usable = sorted(r / s for r, s in window)
+        return tuple(quantile(usable, q) * sigma_now for q in (Q_LOW, Q_MID, Q_HIGH))
+    usable = sorted(r for r, _ in window)
     return quantile(usable, Q_LOW), quantile(usable, Q_MID), quantile(usable, Q_HIGH)
 
 
-def backtest(series, returns):
+def backtest(series, returns, method=DEFAULT_METHOD):
     weeks = []
     if not series.dates:
         return weeks
@@ -85,7 +114,7 @@ def backtest(series, returns):
             bdate, bprice = basis
             target = bdate + timedelta(days=HORIZON_DAYS)
             actual = series.close_on_or_before(target, target - timedelta(days=TARGET_SLACK_DAYS))
-            band = band_at(returns, bdate)
+            band = band_at(returns, bdate, series.sigma_at(bdate), method)
             if actual is not None and band is not None:
                 lo, mid, hi = (bprice * math.exp(x) for x in band)
                 weeks.append({
@@ -125,7 +154,7 @@ def apply_skill(likely, basis_price, mape, naive_mape):
     return likely if mape < naive_mape else basis_price
 
 
-def build_forecast(code, points, today, generated_at, history_close=None):
+def build_forecast(code, points, today, generated_at, history_close=None, method=DEFAULT_METHOD):
     closes = clean_series(points)
     if not closes:
         return None, "no-history"
@@ -139,7 +168,7 @@ def build_forecast(code, points, today, generated_at, history_close=None):
     if gap is None or gap > MAX_RECENT_GAP_DAYS:
         return None, "recent-gap"
     returns = series.horizon_returns()
-    weeks = backtest(series, returns)
+    weeks = backtest(series, returns, method)
     if len(weeks) < MIN_BACKTEST_WEEKS:
         return None, "history"
     cov_all = coverage(weeks)
@@ -148,18 +177,18 @@ def build_forecast(code, points, today, generated_at, history_close=None):
         return None, "calibration"
     if not COVERAGE_RECENT[0] <= cov_recent <= COVERAGE_RECENT[1]:
         return None, "calibration-recent"
-    band = band_at(returns, basis_date)
+    band = band_at(returns, basis_date, series.sigma_at(basis_date), method)
     if band is None:
         return None, "history"
     low, likely, high = (basis_price * math.exp(x) for x in band)
     mape = median(w["err"] for w in weeks) * 100
     naive = median(w["naiveErr"] for w in weeks) * 100
     likely = apply_skill(likely, basis_price, mape, naive)
-    all_r = [r for _, _, r in returns]
+    all_r = [r for _, _, r, _ in returns]
     widest = math.exp(max(all_r) - min(all_r))
     if not (0 < low <= likely <= high) or high / low > widest:
         return None, "sanity"
-    past_abs = sorted(abs(r) for b, _, r in returns if b < basis_date - timedelta(days=HORIZON_DAYS))
+    past_abs = sorted(abs(r) for b, _, r, _ in returns if b < basis_date - timedelta(days=HORIZON_DAYS))
     latest = series.close_on_or_before(basis_date - timedelta(days=HORIZON_DAYS),
                                        basis_date - timedelta(days=HORIZON_DAYS + TARGET_SLACK_DAYS))
     unusual = False
@@ -180,7 +209,7 @@ def build_forecast(code, points, today, generated_at, history_close=None):
         "backtestWeeks": len(weeks),
         "error": {"mape": round(mape, 2), "naiveMape": round(naive, 2)},
         "unusual": unusual,
-        "method": METHOD,
+        "method": METHODS[method],
         "track": [],
         "signals": [],
     }
