@@ -136,3 +136,28 @@ def test_clean_series_drops_bad_points_and_duplicates():
 def test_previous_trading_day_skips_friday():
     assert fc.previous_trading_day(date(2026, 11, 7)) == date(2026, 11, 5)
     assert fc.previous_trading_day(date(2026, 11, 9)) == date(2026, 11, 8)
+
+
+RSPEC = importlib.util.spec_from_file_location(
+    "forecast_report", pathlib.Path(__file__).resolve().parents[1] / "tools" / "forecast_report.py")
+rep = importlib.util.module_from_spec(RSPEC)
+RSPEC.loader.exec_module(rep)
+
+
+def test_report_reads_plain_daily_and_lists_every_code(tmp_path, capsys):
+    import json
+    good = {p["date"]: [None, p["price"]] for p in walk()}
+    short = {p["date"]: [None, p["price"]] for p in walk(years=1)}
+    (tmp_path / "v1").mkdir()
+    (tmp_path / "v1" / "daily.json").write_text(json.dumps({"codes": {"usd": good, "gram": short}}))
+    assert rep.main(["--pages", str(tmp_path), "--today", TODAY.isoformat()]) == 0
+    out = capsys.readouterr().out
+    usd = next(l for l in out.splitlines() if l.startswith("usd"))
+    gram = next(l for l in out.splitlines() if l.startswith("gram"))
+    assert "PASS" in usd and "withheld:history" in gram
+
+
+def test_report_fails_cleanly_without_data(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("GHEYMAT_PAYLOAD_KEY", raising=False)
+    monkeypatch.delenv("GHEYMAT_SIGNING_KEY", raising=False)
+    assert rep.main(["--pages", str(tmp_path)]) == 2
