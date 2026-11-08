@@ -26,6 +26,7 @@ COVERAGE_ALL = (0.75, 0.85)
 COVERAGE_RECENT = (0.70, 0.90)
 UNUSUAL_PERCENTILE = 0.99
 FRIDAY = 4
+MAX_BASIS_TRADING_DAYS = 2
 
 
 def clean_series(points):
@@ -136,6 +137,13 @@ def previous_trading_day(today):
     return d
 
 
+def basis_is_fresh(basis_date, today):
+    floor = today
+    for _ in range(MAX_BASIS_TRADING_DAYS):
+        floor = previous_trading_day(floor)
+    return basis_date >= floor
+
+
 def max_recent_gap(series, today):
     window_start = today - timedelta(days=RECENT_WINDOW_DAYS)
     recent = [d for d in series.dates if d >= window_start]
@@ -162,7 +170,7 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
     basis_date, basis_price = closes[-1]
     if history_close is not None and (basis_date.isoformat(), basis_price) != (history_close["date"], history_close["price"]):
         return None, "basis-mismatch"
-    if basis_date < previous_trading_day(today):
+    if not basis_is_fresh(basis_date, today):
         return None, "basis-stale"
     gap = max_recent_gap(series, today)
     if gap is None or gap > MAX_RECENT_GAP_DAYS:

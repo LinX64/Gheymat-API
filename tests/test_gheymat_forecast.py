@@ -158,6 +158,14 @@ def test_clean_series_drops_bad_points_and_duplicates():
     assert fc.clean_series(pts) == [(date(2026, 1, 1), 9.0), (date(2026, 1, 2), 11.0)]
 
 
+def test_basis_two_trading_days_old_is_still_fresh():
+    assert fc.basis_is_fresh(date(2026, 11, 7), date(2026, 11, 9))
+    assert not fc.basis_is_fresh(date(2026, 11, 6), date(2026, 11, 9))
+    assert fc.basis_is_fresh(date(2026, 11, 4), date(2026, 11, 7))
+    doc, reason = fc.build_forecast("usd", walk(end=date(2026, 11, 7)), date(2026, 11, 9), NOW)
+    assert reason is None
+
+
 def test_previous_trading_day_skips_friday():
     assert fc.previous_trading_day(date(2026, 11, 7)) == date(2026, 11, 5)
     assert fc.previous_trading_day(date(2026, 11, 9)) == date(2026, 11, 8)
