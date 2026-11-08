@@ -621,16 +621,20 @@ PRIVACY_HTML = """<!doctype html><meta charset="utf-8"><meta name="viewport" con
 <style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}
 h1{font-size:28px}h2{font-size:18px;margin-top:28px}p,li{color:#333}footer{margin-top:48px;color:#777;font-size:13px}</style>
 <h1>Gheymat Privacy Policy</h1>
-<p>Last updated: 2026-11-07</p>
-<p>Gheymat is an iOS app that shows Iranian free-market currency, gold and crypto prices. This policy covers the
-Gheymat app only.</p>
+<p>Last updated: 2026-11-08</p>
+<p>Gheymat is an app for iPhone, Apple Watch and Android that shows Iranian free-market currency, gold and crypto
+prices. This policy covers the Gheymat app on every platform, including its widgets.</p>
 <h2>Data we collect</h2>
 <p><strong>None.</strong> Gheymat has no user accounts, no sign-in, no analytics SDK, no advertising SDK, and no
 crash-reporting SDK. The app does not know who you are and cannot identify you.</p>
 <h2>Data stored on your device</h2>
-<p>Your favourites, your chosen list/grid layout, your appearance setting, and a local cache of the latest prices
-are stored only in the app's local storage on your device. This data never leaves your device and is not visible
-to us.</p>
+<p>Your favourites, your chosen list/grid layout, your appearance and price-unit settings, your price alerts, and a
+local cache of the latest prices are stored only in the app's local storage on your device. Home-screen widgets and
+the Apple Watch app read the same on-device data. This data never leaves your device and is not visible to us.</p>
+<h2>Notifications and permissions</h2>
+<p>Price alerts are checked on your device and shown as local notifications; your alerts are never sent anywhere.
+On Android the app asks for the notifications permission only when you create your first alert, and uses internet
+access only to fetch prices.</p>
 <h2>Network requests</h2>
 <p>The app fetches currency, gold and crypto prices from Gheymat's own data feed. These requests carry no
 account identifier, advertising identifier, or other data that identifies you. Standard network metadata (such
