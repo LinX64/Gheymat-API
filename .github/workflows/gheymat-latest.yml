@@ -65,14 +65,14 @@ jobs:
           fi
           installed=0
           for attempt in 1 2 3; do
-            if env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npm install --global --loglevel=error wrangler@4.159.0; then
+            if timeout -k 15 300 env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npm install --global --loglevel=error wrangler@4.159.0; then
               installed=1
               break
             fi
             if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
           if [ "$installed" = "1" ]; then
-            wrangler pages project create gheymat-feed --production-branch master >/dev/null 2>&1 || true
+            timeout -k 15 120 env WRANGLER_SEND_METRICS=false wrangler pages project create gheymat-feed --production-branch master >/dev/null 2>&1 || true
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -135,7 +135,7 @@ jobs:
                 else
                   cf_failures=$((cf_failures + 1))
                   echo "::warning::#$iteration Cloudflare deploy failed ($cf_failures in a row)"
-                  tail -n 8 mirror.log | sed 's/^::/ ::/' || true
+                  tail -n 8 mirror.log | sed -e 's/##\[/## [/g' -e 's/^/| /' || true
                 fi
                 rm -f dist/_headers
               elif [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
@@ -166,7 +166,7 @@ jobs:
               exit 1
             fi
             if [ "$failures" -ge 5 ]; then
-              echo "::error::GitHub publish failed 5 times in a row"
+              echo "::error::Build or GitHub publish failed 5 times in a row"
               exit 1
             fi
           done
