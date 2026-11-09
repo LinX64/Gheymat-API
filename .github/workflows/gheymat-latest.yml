@@ -14,7 +14,6 @@ on:
     paths:
       - 'tools/**'
       - 'requirements.txt'
-      - 'wrangler.toml'
       - '.github/workflows/gheymat-latest.yml'
 
 # A push to master pre-empts the running loop, so a fix goes live in minutes instead of after the loop's 5.5 h;
@@ -61,11 +60,16 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Cloudflare mirror disabled (missing repository secrets)"
+            echo "Cloudflare Pages mirror disabled (missing repository secrets)"
             exit 0
           fi
-          npm install --global --silent wrangler@4.159.0
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          if npm install --global --silent wrangler@4.159.0; then
+            wrangler pages project create gheymat-feed --production-branch master >/dev/null 2>&1 || true
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare Pages mirror disabled (Wrangler install failed)" >&2
+          fi
 
       - name: Mask keys
         env:
@@ -123,8 +127,9 @@ jobs:
               failures=0
               echo "#$iteration published $(date -u +%H:%M:%SZ)"
               if [ "${MIRROR:-}" = "true" ]; then
+                rm -rf dist/.git
                 printf '/d/*\n  Content-Type: application/json\n  Access-Control-Allow-Origin: *\n' > dist/_headers
-                if wrangler pages deploy dist --project-name gheymat-feed --branch master --commit-dirty=true >/dev/null 2>mirror.log; then
+                if wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
                   echo "#$iteration mirrored to Cloudflare Pages"
                 else
                   echo "#$iteration Cloudflare mirror failed; GitHub Pages copy is live" >&2
