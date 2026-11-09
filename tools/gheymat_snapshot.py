@@ -34,6 +34,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gheymat_seal import Sealer, load_published  # noqa: E402
+import gheymat_ai  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -817,6 +818,7 @@ def main() -> int:
     ap.add_argument("--backfill", type=int, default=0, help="also fetch N older archive days (chunked backfill to 2012-10-09)")
     ap.add_argument("--pace", type=float, default=2.5, help="seconds between archive requests")
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--ai", action="store_true", help="also publish the Pro AI documents (v1/ai/*); never blocks prices")
     ap.add_argument("--mark", action="store_true", help="print the primary source's newest observation time and exit")
     args = ap.parse_args()
     if args.mark:
@@ -871,6 +873,9 @@ def main() -> int:
         have = known_dates(daily)
         print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
+    if args.ai:
+        gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
+                            lambda logical: load_published(out, logical, SEALER))
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,

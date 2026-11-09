@@ -14,6 +14,7 @@ on:
     paths:
       - 'tools/**'
       - 'requirements.txt'
+      - 'wrangler.toml'
       - '.github/workflows/gheymat-latest.yml'
 
 # A push to master pre-empts the running loop, so a fix goes live in minutes instead of after the loop's 5.5 h;
@@ -52,6 +53,20 @@ jobs:
       - name: Install
         run: pip install -q -r requirements.txt
 
+      - name: Install Wrangler
+        id: wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare mirror disabled (missing repository secrets)"
+            exit 0
+          fi
+          npm install --global --silent wrangler@4.159.0
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Mask keys
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
@@ -70,6 +85,9 @@ jobs:
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_PLAIN: "0"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MIRROR: ${{ steps.wrangler.outputs.enabled }}
           EXTRA: ${{ github.event.inputs.history == 'true' && '--backfill 40' || '--backfill 12' }}
         run: |
           set -euo pipefail
@@ -104,6 +122,16 @@ jobs:
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
               failures=0
               echo "#$iteration published $(date -u +%H:%M:%SZ)"
+              if [ "${MIRROR:-}" = "true" ]; then
+                printf '/d/*\n  Content-Type: application/json\n  Access-Control-Allow-Origin: *\n' > dist/_headers
+                if wrangler pages deploy dist --project-name gheymat-feed --branch master --commit-dirty=true >/dev/null 2>mirror.log; then
+                  echo "#$iteration mirrored to Cloudflare Pages"
+                else
+                  echo "#$iteration Cloudflare mirror failed; GitHub Pages copy is live" >&2
+                  tail -n 3 mirror.log >&2 || true
+                fi
+                rm -f dist/_headers
+              fi
             else
               failures=$((failures + 1))
               echo "#$iteration failed ($failures in a row)" >&2
