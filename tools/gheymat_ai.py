@@ -1,13 +1,15 @@
-"""Pro AI feed step of the publisher (Gheymat CONTRACT.md "AI feed"): forecast documents and the brief."""
+"""Pro AI feed step of the publisher (Gheymat CONTRACT.md "AI feed"): news, forecast documents and the brief."""
 from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
 
 import gheymat_forecast as fc
+import gheymat_news
 
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
 BUDGET_SECONDS = 120.0
+BRIEF_NEWS_CARDS = 3
 FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
@@ -40,7 +42,7 @@ def brief_text(count: int) -> tuple[str, str]:
 
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
-            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic) -> dict:
+            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=()) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
     today = default_today(now)
@@ -72,7 +74,7 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         rebuilt += 1
     en, fa = brief_text(len(published))
     previous_brief = load_doc("v1/ai/brief")
-    cards = [{"kind": "forecast", "code": c} for c in published]
+    cards = [{"kind": "forecast", "code": c} for c in published] + [{"kind": "news", "id": i} for i in list(news_ids)[:BRIEF_NEWS_CARDS]]
     brief = {"generatedAt": generated_at, "en": en, "fa": fa, "cards": cards, "forecastCodes": published}
     if isinstance(previous_brief, dict) and all(previous_brief.get(k) == brief[k] for k in ("en", "fa", "cards", "forecastCodes")):
         brief = previous_brief
@@ -80,9 +82,26 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
     return {"published": published, "rebuilt": rebuilt, "resealed": resealed, "withheld": withheld}
 
 
-def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print) -> dict | None:
+def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None) -> list[str]:
     try:
-        summary = publish(daily, write_doc, load_doc, now)
+        news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log)
+    except Exception as e:
+        log(f"ai: news step failed, forecasts unaffected: {type(e).__name__}")
+        return []
+    if not news:
+        return []
+    if news["skipped"]:
+        log(f"ai: news {len(news['ids'])} items re-sealed")
+    else:
+        log(f"ai: news {len(news['ids'])} items ({news['new']} new, {news['dropped']} dropped, "
+            f"{news['in']} in / {news['out']} out tokens)")
+    return news["ids"]
+
+
+def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None) -> dict | None:
+    news_ids = run_news(write_doc, load_doc, now, log, env, http)
+    try:
+        summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids)
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}: {e}")
         return None
