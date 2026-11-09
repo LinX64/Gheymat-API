@@ -3,6 +3,7 @@ import json
 import pathlib
 import re
 import sys
+import time
 from xml.sax.saxutils import escape
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -49,10 +50,11 @@ class FakeHttp:
     def __init__(self, feeds=None, replies=None, default=None, on_post=None, on_get=None):
         self.feeds, self.replies, self.default = feeds or {}, list(replies or []), default
         self.on_post, self.on_get = on_post, on_get
-        self.gets, self.posts = [], []
+        self.gets, self.posts, self.streams = [], [], []
 
     def get(self, url, headers=None, timeout=None, stream=None):
         self.gets.append(url)
+        self.streams.append(stream)
         if self.on_get:
             self.on_get()
         got = self.feeds[url]
@@ -492,3 +494,114 @@ def test_utf16_and_nul_byte_feeds_are_rejected_before_parsing():
 def test_tracking_parameters_of_common_feeds_are_not_part_of_the_identity():
     assert news.canonical_url("https://bbc.example/a?at_medium=RSS&at_campaign=rss&keep=1") == "https://bbc.example/a?keep=1"
     assert news.canonical_url("https://x.example/p?id=&b=2") == "https://x.example/p?b=2&id="
+
+
+def valid_rss_bytes():
+    return rss([entry("Alpha story headline", "1")]).content
+
+
+def test_a_valid_but_oversized_feed_is_rejected_by_the_size_cap():
+    big = valid_rss_bytes() + b"<!--" + b"x" * news.FEED_MAX_BYTES + b"-->"
+    store, http, _, result = run(feeds={FEED: Resp(200, big)})
+    assert result is None and store.writes == [] and http.posts == []
+
+
+def test_a_valid_feed_delivered_too_slowly_is_rejected_by_the_deadline():
+    t = [0.0]
+    body = valid_rss_bytes()
+
+    def slow():
+        for i in range(0, len(body), 8):
+            t[0] += 1.0
+            yield body[i:i + 8]
+
+    store, _, _, result = run(feeds={FEED: Resp(200, chunks=slow)}, clock=lambda: t[0])
+    assert result is None and store.writes == []
+
+
+def test_a_feed_that_never_answers_is_cut_off_by_the_hard_limit(monkeypatch):
+    monkeypatch.setattr(news, "FEED_HARD_SECONDS", 0.2)
+
+    class Hang(FakeHttp):
+        def get(self, url, **kwargs):
+            time.sleep(2)
+            return super().get(url, **kwargs)
+
+    store, logs, started = Store(), [], time.monotonic()
+    result = news.publish(store.write, store.load, NOW, env=ENV, http=Hang({FEED: rss([entry("Alpha story headline", "1")])}), log=logs.append)
+    assert result is None and store.writes == [] and time.monotonic() - started < 1.5
+
+
+def test_feeds_are_requested_as_streams():
+    _, http, _, _ = run([entry("Alpha story headline", "1")])
+    assert http.streams == [True]
+
+
+def test_comparison_signs_drop_the_headline_and_pathological_markup_is_fast():
+    when = format_datetime(NOW - timedelta(hours=1))
+    cmp_feed = (f"<rss><channel><item><title>Gold &lt; 2000 dollars and silver &gt; 30 dollars</title><link>https://a.example/c</link>"
+                f"<pubDate>{when}</pubDate></item></channel></rss>").encode()
+    store, _, _, _ = run(feeds={FEED: Resp(200, cmp_feed)})
+    assert items(store) == []
+    desc = "<" * 500_000
+    heavy = (f"<rss><channel><item><title>Alpha story headline</title><link>https://a.example/p</link><pubDate>{when}</pubDate>"
+             f"<description><![CDATA[{desc}]]></description></item></channel></rss>").encode()
+    started = time.monotonic()
+    store, _, _, _ = run(feeds={FEED: Resp(200, heavy)})
+    assert time.monotonic() - started < 3 and len(items(store)) == 1
+
+
+@pytest.mark.parametrize("title,en,fa,kept", [
+    ("Firm raises 2 million dollars today", "Firm raises one million dollars", "شرکت ۲ میلیون دلار جمع کرد", False),
+    ("Firm raises 2 million dollars today", "Firm raises 2 million dollars", "شرکت یک میلیون دلار جمع کرد", False),
+    ("Firm raises one million dollars today", "Firm raises 1 million dollars", "شرکت یک میلیون دلار جمع کرد", True),
+    ("Firm raises one million dollars today", "Firm raises one million dollars", "شرکت ۱ میلیون دلار جمع کرد", True),
+    ("Firm raises 5 million dollars today", "Firm raises 5 dollars", "شرکت ۵ دلار جمع کرد", False),
+    ("Firm raises one of the biggest funds", "Firm raises one of the biggest funds", "شرکت یکی از بزرگترین صندوق ها", True),
+])
+def test_a_number_stays_bound_to_its_magnitude_word(title, en, fa, kept):
+    store, _, _, _ = run([entry(title, "1")], replies=[reply(en=en, fa=fa)])
+    assert (len(items(store)) == 1) is kept
+
+
+def test_a_link_the_app_could_not_decode_drops_the_item():
+    store, _, _, _ = run([entry("Spaced host story headline", "x", host="exa mple.com"), entry("Good story headline", "ok", minutes_ago=90)])
+    assert [i["title"] for i in items(store)] == ["Good story headline"]
+
+
+def test_headlines_that_differ_by_one_word_are_not_merged():
+    base = "gold price update from the tehran bazaar shows traders watching rates closely after the central bank statement today"
+    store, http, _, _ = run([entry(base + " rises", "a", minutes_ago=30), entry(base + " falls", "b", minutes_ago=20)])
+    assert len(items(store)) == 2 and len(http.posts) == 2
+
+
+def test_a_few_server_errors_do_not_advance_generated_at():
+    store, _, _, _ = run([entry("Alpha story headline", "1")])
+    first = store.docs[news.LOGICAL]["generatedAt"]
+    _, _, _, result = run([entry("Beta story headline", "2", minutes_ago=5)], store=store, now=NOW + timedelta(minutes=31), replies=[Resp(500)])
+    assert store.docs[news.LOGICAL]["generatedAt"] == first and result["complete"] is False
+
+
+def test_infinite_token_usage_skips_the_story_without_raising():
+    bad = reply()
+    bad._payload["usage"] = {"input_tokens": float("inf"), "output_tokens": 1}
+    store, _, _, _ = run([entry("Alpha story headline", "1", minutes_ago=5), entry("Beta story headline", "2", minutes_ago=10)], replies=[bad, reply()])
+    assert [i["title"] for i in items(store)] == ["Beta story headline"]
+
+
+def test_previous_items_with_a_non_string_url_are_ignored():
+    store = previous_store([{**prev_item(1, 3), "url": 5}, prev_item(2, 4)], checked="2026-11-09T01:00:00Z")
+    store, _, _, _ = run([entry("Alpha story headline", "1", minutes_ago=5)], store=store)
+    assert {i["title"] for i in items(store)} == {"Previous story number 2 words", "Alpha story headline"}
+
+
+def test_a_known_url_with_an_edited_headline_is_not_summarised_again():
+    store, _, _, _ = run([entry("Original story headline here", "same")])
+    _, http, _, _ = run([entry("Completely different wording now", "same", minutes_ago=50)], store=store, now=NOW + timedelta(minutes=31))
+    assert http.posts == [] and [i["title"] for i in items(store)] == ["Original story headline here"]
+
+
+def test_overlong_headlines_and_descriptions_are_bounded():
+    store, http, _, _ = run([entry(" ".join(["word"] * 80), "1"), entry("Normal story headline", "2", minutes_ago=90, desc="d" * 5000)])
+    assert [i["title"] for i in items(store)] == ["Normal story headline"]
+    assert len(http.posts[0]["json"]["messages"][0]["content"]) < 800

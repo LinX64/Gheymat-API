@@ -6,6 +6,7 @@ import html
 import json
 import os
 import re
+import threading
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,7 @@ MAX_CANDIDATES = 200
 MIN_INTERVAL = timedelta(minutes=30)
 BUDGET_SECONDS = 40.0
 FEED_DEADLINE_SECONDS = 20.0
+FEED_HARD_SECONDS = 25.0
 SUMMARY_MAX = 140
 TITLE_MAX = 300
 TEXT_MAX = 600
@@ -41,21 +43,22 @@ USER_AGENT = "Mozilla/5.0 (compatible; PriceFeedBot/1.0)"
 DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 ARABIC = re.compile(r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
 LATIN = re.compile(r"[A-Za-z]")
-TAG = re.compile(r"<[^>]*>")
+TAG = re.compile(r"</?[A-Za-z][^<>]*>")
 SPACE = re.compile(r"\s+")
 UNSAFE = re.compile(r"https?:|www\.|@|[<>]|\b[\w-]+\.[a-z]{2,}(?:/|\b)", re.I)
 UNSAFE_DOCTYPE = re.compile(rb"<!(DOCTYPE|ENTITY)", re.I)
-WORDS = {w: str(n) for n, w in enumerate(
+NUMBER_WORDS = {w: str(n) for n, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "
     "eighteen nineteen twenty".split())}
-WORDS.update({"thirty": "30", "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70", "eighty": "80",
-              "ninety": "90", "hundred": "H", "thousand": "K", "million": "M", "billion": "B", "trillion": "T"})
-WORDS.pop("one")
-WORDS.update({"صفر": "0", "دو": "2", "سه": "3", "چهار": "4", "پنج": "5", "شش": "6", "هفت": "7", "هشت": "8",
-              "ده": "10", "یازده": "11", "دوازده": "12", "سیزده": "13", "چهارده": "14", "پانزده": "15",
-              "شانزده": "16", "هفده": "17", "هجده": "18", "نوزده": "19", "بیست": "20", "سی": "30", "چهل": "40",
-              "پنجاه": "50", "شصت": "60", "هفتاد": "70", "هشتاد": "80", "نود": "90", "صد": "H", "هزار": "K",
-              "میلیون": "M", "میلیارد": "B", "تریلیون": "T"})
+NUMBER_WORDS.update({"thirty": "30", "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70", "eighty": "80",
+                     "ninety": "90"})
+NUMBER_WORDS.update({"صفر": "0", "یک": "1", "دو": "2", "سه": "3", "چهار": "4", "پنج": "5", "شش": "6", "هفت": "7",
+                     "هشت": "8", "ده": "10", "یازده": "11", "دوازده": "12", "سیزده": "13", "چهارده": "14",
+                     "پانزده": "15", "شانزده": "16", "هفده": "17", "هجده": "18", "نوزده": "19", "بیست": "20",
+                     "سی": "30", "چهل": "40", "پنجاه": "50", "شصت": "60", "هفتاد": "70", "هشتاد": "80", "نود": "90"})
+MAGNITUDES = {"hundred": "H", "thousand": "K", "million": "M", "billion": "B", "trillion": "T",
+              "صد": "H", "هزار": "K", "میلیون": "M", "میلیارد": "B", "تریلیون": "T"}
+AMBIGUOUS = {"one", "یک"}  # also an article: counted only right before a magnitude word
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
 
@@ -123,12 +126,30 @@ def clean(text: str | None, strict: bool = False) -> str | None:
 
 
 def quantities(text: str) -> set[str]:
-    """Every number and quantity word in the text, in one canonical form (digits, Persian digits, number words, million/billion)."""
+    """Numbers as canonical tokens; a number followed by a magnitude word is one token ("5M"), so 5, 5 million and 5 billion differ."""
     text = re.sub(r"(?<=[۰-۹])/(?=[۰-۹])", ".", text)
     flat = re.sub(r"(?<=[۰-۹٠-٩])٫(?=[۰-۹٠-٩])", ".", text).translate(DIGITS)
     flat = re.sub(r"(?<=\d)[٬,](?=\d{3}(?!\d))", "", flat)
-    found = set(re.findall(r"\d+(?:\.\d+)?", flat))
-    found.update(WORDS[w] for w in re.findall(r"[^\W\d_]+", flat.lower()) if w in WORDS)
+    seq = []
+    for tok in re.findall(r"\d+(?:\.\d+)?|[^\W\d_]+", flat.lower()):
+        if tok[0].isdigit():
+            seq.append(("n", tok))
+        elif tok in AMBIGUOUS:
+            seq.append(("one", "1"))
+        elif tok in NUMBER_WORDS:
+            seq.append(("n", NUMBER_WORDS[tok]))
+        elif tok in MAGNITUDES:
+            seq.append(("m", MAGNITUDES[tok]))
+    found, i = set(), 0
+    while i < len(seq):
+        kind, value = seq[i]
+        if kind in ("n", "one") and i + 1 < len(seq) and seq[i + 1][0] == "m":
+            found.add(value + seq[i + 1][1])
+            i += 2
+            continue
+        if kind != "one":
+            found.add(value)
+        i += 1
     return found
 
 
@@ -138,6 +159,8 @@ def tracking(name: str) -> bool:
 
 
 def canonical_url(url: str | None) -> str | None:
+    if not isinstance(url, str):
+        return None
     try:
         parts = urlsplit((url or "").strip())
         host = (parts.hostname or "").lower()
@@ -155,17 +178,20 @@ def canonical_url(url: str | None) -> str | None:
 
 
 def publish_url(url: str | None) -> str | None:
-    """The link as the source published it, minus fragment; credentials in a link reject it."""
+    """The link as the source published it, minus fragment; credentials or a malformed host reject it."""
+    if not isinstance(url, str):
+        return None
     try:
-        parts = urlsplit((url or "").strip())
+        parts = urlsplit(url.strip())
         host = parts.hostname
         creds = parts.username or parts.password
-    except ValueError:
+        ascii_host = host.encode("idna").decode("ascii") if host else ""
+    except (ValueError, UnicodeError):
         return None
-    if parts.scheme not in ("http", "https") or not host or creds:
+    if parts.scheme not in ("http", "https") or creds or not re.fullmatch(r"[A-Za-z0-9._-]+", ascii_host):
         return None
     out = urlunsplit((parts.scheme, parts.netloc, parts.path or "/", parts.query, ""))
-    return out if len(out) <= 500 else None
+    return out if len(out) <= 500 and not re.search(r"\s", out) else None
 
 
 def item_id(canonical: str) -> str:
@@ -182,7 +208,7 @@ def headline_tokens(title: str) -> frozenset[str]:
 
 
 def near_identical(a: frozenset[str], b: frozenset[str]) -> bool:
-    if not a or not b:
+    if not a or not b or not (a <= b or b <= a):
         return False
     return len(a & b) / len(a | b) >= NEAR_DUPLICATE
 
@@ -268,6 +294,22 @@ def fetch_source(http, source: dict, now: datetime, clock=time.monotonic) -> lis
     return items
 
 
+def fetch_bounded(make_http, source: dict, now: datetime, clock) -> list[dict] | None:
+    """fetch_source in a daemon thread: socket timeouts restart on every byte, so only a join bounds a drip-fed feed."""
+    box = []
+
+    def work():
+        try:
+            box.append(fetch_source(make_http(), source, now, clock))
+        except Exception:
+            pass
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    worker.join(FEED_HARD_SECONDS)
+    return box[0] if box else None
+
+
 def valid_summary(text, script, source_quantities: set[str]) -> str | None:
     if not isinstance(text, str):
         return None
@@ -329,7 +371,7 @@ def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
         used_in = int(usage.get("input_tokens") or 0) if isinstance(usage, dict) else 0
         used_out = int(usage.get("output_tokens") or 0) if isinstance(usage, dict) else 0
         return parse_output(payload, item), used_in, used_out
-    except (ValueError, TypeError, KeyError, AttributeError) as e:
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
         raise ApiError("body") from e
 
 
@@ -386,17 +428,18 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     checked = last_check(previous)
     if not key or not sources or (checked and now - checked < MIN_INTERVAL):
         return reseal(write_doc, previous, now)
+    make_http = (lambda: http) if http is not None else requests.Session
     http = http or requests.Session()
     started = clock()
     candidates, reached = [], 0
     for source in sources:
         if clock() - started > budget_seconds:
             break
-        try:
-            candidates.extend(fetch_source(http, source, now, clock))
-            reached += 1
-        except Exception:
+        got = fetch_bounded(make_http, source, now, clock)
+        if got is None:
             continue
+        candidates.extend(got)
+        reached += 1
     if not reached:
         return reseal(write_doc, previous, now)
     seen = {i["id"] for i in kept}
@@ -422,6 +465,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             try:
                 result, used_in, used_out = summarize(http, key, cand)
             except ApiError:
+                incomplete = True
                 stats["dropped"] += 1
                 api_errors += 1
                 if api_errors >= MAX_CONSECUTIVE_API_ERRORS:
