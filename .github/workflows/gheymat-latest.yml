@@ -116,7 +116,7 @@ jobs:
             fi
             find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
             touch dist/.nojekyll
-            if python tools/gheymat_snapshot.py --out dist --history $EXTRA --pace 3 \
+            if python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
               && python tools/verify_sealed.py dist \
               && ( cd dist \
                 && git init -q \
