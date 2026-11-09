@@ -370,7 +370,7 @@ def fetch_converter(session: requests.Session) -> dict | None:
         r.raise_for_status()
         raw = r.json()
     except (requests.RequestException, ValueError) as e:
-        print(f"converter: {e}", file=sys.stderr)
+        print(f"converter: {type(e).__name__}", file=sys.stderr)
         return None
     table = parse_converter_table(raw)
     if table is None:
@@ -527,7 +527,7 @@ def fill_days(session: requests.Session, daily: dict, dates: list[str], pace: fl
         try:
             shown, values = fetcher(date)
         except (requests.RequestException, SystemExit) as e:
-            print(f"archive {date}: {e}", file=sys.stderr)
+            print(f"archive {date}: {type(e).__name__}", file=sys.stderr)
             break
         if shown != date or len(values) < 20:
             print(f"archive {date}: page shows {shown}, {len(values)} values; stopping", file=sys.stderr)
@@ -857,7 +857,7 @@ def main() -> int:
     (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
     (out / "support.html").write_text(SUPPORT_HTML, encoding="utf-8")
     print(f"latest: {len(snapshot['rates'])} rates ({' + '.join(str(v) for v in counts.values())} + {len(computed_rates)} computed), "
-          f"usd {snapshot['rates'][0].get('buy')}/{snapshot['rates'][0].get('sell')}, observed {snapshot['fetchedAt']}, "
+          f"observed {snapshot['fetchedAt']}, "
           f"fp {fingerprint}")
     print(f"intraday: {append_intraday(out, snapshot, observed)} files updated")
     if args.history or args.backfill:
