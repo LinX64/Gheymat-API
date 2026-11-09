@@ -87,7 +87,11 @@ def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=No
         news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log)
     except Exception as e:
         log(f"ai: news step failed, forecasts unaffected: {type(e).__name__}")
-        return []
+        try:
+            kept = gheymat_news.reseal(write_doc, load_doc(gheymat_news.LOGICAL), now or datetime.now(timezone.utc))
+        except Exception:
+            kept = None
+        return kept["ids"] if kept else []
     if not news:
         return []
     if news["skipped"]:
