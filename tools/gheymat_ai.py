@@ -15,6 +15,10 @@ def tehran_today(now: datetime):
     return now.astimezone(TEHRAN).date()
 
 
+def default_today(now: datetime | None = None):
+    return tehran_today(now or datetime.now(timezone.utc))
+
+
 def iso(now: datetime) -> str:
     return now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -39,7 +43,7 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
             budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
-    today = tehran_today(now)
+    today = default_today(now)
     generated_at = iso(now)
     published, rebuilt, resealed, withheld = [], 0, 0, {}
     for code in sorted(daily.get("codes", {})):

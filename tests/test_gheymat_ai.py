@@ -97,3 +97,8 @@ def test_run_step_never_raises(capsys):
 def test_tehran_day_rolls_over_at_2030_utc():
     assert ai.tehran_today(datetime(2026, 11, 8, 20, 29, tzinfo=timezone.utc)).isoformat() == "2026-11-08"
     assert ai.tehran_today(datetime(2026, 11, 8, 20, 31, tzinfo=timezone.utc)).isoformat() == "2026-11-09"
+
+
+def test_default_today_uses_the_tehran_trading_day():
+    assert ai.default_today(datetime(2026, 11, 8, 20, 29, tzinfo=timezone.utc)).isoformat() == "2026-11-08"
+    assert ai.default_today(datetime(2026, 11, 8, 20, 31, tzinfo=timezone.utc)).isoformat() == "2026-11-09"
