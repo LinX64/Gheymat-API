@@ -60,15 +60,23 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Cloudflare Pages mirror disabled (missing repository secrets)"
+            echo "::warning::Cloudflare deploy is off: repository secrets are missing"
             exit 0
           fi
-          if npm install --global --silent wrangler@4.159.0; then
-            wrangler pages project create gheymat-feed --production-branch master >/dev/null 2>&1 || true
+          installed=0
+          for attempt in 1 2 3; do
+            if timeout -k 15 300 env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID npm install --global --loglevel=error wrangler@4.159.0; then
+              installed=1
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
+          done
+          if [ "$installed" = "1" ]; then
+            timeout -k 15 120 env WRANGLER_SEND_METRICS=false wrangler pages project create gheymat-feed --production-branch master >/dev/null 2>&1 || true
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Cloudflare Pages mirror disabled (Wrangler install failed)" >&2
+            echo "::error::Cloudflare deploy is off: Wrangler install failed 3 times"
           fi
 
       - name: Mask keys
@@ -98,6 +106,9 @@ jobs:
           deadline=$(( $(date +%s) + 330*60 ))
           iteration=0
           failures=0
+          cf_failures=0
+          nothing=0
+          red=0
           last_mark=""
           last_publish=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -109,40 +120,67 @@ jobs:
               continue
             fi
             iteration=$((iteration + 1))
+            cf_ok=0
+            gh_ok=0
+            restored=0
             rm -rf dist && mkdir -p dist
-            if git fetch -q --depth 1 origin gh-pages 2>/dev/null; then
-              git --work-tree=dist checkout -q FETCH_HEAD -- . || true
+            if git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=dist checkout -q FETCH_HEAD -- .; then
               git reset -q
+              restored=1
             fi
             find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
             touch dist/.nojekyll
-            if python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
-              && python tools/verify_sealed.py dist \
-              && ( cd dist \
+            if [ "$restored" = "1" ] \
+              && python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
+              && python tools/verify_sealed.py dist; then
+              if [ "${MIRROR:-}" = "true" ]; then
+                printf '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n/d/*\n  Content-Type: application/json\n  X-Robots-Tag: noindex, nofollow\n  Access-Control-Allow-Origin: *\n' > dist/_headers
+                if env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
+                  cf_failures=0
+                  cf_ok=1
+                  echo "#$iteration cloudflare $(date -u +%H:%M:%SZ)"
+                else
+                  cf_failures=$((cf_failures + 1))
+                  echo "::warning::#$iteration Cloudflare deploy failed ($cf_failures in a row)"
+                  tail -n 8 mirror.log | sed -e 's/##\[/## [/g' -e 's/^/| /' || true
+                fi
+                rm -f dist/_headers
+              elif [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+                cf_failures=$((cf_failures + 1))
+                echo "::warning::#$iteration Cloudflare deploy unavailable ($cf_failures in a row)"
+              fi
+              if ( cd dist \
                 && git init -q \
                 && git checkout -q -b gh-pages \
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish $iteration" \
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
-              failures=0
-              echo "#$iteration published $(date -u +%H:%M:%SZ)"
-              if [ "${MIRROR:-}" = "true" ]; then
-                rm -rf dist/.git
-                printf '/d/*\n  Content-Type: application/json\n  Access-Control-Allow-Origin: *\n' > dist/_headers
-                if wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
-                  echo "#$iteration mirrored to Cloudflare Pages"
-                else
-                  echo "#$iteration Cloudflare mirror failed; GitHub Pages copy is live" >&2
-                  tail -n 3 mirror.log >&2 || true
-                fi
-                rm -f dist/_headers
+                failures=0
+                gh_ok=1
+                echo "#$iteration published $(date -u +%H:%M:%SZ)"
+              else
+                failures=$((failures + 1))
+                echo "#$iteration GitHub push failed ($failures in a row)" >&2
               fi
             else
               failures=$((failures + 1))
               echo "#$iteration failed ($failures in a row)" >&2
-              if [ "$failures" -ge 5 ]; then exit 1; fi
             fi
             rm -rf dist/.git
             last_mark=$mark
             last_publish=$now
+            if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then nothing=0; else nothing=$((nothing + 1)); fi
+            if [ "$cf_failures" -eq 5 ]; then
+              echo "::error::Cloudflare deploy failed 5 times in a row"
+              red=1
+            fi
+            if [ "$failures" -eq 5 ]; then
+              echo "::error::Restore, build or GitHub publish failed 5 times in a row"
+              red=1
+            fi
+            if [ "$nothing" -ge 5 ]; then
+              echo "::error::Nothing could be published 5 times in a row"
+              exit 1
+            fi
           done
+          [ "$red" = "0" ] || exit 1
