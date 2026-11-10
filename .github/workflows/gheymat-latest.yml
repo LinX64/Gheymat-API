@@ -96,6 +96,8 @@ jobs:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_PLAIN: "0"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GHEYMAT_AI_SOURCES: ${{ secrets.GHEYMAT_AI_SOURCES }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -135,7 +137,7 @@ jobs:
               && python tools/verify_sealed.py dist; then
               if [ "${MIRROR:-}" = "true" ]; then
                 printf '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n/d/*\n  Content-Type: application/json\n  X-Robots-Tag: noindex, nofollow\n  Access-Control-Allow-Origin: *\n' > dist/_headers
-                if env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
+                if env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
                   cf_failures=0
                   cf_ok=1
                   echo "#$iteration cloudflare $(date -u +%H:%M:%SZ)"
