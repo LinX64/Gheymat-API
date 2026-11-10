@@ -30,7 +30,11 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: write
+      actions: write
     steps:
+      - name: Mark start
+        run: echo "RUN_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -186,3 +190,18 @@ jobs:
             fi
           done
           [ "$red" = "0" ] || exit 1
+
+      # Scheduled starts are delayed or skipped by GitHub, which left gaps of hours between loops. Queue the next loop
+      # from inside this one: it waits in the concurrency group and starts the moment this run ends. A run that ended
+      # early (under an hour) or failed does not chain, so a fault cannot turn into a restart storm; the cron backstop
+      # and the failed-run notice stay as they were.
+      - name: Continue
+        if: success() && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ $(( $(date +%s) - RUN_STARTED )) -lt 3600 ]; then
+            echo "Run lasted under an hour, not chaining another"
+            exit 0
+          fi
+          gh workflow run gheymat-latest.yml --ref master
