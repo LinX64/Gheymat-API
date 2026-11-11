@@ -140,8 +140,10 @@ jobs:
               && python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
               && python tools/verify_sealed.py dist; then
               if [ "${MIRROR:-}" = "true" ]; then
-                printf '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n/d/*\n  Content-Type: application/json\n  X-Robots-Tag: noindex, nofollow\n  Access-Control-Allow-Origin: *\n' > dist/_headers
-                if env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
+                rm -rf site
+                if python tools/assemble_site.py --src dist --out site 2>mirror.log \
+                  && python tools/verify_sealed.py --site site 2>>mirror.log \
+                  && env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy site --project-name gheymat-feed --branch master >/dev/null 2>>mirror.log; then
                   cf_failures=0
                   cf_ok=1
                   echo "#$iteration cloudflare $(date -u +%H:%M:%SZ)"
@@ -150,7 +152,7 @@ jobs:
                   echo "::warning::#$iteration Cloudflare deploy failed ($cf_failures in a row)"
                   tail -n 8 mirror.log | sed -e 's/##\[/## [/g' -e 's/^/| /' || true
                 fi
-                rm -f dist/_headers
+                rm -rf site
               elif [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
                 cf_failures=$((cf_failures + 1))
                 echo "::warning::#$iteration Cloudflare deploy unavailable ($cf_failures in a row)"
