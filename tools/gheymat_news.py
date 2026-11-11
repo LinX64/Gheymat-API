@@ -217,11 +217,15 @@ DEFAULT_SOURCES = [
     {"name": "BBC Persian", "url": "https://feeds.bbci.co.uk/persian/rss.xml", "lang": "fa"},
     {"name": "DW Persian", "url": "https://rss.dw.com/xml/rss-per-all", "lang": "fa"},
     {"name": "Iran International", "url": "https://www.iranintl.com/feed", "lang": "fa"},
+    {"name": "Radio Farda", "url": "https://www.radiofarda.com/api/epiqq", "lang": "fa"},
+    {"name": "Independent Persian", "url": "https://www.independentpersian.com/rss.xml", "lang": "fa"},
+    {"name": "IRNA", "url": "https://www.irna.ir/rss", "lang": "fa"},
     {"name": "ISNA", "url": "https://www.isna.ir/rss", "lang": "fa"},
-    {"name": "Khabar Online", "url": "https://www.khabaronline.ir/rss", "lang": "fa"},
     {"name": "Donya-e-Eqtesad", "url": "https://donya-e-eqtesad.com/feeds/", "lang": "fa"},
+    {"name": "Eghtesad Online", "url": "https://www.eghtesadonline.com/rss", "lang": "fa"},
+    {"name": "Tejarat News", "url": "https://www.tejaratnews.com/rss", "lang": "fa"},
     {"name": "BBC Middle East", "url": "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml", "lang": "en"},
-    {"name": "Iran International EN", "url": "https://www.iranintl.com/en/feed", "lang": "en"},
+    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lang": "en"},
 ]
 
 
