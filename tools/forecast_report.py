@@ -38,12 +38,15 @@ def diagnose(points: list[dict], today: date, method: str = fc.DEFAULT_METHOD) -
         naive = sorted(w["naiveErr"] for w in weeks)
         out["mape"] = errs[len(errs) // 2] * 100
         out["naive"] = naive[len(naive) // 2] * 100
+        summary = fc.summarize(weeks)
+        out["score"] = summary["meanIntervalScore"]
+        out["errVsNaive"] = summary["medianErr"] / summary["medianNaiveErr"] if summary["medianNaiveErr"] else None
     out["gap"] = fc.max_recent_gap(series, today)
     return out
 
 
 def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT_METHOD) -> list[str]:
-    lines = [f"method: {fc.METHODS[method]}", f"{'code':8} {'result':20} {'days':>5} {'weeks':>5} {'cov':>6} {'52w':>6} {'mape':>6} {'naive':>6}  "
+    lines = [f"method: {fc.METHODS[method]}", f"{'code':8} {'result':20} {'days':>5} {'weeks':>5} {'cov':>6} {'52w':>6} {'mape':>6} {'naive':>6} {'iscore':>7} {'e/naive':>7}  "
              f"likely (low-high) vs basis"]
     for code in sorted(daily.get("codes", {})):
         points = points_from_daily(daily["codes"][code])
@@ -53,6 +56,8 @@ def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT
         rec = f"{d['recent']:.3f}" if "recent" in d else "-"
         mape = f"{d['mape']:.2f}" if "mape" in d else "-"
         naive = f"{d['naive']:.2f}" if "naive" in d else "-"
+        iscore = f"{d['score']:.4f}" if d.get("score") is not None else "-"
+        ratio = f"{d['errVsNaive']:.3f}" if d.get("errVsNaive") is not None else "-"
         tail = ""
         if doc:
             fallback = " (no-change)" if doc["likely"] == doc["basis"]["price"] else ""
@@ -60,7 +65,7 @@ def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT
             tail = f"{doc['likely']:,.0f} ({doc['low']:,.0f}-{doc['high']:,.0f}) vs {doc['basis']['price']:,.0f}{fallback}{flag}"
         result = "PASS" if doc else f"withheld:{reason}"
         lines.append(f"{code:8} {result:20} {d.get('days', 0):>5} {d.get('weeks', 0):>5} {cov:>6} {rec:>6} "
-                     f"{mape:>6} {naive:>6}  {tail}")
+                     f"{mape:>6} {naive:>6} {iscore:>7} {ratio:>7}  {tail}")
     return lines
 
 

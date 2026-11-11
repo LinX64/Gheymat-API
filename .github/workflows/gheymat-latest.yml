@@ -136,7 +136,7 @@ jobs:
               git reset -q
               restored=1
             fi
-            find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
+            find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name archive -exec rm -rf {} +
             touch dist/.nojekyll
             if [ "$restored" = "1" ] \
               && python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \

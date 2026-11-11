@@ -875,7 +875,8 @@ def main() -> int:
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     if args.ai:
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
-                            lambda logical: load_published(out, logical, SEALER))
+                            lambda logical: load_published(out, logical, SEALER),
+                            signals_http=requests.Session(), archive_root=out)
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
