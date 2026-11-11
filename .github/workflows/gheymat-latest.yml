@@ -141,8 +141,8 @@ jobs:
               && python tools/verify_sealed.py dist; then
               if [ "${MIRROR:-}" = "true" ]; then
                 rm -rf site
-                if python tools/assemble_site.py --src dist --out site 2>mirror.log \
-                  && python tools/verify_sealed.py --site site 2>>mirror.log \
+                if env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES python tools/assemble_site.py --src dist --out site 2>mirror.log \
+                  && env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES -u GHEYMAT_SIGNING_KEY python tools/verify_sealed.py --site site 2>>mirror.log \
                   && env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy site --project-name gheymat-feed --branch master >/dev/null 2>>mirror.log; then
                   cf_failures=0
                   cf_ok=1

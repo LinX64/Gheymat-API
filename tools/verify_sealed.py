@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import site_versions  # noqa: E402
-from gheymat_seal import DEFAULT_KID, KEY_LEN, MAX_ENVELOPE_BYTES, open_envelope, opaque_path, unb64  # noqa: E402
+from gheymat_seal import DEFAULT_KID, KEY_LEN, MAX_ENVELOPE_BYTES, MAX_STATE_BYTES, open_envelope, opaque_path, unb64  # noqa: E402
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey  # noqa: E402
 
@@ -72,6 +72,9 @@ def all_codes() -> set[str]:
 def verify_site(site: Path, payload_key: bytes, public_keys: dict[int, Ed25519PublicKey]) -> dict[str, int]:
     """Check an assembled site: every file under /<id>/d verifies for its logical path, /v1-style
     (non-derived) copies are byte-equal to the root copies, versions.json and _headers exist."""
+    for base, dirs, files in os.walk(site, followlinks=False):
+        if any(os.path.islink(os.path.join(base, n)) for n in dirs + files):
+            raise ValueError("symbolic link in site")
     codes = all_codes()
     counts: dict[str, int] = {}
     for v in site_versions.VERSIONS:
@@ -84,12 +87,16 @@ def verify_site(site: Path, payload_key: bytes, public_keys: dict[int, Ed25519Pu
             if logical is None:
                 raise ValueError("unclaimed file")
             data = f.read_bytes()
-            if len(data) > MAX_ENVELOPE_BYTES:
+            if len(data) > MAX_STATE_BYTES:  # same bound as load_published: the daily archive is several MB
                 raise ValueError("envelope too large")
             open_envelope(json.loads(data), payload_key, public_keys, logical, max_age=None)
             if v.get("derivesFrom") is None and (site / "d" / f.name).read_bytes() != data:
                 raise ValueError("copy differs from root")
         counts[v["id"]] = len(files)
+        source = v.get("derivesFrom")
+        if v["docs"] and not files and (counts[source] > 0 if source else (site / "d").is_dir()
+                                        and any((site / "d").iterdir())):
+            raise ValueError("version has no documents")
     if json.loads((site / "versions.json").read_text(encoding="utf-8")).get("schema") != site_versions.SCHEMA:
         raise ValueError("bad registry")
     if not (site / "_headers").is_file():

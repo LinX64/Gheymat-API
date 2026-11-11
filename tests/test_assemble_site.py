@@ -168,5 +168,131 @@ def test_no_source_names_anywhere(src, tmp_path):
     asm.assemble(src, out, SEALER, log=lambda *_: None)
     texts = [(out / "versions.json").read_text(), (out / "_headers").read_text()]
     texts += [(TOOLS / n).read_text() for n in ("site_versions.py", "assemble_site.py")]
+    texts += [pathlib.Path(__file__).read_text(), (TOOLS.parent / "CLAUDE.md").read_text()]
     for text in texts:
-        assert "hansha" not in text.lower() and "bonbast" not in text.lower()
+        for name in vs.SOURCES:
+            assert name not in text.lower()
+
+
+def test_verify_site_accepts_large_daily(src, tmp_path):
+    put(src, "v1/daily.json", {"pad": "x" * (3 * 1024 * 1024)})
+    out = tmp_path / "site"
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    big = out / "v1" / SEALER.opaque_path("v1/daily.json")
+    assert big.stat().st_size > gs.MAX_ENVELOPE_BYTES
+    assert vs.verify_site(out, MASTER, PUBLIC)["v1"] == 6
+
+
+def _with_versions(monkeypatch, extra):
+    reg = copy.deepcopy(sv.VERSIONS) + extra
+    monkeypatch.setattr(sv, "VERSIONS", reg)
+    return reg
+
+
+@pytest.mark.parametrize("parent", ["v1", "v2"])
+def test_v3_derives_from_v1_or_v2(src, tmp_path, monkeypatch, parent):
+    _with_versions(monkeypatch, [{"id": "v3", "status": "current", "docs": ["ai"], "derivesFrom": parent}])
+    monkeypatch.setitem(sv.TRANSFORMS, "v3", lambda logical, doc: {**doc, "v3": True})
+    out = tmp_path / "site"
+    result = asm.assemble(src, out, SEALER, log=lambda *_: None)
+    assert result["counts"]["v3"] == 2
+    f = out / "v3" / SEALER.opaque_path("v3/ai/brief")
+    assert gs.open_envelope(json.loads(f.read_text()), MASTER, PUBLIC, "v3/ai/brief", max_age=None) == \
+        {"text": "x", "v3": True}
+    assert vs.verify_site(out, MASTER, PUBLIC)["v3"] == 2
+
+
+def test_empty_derived_version_fails_loudly(src, tmp_path, monkeypatch):
+    _with_versions(monkeypatch, [{"id": "v3", "status": "current", "docs": ["core"], "derivesFrom": "v2"}])
+    with pytest.raises(SystemExit):
+        asm.assemble(src, tmp_path / "site", SEALER, log=lambda *_: None)
+
+
+def test_verify_site_rejects_empty_version(src, tmp_path):
+    out = tmp_path / "site"
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    for f in (out / "v2" / "d").iterdir():
+        f.unlink()
+    with pytest.raises(ValueError):
+        vs.verify_site(out, MASTER, PUBLIC)
+
+
+def test_v2_keeps_source_issued(src, tmp_path):
+    out = tmp_path / "site"
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    for rel in ("ai/brief", f"ai/forecast/{CODE}"):
+        env = json.loads((out / "v2" / SEALER.opaque_path(f"v2/{rel}")).read_text())
+        assert env["issued"] == 1_000_000
+
+
+def test_assembler_refuses_symlink_in_source(src, tmp_path):
+    (src / "link.html").symlink_to(src / "privacy.html")
+    with pytest.raises(SystemExit):
+        asm.assemble(src, tmp_path / "site", SEALER, log=lambda *_: None)
+    assert not (tmp_path / "site").exists()
+
+
+def test_verify_site_rejects_symlink(src, tmp_path):
+    out = tmp_path / "site"
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    (out / "extra.html").symlink_to(out / "_headers")
+    with pytest.raises(ValueError):
+        vs.verify_site(out, MASTER, PUBLIC)
+
+
+def test_out_not_deleted_unless_earlier_site(src, tmp_path):
+    out = tmp_path / "precious"
+    out.mkdir()
+    (out / "keep.txt").write_text("x")
+    with pytest.raises(SystemExit):
+        asm.assemble(src, out, SEALER, log=lambda *_: None)
+    assert (out / "keep.txt").exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    asm.assemble(src, empty, SEALER, log=lambda *_: None)
+    asm.assemble(src, empty, SEALER, log=lambda *_: None)  # earlier site (has versions.json): replaced
+
+
+def test_deprecation_dates_validated():
+    base = copy.deepcopy(sv.VERSIONS)
+    for status, extra in (("deprecated", {}), ("sunset", {"deprecatedAt": "2027-01-01"}),
+                          ("deprecated", {"deprecatedAt": "not-a-date"}),
+                          ("sunset", {"deprecatedAt": "2027-01-01", "sunsetAt": "nope"})):
+        reg = copy.deepcopy(base)
+        reg[0].update(status=status, **extra)
+        with pytest.raises(ValueError):
+            sv.validate(reg)
+    reg = copy.deepcopy(base)
+    reg[0].update(status="sunset", deprecatedAt="2027-01-01", sunsetAt="2027-06-30")
+    sv.validate(reg)
+    assert "Deprecation: @" in sv.headers_text(reg) and "true" not in sv.headers_text(reg)
+
+
+def test_site_rejects_misplaced_and_stray_files(src, tmp_path):
+    out = tmp_path / "site"
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    assert vs.verify_site(out, MASTER, PUBLIC)
+    # a v2-sealed file under v1 with the v1 opaque name
+    v1_name = SEALER.opaque_path("v1/ai/brief")
+    v2_file = out / "v2" / SEALER.opaque_path("v2/ai/brief")
+    (out / "v1" / v1_name).write_bytes(v2_file.read_bytes())
+    with pytest.raises(ValueError):
+        vs.verify_site(out, MASTER, PUBLIC)
+    asm.assemble(src, out, SEALER, log=lambda *_: None)
+    (out / "v2" / "d" / "stray").write_text("{}")
+    with pytest.raises(ValueError):
+        vs.verify_site(out, MASTER, PUBLIC)
+
+
+@pytest.mark.parametrize("bad", ["SECRETMARKER", "SECRET*MARKER!", base64.b64encode(b"SECRETMARKER").decode()])
+def test_bad_payload_key_does_not_leak(src, tmp_path, monkeypatch, capsys, bad):
+    monkeypatch.setenv("GHEYMAT_PAYLOAD_KEY", bad)
+    monkeypatch.setenv("GHEYMAT_SIGNING_KEY", KEY_ENV["GHEYMAT_SIGNING_KEY"])
+    monkeypatch.setattr(sys, "argv", ["assemble_site.py", "--src", str(src), "--out", str(tmp_path / "site")])
+    assert asm.main() != 0
+    got = capsys.readouterr()
+    assert "SECRETMARKER" not in got.out + got.err and bad not in got.out + got.err
+    monkeypatch.setattr(sys, "argv", ["verify_sealed.py", "--site", str(tmp_path)])
+    assert vs.main() != 0
+    got = capsys.readouterr()
+    assert "SECRETMARKER" not in got.out + got.err and bad not in got.out + got.err

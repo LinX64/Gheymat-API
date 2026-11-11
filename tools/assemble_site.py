@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -28,15 +29,17 @@ DROP = (".git", ".nojekyll", "_headers", "versions.json")
 
 
 def read_sealed(src: Path, logical: str, sealer: Sealer):
-    """A document from the source's sealed copy, verified for its logical path; None when absent or unreadable."""
+    """(document, issued) from a sealed copy, verified for its logical path; None when absent or unreadable."""
     path = src / sealer.opaque_path(logical)
     try:
         text = path.read_text(encoding="utf-8")
         if len(text) > MAX_STATE_BYTES:
             return None
-        return open_envelope(json.loads(text), sealer.payload_key, sealer.signing_key.public_key(), logical,
-                             max_age=None, max_future=None)
-    except (OSError, ValueError, TypeError):
+        envelope = json.loads(text)
+        doc = open_envelope(envelope, sealer.payload_key, sealer.signing_key.public_key(), logical,
+                            max_age=None, max_future=None)
+        return doc, int(envelope["issued"])
+    except (OSError, ValueError, TypeError, KeyError, EnvelopeError):
         return None
 
 
@@ -48,14 +51,27 @@ def check_paths(src: Path, out: Path) -> None:
         raise SystemExit("assemble_site: output must be separate from the source (not equal, inside or containing it)")
 
 
+def has_symlink(root: Path) -> bool:
+    for base, dirs, files in os.walk(root, followlinks=False):
+        if any(os.path.islink(os.path.join(base, n)) for n in dirs + files):
+            return True
+    return False
+
+
 def assemble(src: Path, out: Path, sealer: Sealer, registry: list[dict] | None = None, now_iso: str | None = None,
              log=print) -> dict:
     registry = site_versions.VERSIONS if registry is None else registry
     site_versions.validate(registry)
     check_paths(src, out)
+    if has_symlink(src):
+        raise SystemExit("assemble_site: source contains a symbolic link")
     if out.exists():
+        if out.is_symlink() or not out.is_dir():
+            raise SystemExit("assemble_site: output exists and is not a directory")
+        if any(out.iterdir()) and not (out / "versions.json").is_file():
+            raise SystemExit("assemble_site: output is not empty and is not an earlier site; refusing to delete it")
         shutil.rmtree(out)
-    shutil.copytree(src, out, ignore=shutil.ignore_patterns(*DROP))
+    shutil.copytree(src, out, symlinks=True, ignore=shutil.ignore_patterns(*DROP))
     codes = verify_sealed.all_codes()
     counts: dict[str, int] = {}
     claimed = {Path(sealer.opaque_path(p)).name for p in ROOT_ONLY}
@@ -76,18 +92,22 @@ def assemble(src: Path, out: Path, sealer: Sealer, registry: list[dict] | None =
                     written += 1
                 continue
             source_logical = f"{source}/{rel}"
-            claimed.add(Path(sealer.opaque_path(source_logical)).name)
-            doc = read_sealed(src, source_logical, sealer)
-            if doc is None:
+            # Versions are processed in order, so a derived source is already assembled under out/<source>/d.
+            got = read_sealed(out / source, source_logical, sealer)
+            if got is None:
                 if rel in ("ai/news", "ai/brief"):
                     log(f"{vid}: {rel} not available, skipped")
                 continue
-            sealed = sealer.seal(logical, transform(logical, doc))
+            doc, issued = got
+            sealed = sealer.seal(logical, transform(logical, doc), issued=issued)
             target.mkdir(parents=True, exist_ok=True)
             (target / Path(sealer.opaque_path(logical)).name).write_text(
                 json.dumps(sealed, separators=(",", ":")), encoding="utf-8")
             written += 1
         counts[vid] = written
+        had = counts[source] > 0 if source else (src / "d").is_dir() and any((src / "d").iterdir())
+        if had and written == 0 and v["docs"]:
+            raise SystemExit(f"assemble_site: {vid} expects documents but none were written")
     root_d = src / "d"
     orphans = [f for f in root_d.iterdir() if f.is_file() and f.name not in claimed] if root_d.is_dir() else []
     now_iso = now_iso or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -106,7 +126,7 @@ def main() -> int:
     check_paths(src, out)
     try:
         sealer = Sealer.from_env()
-    except (EnvelopeError, ValueError):
+    except (EnvelopeError, ValueError, SystemExit):
         sealer = None
     if sealer is None:
         print("assemble_site: GHEYMAT_PAYLOAD_KEY / GHEYMAT_SIGNING_KEY missing or invalid", file=sys.stderr)

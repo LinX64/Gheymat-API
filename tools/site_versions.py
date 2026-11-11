@@ -54,6 +54,11 @@ def validate(registry: list[dict]) -> None:
         source = v.get("derivesFrom")
         if source is not None and (source == v["id"] or source not in seen):
             raise ValueError("derivesFrom must name an earlier version")
+        for key, needed in (("deprecatedAt", v["status"] in ("deprecated", "sunset")), ("sunsetAt", v["status"] == "sunset")):
+            if v.get(key):
+                datetime.fromisoformat(v[key])  # ValueError when not ISO
+            elif needed:
+                raise ValueError(f"{key} is required for status {v['status']}")
 
 
 def latest_id(registry: list[dict]) -> str:
@@ -99,10 +104,7 @@ def headers_text(registry: list[dict] | None = None) -> str:
         blocks.append(_block(f"/{v['id']}/d/*", doc_headers))
         notices = []
         if v["status"] in ("deprecated", "sunset"):
-            if v.get("deprecatedAt"):
-                notices.append(f"Deprecation: @{_epoch(v['deprecatedAt'])}")
-            else:
-                notices.append("Deprecation: true")
+            notices.append(f"Deprecation: @{_epoch(v['deprecatedAt'])}")
             if v.get("sunsetAt"):
                 notices.append(f"Sunset: {_http_date(v['sunsetAt'])}")
         if notices:
