@@ -25,7 +25,7 @@ import verify_sealed  # noqa: E402
 from gheymat_seal import EnvelopeError, MAX_STATE_BYTES, Sealer, open_envelope  # noqa: E402
 
 ROOT_ONLY = ("health",)  # published at the root only, claimed so they are not reported as orphans
-DROP = (".git", ".nojekyll", "_headers", "versions.json")
+DROP = (".git", ".nojekyll", "_headers", "versions.json", "archive")
 
 
 def read_sealed(src: Path, logical: str, sealer: Sealer):

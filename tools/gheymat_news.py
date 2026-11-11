@@ -437,8 +437,18 @@ def last_check(previous) -> datetime | None:
     return max((s for s in stamps if s), default=None)
 
 
+def archive_news(root, now: datetime, rendered: list[dict], log=print) -> None:
+    if not root:
+        return
+    try:
+        import news_archive
+        news_archive.record_day(root, now, rendered)
+    except Exception as exc:
+        log(f"::warning::news: archive skipped ({type(exc).__name__})")
+
+
 def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=None,
-            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, log=print) -> dict | None:
+            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, log=print, archive_root=None) -> dict | None:
     now = now or datetime.now(timezone.utc)
     env = env if env is not None else os.environ
     previous = load_doc(LOGICAL)
@@ -506,5 +516,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     if generated is None:
         return None
     items = sorted(kept, key=lambda i: (i["published"], i["id"]), reverse=True)[:MAX_ITEMS]
-    write_doc(LOGICAL, {"generatedAt": iso(generated), "checkedAt": iso(now), "items": [render(i) for i in items]})
+    rendered = [render(i) for i in items]
+    write_doc(LOGICAL, {"generatedAt": iso(generated), "checkedAt": iso(now), "items": rendered})
+    archive_news(archive_root if archive_root is not None else env.get("GHEYMAT_ARCHIVE_ROOT"), now, rendered, log)
     return {"ids": [i["id"] for i in items], "skipped": False, "complete": complete, **stats}

@@ -4,8 +4,12 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta, timezone
 
+import archive_store
+import gheymat_blend
 import gheymat_forecast as fc
 import gheymat_news
+import gheymat_signals
+import news_archive
 
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
 BUDGET_SECONDS = 120.0
@@ -42,12 +46,13 @@ def brief_text(count: int) -> tuple[str, str]:
 
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
-            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=()) -> dict:
+            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=(), signal_ctx=None) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
     today = default_today(now)
     generated_at = iso(now)
     published, rebuilt, resealed, withheld = [], 0, 0, {}
+    accepted = gheymat_blend.expected_methods(signal_ctx)
     for code in sorted(daily.get("codes", {})):
         if clock() - started > budget_seconds:
             withheld[code] = "budget"
@@ -59,13 +64,13 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         previous = load_doc(logical)
         last = points[-1]
         fresh = fc.basis_is_fresh(fc.date.fromisoformat(last["date"]), today)
-        if (fresh and isinstance(previous, dict) and previous.get("method") == fc.METHOD
+        if (fresh and isinstance(previous, dict) and previous.get("method") in accepted
                 and previous.get("basis") == {"date": last["date"], "price": last["price"]}):
             write_doc(logical, previous)
             published.append(code)
             resealed += 1
             continue
-        doc, reason = fc.build_forecast(code, points, today, generated_at, history_close=last)
+        doc, reason = fc.build_forecast(code, points, today, generated_at, history_close=last, signal_ctx=signal_ctx)
         if doc is None:
             withheld[code] = reason
             continue
@@ -82,9 +87,21 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
     return {"published": published, "rebuilt": rebuilt, "resealed": resealed, "withheld": withheld}
 
 
-def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None) -> list[str]:
+def signal_context(http, archive_root, now: datetime | None = None, log=print):
     try:
-        news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log)
+        today = default_today(now)
+        series = gheymat_signals.load_signals(http, today, log)
+        records = archive_store.load(archive_root, news_archive.NAME, log) if archive_root is not None else []
+        ctx = gheymat_blend.Context(series, today, records)
+    except Exception as e:
+        log(f"ai: signals unavailable, baseline only: {type(e).__name__}")
+        return None
+    return ctx if (ctx.obs or ctx.news) else None
+
+
+def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None, archive_root=None) -> list[str]:
+    try:
+        news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log, archive_root=archive_root)
     except Exception as e:
         log(f"ai: news step failed, forecasts unaffected: {type(e).__name__}")
         try:
@@ -102,10 +119,15 @@ def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=No
     return news["ids"]
 
 
-def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None) -> dict | None:
-    news_ids = run_news(write_doc, load_doc, now, log, env, http)
+SIGNALS_ENABLED = False
+
+
+def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None,
+             signals_http=None, archive_root=None) -> dict | None:
+    news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root)
+    signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
     try:
-        summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids)
+        summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx)
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}: {e}")
         return None

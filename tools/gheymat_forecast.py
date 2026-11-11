@@ -103,7 +103,34 @@ def band_at(returns, basis_date, sigma_now=None, method=DEFAULT_METHOD):
     return quantile(usable, Q_LOW), quantile(usable, Q_MID), quantile(usable, Q_HIGH)
 
 
-def backtest(series, returns, method=DEFAULT_METHOD):
+def interval_score(lo, hi, actual, alpha=1 - BAND):
+    score = hi - lo
+    if actual < lo:
+        score += 2 / alpha * (lo - actual)
+    elif actual > hi:
+        score += 2 / alpha * (actual - hi)
+    return score
+
+
+def pinball(q, pred, actual):
+    diff = actual - pred
+    return q * diff if diff >= 0 else (q - 1) * diff
+
+
+def summarize(weeks):
+    if not weeks:
+        return {"coverage": 0.0, "meanIntervalScore": None, "medianErr": None, "medianNaiveErr": None, "n": 0}
+    n = len(weeks)
+    return {
+        "coverage": coverage(weeks),
+        "meanIntervalScore": sum(w["intervalScore"] for w in weeks) / n,
+        "medianErr": median(w["err"] for w in weeks),
+        "medianNaiveErr": median(w["naiveErr"] for w in weeks),
+        "n": n,
+    }
+
+
+def backtest(series, returns, method=DEFAULT_METHOD, band_fn=None):
     weeks = []
     if not series.dates:
         return weeks
@@ -115,7 +142,11 @@ def backtest(series, returns, method=DEFAULT_METHOD):
             bdate, bprice = basis
             target = bdate + timedelta(days=HORIZON_DAYS)
             actual = series.close_on_or_before(target, target - timedelta(days=TARGET_SLACK_DAYS))
-            band = band_at(returns, bdate, series.sigma_at(bdate), method)
+            sigma_now = series.sigma_at(bdate)
+            if band_fn is None:
+                band = band_at(returns, bdate, sigma_now, method)
+            else:
+                band = band_fn(bdate, sigma_now)
             if actual is not None and band is not None:
                 lo, mid, hi = (bprice * math.exp(x) for x in band)
                 weeks.append({
@@ -124,6 +155,9 @@ def backtest(series, returns, method=DEFAULT_METHOD):
                     "inside": lo <= actual[1] <= hi,
                     "err": abs(mid - actual[1]) / actual[1],
                     "naiveErr": abs(bprice - actual[1]) / actual[1],
+                    "intervalScore": interval_score(lo, hi, actual[1]) / bprice,
+                    "pinball": (pinball(Q_LOW, lo, actual[1]) + pinball(Q_MID, mid, actual[1])
+                                + pinball(Q_HIGH, hi, actual[1])) / 3 / bprice,
                 })
         cursor -= timedelta(days=HORIZON_DAYS)
     weeks.reverse()
@@ -162,7 +196,7 @@ def apply_skill(likely, basis_price, mape, naive_mape):
     return likely if mape < naive_mape else basis_price
 
 
-def build_forecast(code, points, today, generated_at, history_close=None, method=DEFAULT_METHOD):
+def build_forecast(code, points, today, generated_at, history_close=None, method=DEFAULT_METHOD, signal_ctx=None):
     closes = clean_series(points)
     if not closes:
         return None, "no-history"
@@ -196,6 +230,21 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
     widest = math.exp(max(all_r) - min(all_r))
     if not (0 < low <= likely <= high) or high / low > widest:
         return None, "sanity"
+    method_name, signals, cov_out, weeks_out = METHODS[method], [], cov_all, len(weeks)
+    if signal_ctx is not None:
+        try:
+            import gheymat_blend
+            pick = gheymat_blend.choose(code, series, returns, signal_ctx, weeks, basis_date, method)
+        except Exception:
+            pick = None
+        if pick is not None:
+            v_low, v_likely, v_high = (basis_price * math.exp(x) for x in pick["band"])
+            v_likely = apply_skill(v_likely, basis_price, pick["mape"], pick["naive"])
+            if 0 < v_low <= v_likely <= v_high and v_high / v_low <= widest:
+                low, likely, high = v_low, v_likely, v_high
+                mape, naive = pick["mape"], pick["naive"]
+                method_name = gheymat_blend.method_name(method, pick["suffix"])
+                signals, cov_out, weeks_out = pick["signals"], pick["coverage"], pick["weeks"]
     past_abs = sorted(abs(r) for b, _, r, _ in returns if b < basis_date - timedelta(days=HORIZON_DAYS))
     latest = series.close_on_or_before(basis_date - timedelta(days=HORIZON_DAYS),
                                        basis_date - timedelta(days=HORIZON_DAYS + TARGET_SLACK_DAYS))
@@ -213,12 +262,12 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
         "low": round(low, 2),
         "high": round(high, 2),
         "band": BAND,
-        "coverage": round(cov_all, 3),
-        "backtestWeeks": len(weeks),
+        "coverage": round(cov_out, 3),
+        "backtestWeeks": weeks_out,
         "error": {"mape": round(mape, 2), "naiveMape": round(naive, 2)},
         "unusual": unusual,
-        "method": METHODS[method],
+        "method": method_name,
         "track": [],
-        "signals": [],
+        "signals": signals,
     }
     return doc, None
