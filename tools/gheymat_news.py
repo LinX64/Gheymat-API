@@ -213,9 +213,24 @@ def near_identical(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(a & b) / len(a | b) >= NEAR_DUPLICATE
 
 
+DEFAULT_SOURCES = [
+    {"name": "BBC Persian", "url": "https://feeds.bbci.co.uk/persian/rss.xml", "lang": "fa"},
+    {"name": "DW Persian", "url": "https://rss.dw.com/xml/rss-per-all", "lang": "fa"},
+    {"name": "Iran International", "url": "https://www.iranintl.com/feed", "lang": "fa"},
+    {"name": "ISNA", "url": "https://www.isna.ir/rss", "lang": "fa"},
+    {"name": "Khabar Online", "url": "https://www.khabaronline.ir/rss", "lang": "fa"},
+    {"name": "Donya-e-Eqtesad", "url": "https://donya-e-eqtesad.com/feeds/", "lang": "fa"},
+    {"name": "BBC Middle East", "url": "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml", "lang": "en"},
+    {"name": "Iran International EN", "url": "https://www.iranintl.com/en/feed", "lang": "en"},
+]
+
+
 def load_sources(env) -> list[dict]:
+    configured = env.get("GHEYMAT_AI_SOURCES")
+    if not configured or not configured.strip():
+        return list(DEFAULT_SOURCES)
     try:
-        raw = json.loads(env.get("GHEYMAT_AI_SOURCES") or "[]")
+        raw = json.loads(configured)
     except ValueError:
         return []
     sources = []

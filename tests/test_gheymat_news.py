@@ -268,8 +268,8 @@ def test_all_sources_failing_keeps_the_last_good_document_with_its_real_age():
         assert result["skipped"] and http.posts == [] and json.dumps(store.docs[news.LOGICAL]) == before
 
 
-def test_off_without_key_or_sources_and_nothing_published_when_there_is_no_previous():
-    for env in ({}, {"ANTHROPIC_API_KEY": "k"}, {"GHEYMAT_AI_SOURCES": ENV["GHEYMAT_AI_SOURCES"]}):
+def test_off_without_key_and_nothing_published_when_there_is_no_previous():
+    for env in ({}, {"ANTHROPIC_API_KEY": "k", "GHEYMAT_AI_SOURCES": "[]"}, {"GHEYMAT_AI_SOURCES": ENV["GHEYMAT_AI_SOURCES"]}):
         store, http, _, result = run([entry("Alpha story headline", "1")], env=env)
         assert result is None and store.writes == [] and http.gets == [] and http.posts == []
 
@@ -294,8 +294,10 @@ def test_atom_feeds_parse_with_published_dates():
     assert [(i["title"], i["publishedAt"]) for i in items(store)] == [("Atom story headline", "2026-11-09T10:00:00Z")]
 
 
-def test_sources_come_only_from_the_environment_and_are_validated():
-    assert news.load_sources({}) == [] and news.load_sources({"GHEYMAT_AI_SOURCES": "not json"}) == []
+def test_sources_default_to_the_built_in_list_and_the_environment_overrides_and_is_validated():
+    assert news.load_sources({}) == news.DEFAULT_SOURCES and len(news.DEFAULT_SOURCES) <= news.MAX_SOURCES
+    assert all(s["url"].startswith("https://") and s["lang"] in ("fa", "en") for s in news.DEFAULT_SOURCES)
+    assert news.load_sources({"GHEYMAT_AI_SOURCES": "not json"}) == []
     good = {"name": "N", "url": "https://x.example/rss", "lang": "fa"}
     bad = [{"name": "N", "url": "http://x.example/rss"}, {"name": "", "url": "https://x.example"}, {"name": "N", "url": "https://x.example", "lang": "de"},
            {"name": "x" * 41, "url": "https://x.example"}, "str", 5]
