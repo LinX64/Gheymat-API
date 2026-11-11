@@ -100,6 +100,8 @@ jobs:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_PLAIN: "0"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GHEYMAT_AI_SOURCES: ${{ secrets.GHEYMAT_AI_SOURCES }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -111,6 +113,8 @@ jobs:
           iteration=0
           failures=0
           cf_failures=0
+          nothing=0
+          red=0
           last_mark=""
           last_publish=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -122,26 +126,33 @@ jobs:
               continue
             fi
             iteration=$((iteration + 1))
+            cf_ok=0
+            gh_ok=0
+            restored=0
             rm -rf dist && mkdir -p dist
-            if git fetch -q --depth 1 origin gh-pages 2>/dev/null; then
-              git --work-tree=dist checkout -q FETCH_HEAD -- . || true
+            if git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=dist checkout -q FETCH_HEAD -- .; then
               git reset -q
+              restored=1
             fi
             find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d -exec rm -rf {} +
             touch dist/.nojekyll
-            if python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
+            if [ "$restored" = "1" ] \
+              && python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
               && python tools/verify_sealed.py dist; then
               if [ "${MIRROR:-}" = "true" ]; then
-                printf '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n/d/*\n  Content-Type: application/json\n  X-Robots-Tag: noindex, nofollow\n  Access-Control-Allow-Origin: *\n' > dist/_headers
-                if env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy dist --project-name gheymat-feed --branch master >/dev/null 2>mirror.log; then
+                rm -rf site
+                if env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES python tools/assemble_site.py --src dist --out site 2>mirror.log \
+                  && env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES -u GHEYMAT_SIGNING_KEY python tools/verify_sealed.py --site site 2>>mirror.log \
+                  && env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy site --project-name gheymat-feed --branch master >/dev/null 2>>mirror.log; then
                   cf_failures=0
+                  cf_ok=1
                   echo "#$iteration cloudflare $(date -u +%H:%M:%SZ)"
                 else
                   cf_failures=$((cf_failures + 1))
                   echo "::warning::#$iteration Cloudflare deploy failed ($cf_failures in a row)"
                   tail -n 8 mirror.log | sed -e 's/##\[/## [/g' -e 's/^/| /' || true
                 fi
-                rm -f dist/_headers
+                rm -rf site
               elif [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
                 cf_failures=$((cf_failures + 1))
                 echo "::warning::#$iteration Cloudflare deploy unavailable ($cf_failures in a row)"
@@ -153,6 +164,7 @@ jobs:
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish $iteration" \
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
                 failures=0
+                gh_ok=1
                 echo "#$iteration published $(date -u +%H:%M:%SZ)"
               else
                 failures=$((failures + 1))
@@ -165,15 +177,21 @@ jobs:
             rm -rf dist/.git
             last_mark=$mark
             last_publish=$now
-            if [ "$cf_failures" -ge 5 ]; then
+            if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then nothing=0; else nothing=$((nothing + 1)); fi
+            if [ "$cf_failures" -eq 5 ]; then
               echo "::error::Cloudflare deploy failed 5 times in a row"
-              exit 1
+              red=1
             fi
-            if [ "$failures" -ge 5 ]; then
-              echo "::error::Build or GitHub publish failed 5 times in a row"
+            if [ "$failures" -eq 5 ]; then
+              echo "::error::Restore, build or GitHub publish failed 5 times in a row"
+              red=1
+            fi
+            if [ "$nothing" -ge 5 ]; then
+              echo "::error::Nothing could be published 5 times in a row"
               exit 1
             fi
           done
+          [ "$red" = "0" ] || exit 1
 
       # Scheduled starts are delayed or skipped by GitHub, which left gaps of hours between loops. Queue the next loop
       # from inside this one: it waits in the concurrency group and starts the moment this run ends. A run that ended
