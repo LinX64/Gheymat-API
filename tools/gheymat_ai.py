@@ -99,9 +99,11 @@ def signal_context(http, archive_root, now: datetime | None = None, log=print):
     return ctx if (ctx.obs or ctx.news) else None
 
 
-def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None, archive_root=None) -> list[str]:
+def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None, archive_root=None,
+             refresh_news: bool = True) -> list[str]:
     try:
-        news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log, archive_root=archive_root)
+        news = gheymat_news.publish(write_doc, load_doc, now, env=env, http=http, log=log, archive_root=archive_root,
+                                     refresh=refresh_news)
     except Exception as e:
         log(f"ai: news step failed, forecasts unaffected: {type(e).__name__}")
         try:
@@ -123,8 +125,8 @@ SIGNALS_ENABLED = False
 
 
 def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None,
-             signals_http=None, archive_root=None) -> dict | None:
-    news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root)
+             signals_http=None, archive_root=None, refresh_news: bool = True) -> dict | None:
+    news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root, refresh_news)
     signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
     try:
         summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx)

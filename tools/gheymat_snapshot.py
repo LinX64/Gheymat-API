@@ -35,6 +35,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gheymat_seal import Sealer, load_published  # noqa: E402
 import gheymat_ai  # noqa: E402
+import gheymat_news  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -781,6 +782,16 @@ SEALER = None
 PLAIN_ALSO = True
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write via a temp file in the same directory, so an interrupted write leaves the previous file intact."""
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def write(path: Path, obj) -> None:
     """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path.
 
@@ -788,7 +799,7 @@ def write(path: Path, obj) -> None:
     the sealed state that load_published reads back on the next run."""
     if PLAIN_ALSO or SEALER is None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        _atomic_write_text(path, json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
     elif path.exists():
         path.unlink()
     if SEALER is not None:
@@ -796,7 +807,7 @@ def write(path: Path, obj) -> None:
         logical = path.relative_to(root).as_posix()
         sealed = root / SEALER.opaque_path(logical)
         sealed.parent.mkdir(parents=True, exist_ok=True)
-        sealed.write_text(json.dumps(SEALER.seal(logical, obj), separators=(",", ":")), encoding="utf-8")
+        _atomic_write_text(sealed, json.dumps(SEALER.seal(logical, obj), separators=(",", ":")))
 
 
 _DIST_ROOT: Path | None = None
@@ -811,6 +822,28 @@ def _dist_root(path: Path) -> Path:
     return path.parent
 
 
+def news_only(out: Path) -> int:
+    """Refresh just the news document under out; prints whether a real refresh happened."""
+    global SEALER, PLAIN_ALSO, _DIST_ROOT
+    _DIST_ROOT = out
+    SEALER = Sealer.from_env()
+    PLAIN_ALSO = os.environ.get("GHEYMAT_PLAIN", "1") == "1"
+    if SEALER is None:
+        print("news: no sealing keys; nothing to refresh", file=sys.stderr)
+        return 4
+    before = gheymat_news.last_check(load_published(out, gheymat_news.LOGICAL, SEALER))
+    try:
+        gheymat_news.publish(lambda logical, obj: write(out / logical, obj),
+                             lambda logical: load_published(out, logical, SEALER), archive_root=out)
+        after = gheymat_news.last_check(load_published(out, gheymat_news.LOGICAL, SEALER))
+    except Exception as e:
+        print(f"news: refresh failed ({type(e).__name__})", file=sys.stderr)
+        return 5
+    # A re-seal keeps checkedAt/generatedAt as they were; only a real refresh writes checkedAt = now.
+    print("news: refreshed" if after is not None and (before is None or after > before) else "news: unchanged")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="dist")
@@ -820,6 +853,8 @@ def main() -> int:
     ap.add_argument("--days", type=int, default=90)
     ap.add_argument("--ai", action="store_true", help="also publish the Pro AI documents (v1/ai/*); never blocks prices")
     ap.add_argument("--mark", action="store_true", help="print the primary source's newest observation time and exit")
+    ap.add_argument("--defer-news", action="store_true", help="re-seal the published news without refreshing it")
+    ap.add_argument("--news-only", action="store_true", help="refresh only the news document in --out and exit")
     args = ap.parse_args()
     if args.mark:
         mark = hansha_mark(fetch_hansha(requests.Session()))
@@ -827,6 +862,8 @@ def main() -> int:
             return 1
         print(mark)
         return 0
+    if args.news_only:
+        return news_only(Path(args.out))
     out = Path(args.out)
     global SEALER, PLAIN_ALSO, _DIST_ROOT
     _DIST_ROOT = out
@@ -876,7 +913,8 @@ def main() -> int:
     if args.ai:
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
                             lambda logical: load_published(out, logical, SEALER),
-                            signals_http=requests.Session(), archive_root=out)
+                            signals_http=requests.Session(), archive_root=out,
+                            refresh_news=not args.defer_news)
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,

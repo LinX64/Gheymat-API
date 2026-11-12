@@ -102,3 +102,12 @@ def test_tehran_day_rolls_over_at_2030_utc():
 def test_default_today_uses_the_tehran_trading_day():
     assert ai.default_today(datetime(2026, 11, 8, 20, 29, tzinfo=timezone.utc)).isoformat() == "2026-11-08"
     assert ai.default_today(datetime(2026, 11, 8, 20, 31, tzinfo=timezone.utc)).isoformat() == "2026-11-09"
+
+
+def test_run_step_passes_refresh_news_through(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: seen.append(k.get("refresh")) or None)
+    store = Store()
+    ai.run_step(daily_from({}), store.write, store.load, NOW, log=lambda *_: None, env={}, refresh_news=False)
+    ai.run_step(daily_from({}), store.write, store.load, NOW, log=lambda *_: None, env={})
+    assert seen == [False, True]

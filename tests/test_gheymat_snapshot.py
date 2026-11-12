@@ -368,3 +368,66 @@ def test_hansha_mark_is_the_newest_first_point():
     ]
     assert mod.hansha_mark(rows) == "2026-11-07T20:03:10Z"
     assert mod.hansha_mark([]) is None
+
+
+def test_write_is_atomic_and_leaves_no_temp_file(tmp_path, monkeypatch):
+    mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = tmp_path, None, True
+    try:
+        target = tmp_path / "v1" / "doc"
+        mod.write(target, {"a": 1})
+        assert not list(tmp_path.rglob("*.tmp"))
+        assert target.read_text(encoding="utf-8") == '{"a":1}'
+
+        def boom(src, dst):
+            raise OSError("killed")
+        monkeypatch.setattr(mod.os, "replace", boom)
+        with pytest.raises(OSError):
+            mod.write(target, {"a": 2})
+        assert target.read_text(encoding="utf-8") == '{"a":1}'
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+
+
+def _news_sealer(monkeypatch):
+    import os
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    import gheymat_seal as gs
+    sealer = gs.Sealer(os.urandom(32), Ed25519PrivateKey.generate())
+    monkeypatch.setattr(mod.Sealer, "from_env", classmethod(lambda cls: sealer))
+    return sealer
+
+
+def test_news_only_without_sealer_returns_4(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(mod.Sealer, "from_env", classmethod(lambda cls: None))
+    try:
+        assert mod.news_only(tmp_path) == 4
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+    assert "news:" in capsys.readouterr().err
+
+
+def test_news_only_reports_refreshed_only_when_the_check_time_advances(tmp_path, monkeypatch, capsys):
+    _news_sealer(monkeypatch)
+    stamp = {"t": "2026-11-09T02:30:00Z"}
+    mode = {"refresh": False}
+
+    def fake_publish(write_doc, load_doc, **kw):
+        prev = load_doc(mod.gheymat_news.LOGICAL)
+        if mode["refresh"]:
+            write_doc(mod.gheymat_news.LOGICAL, {"generatedAt": stamp["t"], "checkedAt": stamp["t"], "items": []})
+        else:  # a pure re-seal keeps the previous stamps
+            write_doc(mod.gheymat_news.LOGICAL, prev or {"generatedAt": stamp["t"], "checkedAt": stamp["t"], "items": []})
+    monkeypatch.setattr(mod.gheymat_news, "publish", fake_publish)
+    try:
+        assert mod.news_only(tmp_path) == 0
+        assert capsys.readouterr().out.strip() == "news: refreshed"  # first document counts
+        assert mod.news_only(tmp_path) == 0
+        assert capsys.readouterr().out.strip() == "news: unchanged"
+        mode["refresh"], stamp["t"] = True, "2026-11-09T03:00:00Z"
+        assert mod.news_only(tmp_path) == 0
+        assert capsys.readouterr().out.strip() == "news: refreshed"
+        monkeypatch.setattr(mod.gheymat_news, "publish", lambda *a, **k: 1 / 0)
+        assert mod.news_only(tmp_path) == 5
+        assert "ZeroDivisionError" in capsys.readouterr().err
+    finally:
+        mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
