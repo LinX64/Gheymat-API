@@ -5,11 +5,15 @@ import argparse
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
+from statistics import median
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gheymat_ai
 import gheymat_forecast as fc
 from gheymat_seal import Sealer, load_published
+
+
+RECENT_SKILL_WEEKS = 52
 
 
 def points_from_daily(series: dict) -> list[dict]:
@@ -40,13 +44,22 @@ def diagnose(points: list[dict], today: date, method: str = fc.DEFAULT_METHOD) -
         summary = fc.summarize(weeks)
         out["score"] = summary["meanIntervalScore"]
         out["errVsNaive"] = summary["medianErr"] / summary["medianNaiveErr"] if summary["medianNaiveErr"] else None
+    last = weeks[-RECENT_SKILL_WEEKS:]
+    out["recentSkill"] = None
+    out["missBelow"] = out["missAbove"] = None
+    if weeks:
+        out["missBelow"] = sum(1 for w in weeks if w["actual"] < w["low"]) / len(weeks)
+        out["missAbove"] = sum(1 for w in weeks if w["actual"] > w["high"]) / len(weeks)
+        naive_med = median(w["naiveErr"] for w in last)
+        if len(last) >= RECENT_SKILL_WEEKS and naive_med:
+            out["recentSkill"] = 1 - median(w["err"] for w in last) / naive_med
     out["gap"] = fc.max_recent_gap(series, today)
     return out
 
 
 def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT_METHOD) -> list[str]:
     lines = [f"method: {fc.METHODS[method]}", f"{'code':8} {'result':20} {'days':>5} {'weeks':>5} {'cov':>6} {'52w':>6} {'mape':>6} {'naive':>6} {'iscore':>7} {'e/naive':>7}  "
-             f"likely (low-high) vs basis"]
+             f"likely (low-high) vs basis  {'skill52':>7} {'below':>6} {'above':>6}"]
     for code in sorted(daily.get("codes", {})):
         points = points_from_daily(daily["codes"][code])
         doc, reason = fc.build_forecast(code, points, today, generated_at, method=method)
@@ -62,9 +75,12 @@ def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT
             fallback = " (no-change)" if doc["likely"] == doc["basis"]["price"] else ""
             flag = " UNUSUAL" if doc["unusual"] else ""
             tail = f"{doc['likely']:,.0f} ({doc['low']:,.0f}-{doc['high']:,.0f}) vs {doc['basis']['price']:,.0f}{fallback}{flag}"
+        sk = f"{d['recentSkill']:.3f}" if d.get("recentSkill") is not None else "-"
+        mb = f"{d['missBelow']:.3f}" if d.get("missBelow") is not None else "-"
+        ma = f"{d['missAbove']:.3f}" if d.get("missAbove") is not None else "-"
         result = "PASS" if doc else f"withheld:{reason}"
         lines.append(f"{code:8} {result:20} {d.get('days', 0):>5} {d.get('weeks', 0):>5} {cov:>6} {rec:>6} "
-                     f"{mape:>6} {naive:>6} {iscore:>7} {ratio:>7}  {tail}")
+                     f"{mape:>6} {naive:>6} {iscore:>7} {ratio:>7}  {tail}  {sk:>7} {mb:>6} {ma:>6}")
     return lines
 
 

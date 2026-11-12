@@ -6,6 +6,7 @@ import json
 import math
 import sys
 from datetime import timedelta
+from statistics import median
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,10 +23,35 @@ def _weeks(points: list[dict], method: str) -> list[dict]:
     return weeks if len(weeks) >= fc.MIN_BACKTEST_WEEKS else []
 
 
+RECENT_WEEKS = 52
+
+
+def recent_skill(weeks: list[dict]) -> tuple[float | None, int]:
+    """Skill over the last RECENT_WEEKS weeks only; (None, count) when too short or naive median is zero."""
+    last = weeks[-RECENT_WEEKS:]
+    if len(last) < RECENT_WEEKS:
+        return None, len(last)
+    naive = median(w["naiveErr"] for w in last)
+    if not naive:
+        return None, len(last)
+    return 1 - median(w["err"] for w in last) / naive, len(last)
+
+
+def tail_misses(weeks: list[dict]) -> tuple[float | None, float | None]:
+    """Fractions of all scored weeks whose actual fell below the band / above the band."""
+    if not weeks:
+        return None, None
+    n = len(weeks)
+    return (sum(1 for w in weeks if w["actual"] < w["low"]) / n,
+            sum(1 for w in weeks if w["actual"] > w["high"]) / n)
+
+
 def _metrics(weeks: list[dict], method: str) -> dict:
     summary = fc.summarize(weeks)
     naive = summary["medianNaiveErr"]
     mape = summary["medianErr"]
+    r_skill, r_weeks = recent_skill(weeks)
+    below, above = tail_misses(weeks)
     return {
         "method": method,
         "weeks": summary["n"],
@@ -35,6 +61,10 @@ def _metrics(weeks: list[dict], method: str) -> dict:
         "mape": mape,
         "naiveMape": naive,
         "skill": 1 - mape / naive if naive else None,
+        "recent_skill": r_skill,
+        "recent_weeks": r_weeks,
+        "miss_below": below,
+        "miss_above": above,
     }
 
 
@@ -98,7 +128,9 @@ def _lines_for(code: str, outcome: dict) -> list[str]:
             continue
         lines.append(f"{code} {method} weeks={r['weeks']} cov={r['coverage']:.3f} cov52={r['coverageRecent']:.3f} "
                      f"iscore={_fmt(r['intervalScore'], '.4f')} mape={_fmt(r['mape'], '.4f')} "
-                     f"naive={_fmt(r['naiveMape'], '.4f')} skill={_fmt(r['skill'], '.3f')}")
+                     f"naive={_fmt(r['naiveMape'], '.4f')} skill={_fmt(r['skill'], '.3f')} "
+                     f"recent_skill={_fmt(r['recent_skill'], '.3f')} recent_weeks={r['recent_weeks']} "
+                     f"miss_below={_fmt(r['miss_below'], '.3f')} miss_above={_fmt(r['miss_above'], '.3f')}")
     lines.append(f"{code} best {outcome['best'] or '-'}")
     return lines
 
