@@ -15,6 +15,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
+import headline_log
+
 LOGICAL = "v1/ai/news"
 MODEL = "claude-haiku-5-5"
 API_URL = "https://api.anthropic.com/v1/messages"
@@ -462,6 +464,10 @@ def valid_summary(text, script, source_quantities: set[str]) -> str | None:
     return text
 
 
+CAPTURED: list[dict] = []
+LABELS_SEEN = tuple(EFFECTS) + ("unclear",)
+
+
 def parse_output(payload, item: dict) -> dict | None:
     if not isinstance(payload, dict) or payload.get("stop_reason") not in ("end_turn", "stop_sequence"):
         return None
@@ -482,6 +488,16 @@ def parse_output(payload, item: dict) -> dict | None:
     seen = obj.get("effect") if obj.get("confidence") == "high" else None
     shadow = seen if seen in EFFECTS else None
     effect = shadow if TAGS_ENABLED else None
+    try:
+        raw = obj.get("effect")
+        CAPTURED.append({
+            "id": hashlib.sha256(item["title"].encode("utf-8")).hexdigest()[:16],
+            "title": item["title"][:300], "category": item.get("category"),
+            "model_effect": raw if raw in LABELS_SEEN else None,
+            "model_confidence": obj.get("confidence") if obj.get("confidence") in ("high", "low") else None,
+            "model": MODEL, "ranking_version": RANKING_VERSION})
+    except Exception:
+        pass
     return {"en": en, "fa": fa, "effect": effect, "shadowEffect": shadow}
 
 
@@ -626,7 +642,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             topics, hits = lexicon_topics(cand["title"] + " " + cand["desc"])
             if source["keywords_only"] and not hits:
                 continue
-            rows.append({**cand, "topics": topics, "score": score_of(hits, source["category"], cand["published"], now)})
+            rows.append({**cand, "category": source["category"], "topics": topics, "score": score_of(hits, source["category"], cand["published"], now)})
         rows.sort(key=lambda c: (c["published"], c["id"]), reverse=True)
         candidates.extend(rows[:source["max_items"]])
     if not reached:
@@ -677,6 +693,8 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     except ApiStop as stop:
         incomplete = True
         log(f"::warning::news: API stopped this run ({stop})")
+    headline_log.collect(list(CAPTURED), env, now, log)
+    CAPTURED.clear()
     complete = not incomplete or stats["new"] > 0
     generated = now if complete else parse_date(previous.get("generatedAt") if isinstance(previous, dict) else None)
     if generated is None:

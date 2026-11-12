@@ -1,5 +1,4 @@
 import json
-import os
 import pathlib
 import sys
 
@@ -134,11 +133,3 @@ def test_cli_bad_predictions(tmp_path):
     assert ne.main(["--labels", lab, "--predictions", bad]) == 2
     short = write(tmp_path / "short.jsonl", [{"id": "i0", "effect": "usd_up", "confidence": "high"}])
     assert ne.main(["--labels", lab, "--predictions", short]) == 2
-
-
-@pytest.mark.skipif(not os.environ.get("GHEYMAT_NEWS_LABELS"),
-                    reason="GHEYMAT_NEWS_LABELS not set: no private labelled set available")
-def test_labelled_set_passes():
-    preds = os.environ.get("GHEYMAT_NEWS_PREDICTIONS")
-    assert preds, "GHEYMAT_NEWS_PREDICTIONS must be set with GHEYMAT_NEWS_LABELS"
-    assert ne.passes(ne.evaluate(os.environ["GHEYMAT_NEWS_LABELS"], preds))

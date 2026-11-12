@@ -46,7 +46,6 @@ THURSDAY_EDGES = [
 
 
 def at(weekday_name, hhmm):
-    """UTC epoch (int seconds) for a Tehran local wall-clock time on the fixed reference week."""
     hour, minute = (int(part) for part in hhmm.split(":"))
     day = DATES[weekday_name.lower()]
     local = datetime.datetime(day.year, day.month, day.day, hour, minute, tzinfo=TEHRAN)
@@ -59,7 +58,6 @@ def test_helper_weekdays_match_names():
 
 
 def test_helper_is_tehran_local():
-    # 2026-11-14 00:00 Tehran is 2026-11-13 20:30 UTC.
     assert at("saturday", "00:00") == int(
         datetime.datetime(2026, 11, 13, 20, 30, tzinfo=datetime.timezone.utc).timestamp()
     )

@@ -1,16 +1,12 @@
-"""Offline labelled eval for the AI news effect tags. No model calls, no network.
-
-Gate for enabling tags: see TAGS_ENABLED in gheymat_news. Labels and predictions are JSON Lines.
-"""
 import argparse
 import json
 import sys
 
 from gheymat_news import EFFECTS
 
-LABELS = tuple(EFFECTS) + ("unclear",)  # the schema's effect enum
-CONFIDENCE_RANK = {"low": 0, "high": 1}  # the schema's confidence enum
-DEFAULT_THRESHOLD = "high"  # parse_output only trusts confidence == "high"
+LABELS = tuple(EFFECTS) + ("unclear",)
+CONFIDENCE_RANK = {"low": 0, "high": 1}
+DEFAULT_THRESHOLD = "high"
 
 
 def _read_jsonl(path, what):
@@ -63,11 +59,6 @@ def _ratio(num, den):
 
 
 def score(pairs, threshold=DEFAULT_THRESHOLD) -> dict:
-    """pairs: (expected, predicted, confidence).
-
-    high_confidence covers what would be shown: confidence rank >= threshold's and a predicted effect
-    other than "unclear" (those are dropped before publishing).
-    """
     pairs = list(pairs)
     floor = CONFIDENCE_RANK[threshold]
     classes = sorted({p[0] for p in pairs} | {p[1] for p in pairs})
