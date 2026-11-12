@@ -17,7 +17,7 @@ MORNING_START = 7        # night ends, mid starts
 
 MID_SECONDS = 180
 NIGHT_SECONDS = 300      # well under the app's 15 minute stale rule
-HOT_SECONDS = 600        # stay fast this long after upstream moves outside peak
+HOT_SECONDS = 120        # stay fast this long after upstream moves outside peak (shorter than upstream moves)
 POLL = {PEAK: 15, MID: 30, NIGHT: 60}
 
 FRIDAY, THURSDAY = 4, 3  # datetime.weekday(): Monday is 0
