@@ -448,14 +448,15 @@ def archive_news(root, now: datetime, rendered: list[dict], log=print) -> None:
 
 
 def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=None,
-            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, log=print, archive_root=None) -> dict | None:
+            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, log=print, archive_root=None,
+            refresh: bool = True) -> dict | None:
     now = now or datetime.now(timezone.utc)
     env = env if env is not None else os.environ
     previous = load_doc(LOGICAL)
     kept = previous_items(previous, now)
     key, sources = env.get("ANTHROPIC_API_KEY"), load_sources(env)
     checked = last_check(previous)
-    if not key or not sources or (checked and now - checked < MIN_INTERVAL):
+    if not refresh or not key or not sources or (checked and now - checked < MIN_INTERVAL):
         return reseal(write_doc, previous, now)
     make_http = (lambda: http) if http is not None else requests.Session
     http = http or requests.Session()
