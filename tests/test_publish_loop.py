@@ -1,3 +1,4 @@
+import datetime
 import json
 import pathlib
 import sys
@@ -6,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 
+import cadence
 import publish_loop as pl
 
 T0 = 1_000_000
@@ -1219,3 +1221,189 @@ def test_a_deferred_slow_lane_runs_first_in_the_next_run():
     run_loop(env, 3, **HARD, **state_environ()).run()
     assert env.counts["fetch"] == fetches
     assert env.counts["slow"] == 1
+
+
+# Tiered cadence. Epochs are Tehran local time (UTC+03:30): 2024-01-06 is a Saturday.
+def tehran(day, hour):
+    local = datetime.datetime(2024, 1, day, hour, 0, 0)
+    return int((local - datetime.timedelta(hours=3, minutes=30)).replace(tzinfo=datetime.timezone.utc).timestamp())
+
+
+PEAK_AT, MID_AT, NIGHT_AT = tehran(6, 12), tehran(6, 20), tehran(6, 2)
+
+
+def tier_loop(tiers="on", **extra):
+    loop, env = make(1, GHEYMAT_CADENCE_TIERS=tiers, **extra)
+    loop.apply_knobs()
+    loop.last_mark = "m"
+    return loop, env
+
+
+def test_tier_epochs_are_what_the_tests_assume():
+    assert [cadence.tier(t) for t in (PEAK_AT, MID_AT, NIGHT_AT)] == ["peak", "mid", "night"]
+
+
+def test_night_gap_needs_300_seconds():
+    loop, _ = tier_loop()
+    assert loop.is_due(NIGHT_AT, 200, "m") is False
+    assert loop.is_due(NIGHT_AT, 300, "m") is True
+
+
+def test_mid_gap_is_180_and_peak_is_unchanged():
+    loop, _ = tier_loop()
+    assert loop.is_due(MID_AT, 179, "m") is False
+    assert loop.is_due(MID_AT, 180, "m") is True
+    assert loop.is_due(PEAK_AT, 179, "m") is False
+    assert loop.is_due(PEAK_AT, 180, "m") is True
+    assert loop.cadence == 180
+
+
+def test_tiers_off_by_default_ignores_the_clock():
+    loop, _ = tier_loop(tiers="")
+    assert loop.tiers is False
+    assert loop.is_due(NIGHT_AT, 180, "m") is True
+
+
+def test_tiers_never_shorten_live_first_cadence():
+    loop, _ = tier_loop(GHEYMAT_ORDER="live-first")
+    assert loop.is_due(PEAK_AT, 70, "m") is False
+    assert 75 <= loop.cadence <= 105
+    loop.is_due(NIGHT_AT, 100, "m")
+    assert loop.cadence == 300
+
+
+def test_mark_change_at_night_is_due_after_45_and_sets_hot_window():
+    loop, _ = tier_loop()
+    assert loop.is_due(NIGHT_AT, 44, "x") is False
+    assert loop.hot_until == 0
+    assert loop.is_due(NIGHT_AT, 45, "x") is True
+    assert loop.hot_until == NIGHT_AT + cadence.HOT_SECONDS
+
+
+def test_mark_change_at_peak_does_not_set_hot_window():
+    loop, _ = tier_loop()
+    assert loop.is_due(PEAK_AT, 60, "x") is True
+    assert loop.hot_until == 0
+
+
+def test_hot_window_behaves_as_peak():
+    loop, _ = tier_loop()
+    loop.hot_until = NIGHT_AT + 100
+    assert loop.is_due(NIGHT_AT, 180, "m") is True
+    assert loop.is_due(NIGHT_AT + 99, 180, "m") is True
+    assert loop.is_due(NIGHT_AT + 99, 179, "m") is False
+    assert loop.is_due(NIGHT_AT + 100, 180, "m") is False
+    loop.hot_until = NIGHT_AT
+    assert loop.is_due(NIGHT_AT, 200, "m") is False
+
+
+def test_quiet_until_wins_over_peak_tier():
+    loop, env = tier_loop(GHEYMAT_ORDER="live-first")
+    env.files[LIVE] = json.dumps({"quiet_until": PEAK_AT + 1000})
+    assert loop.is_due(PEAK_AT, 100, "m") is False
+    assert loop.cadence == 180
+    assert loop.is_due(PEAK_AT, 180, "m") is True
+
+
+def test_tier_logged_only_on_change():
+    loop, env = tier_loop()
+    for at in (NIGHT_AT, NIGHT_AT + 5, MID_AT, MID_AT + 5, NIGHT_AT):
+        loop.is_due(at, 10, "m")
+    assert [line for line in env.lines if line.startswith("Cadence:")] == [
+        "Cadence: night", "Cadence: mid", "Cadence: night"]
+    off, env_off = tier_loop(tiers="off")
+    off.is_due(NIGHT_AT, 10, "m")
+    assert not any(line.startswith("Cadence:") for line in env_off.lines)
+
+
+def test_hot_until_survives_a_state_carry():
+    env = FakeEnv()
+    first = run_loop(env, 1, **state_environ(GHEYMAT_CADENCE_TIERS="on"))
+    first.serve()
+    first.hot_until = env.t + 300
+    first.save_state()
+    second = run_loop(env, 1, **state_environ(GHEYMAT_CADENCE_TIERS="on"))
+    assert second.load_state() is True
+    assert second.hot_until == first.hot_until
+
+
+def test_missing_or_garbage_hot_until_defaults_to_zero():
+    for bad in (None, "soon", True, 1.5):
+        env = FakeEnv()
+        run_loop(env, 1, **state_environ()).serve()
+        state = saved(env)
+        if bad is None:
+            state.pop("hot_until")
+        else:
+            state["hot_until"] = bad
+        env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(state)
+        loop = run_loop(env, 1, **state_environ())
+        assert loop.load_state() is True
+        assert loop.hot_until == 0
+
+
+def test_huge_hot_until_is_clamped():
+    env = FakeEnv()
+    run_loop(env, 1, **state_environ()).serve()
+    state = saved(env)
+    state["hot_until"] = 10 ** 12
+    env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(state)
+    loop = run_loop(env, 1, **state_environ())
+    assert loop.load_state() is True
+    assert loop.hot_until == state["saved_at"] + cadence.HOT_SECONDS
+
+
+def test_poll_gap_by_tier_and_hot_window():
+    loop, _ = tier_loop()
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500) == 60
+    assert loop.poll_gap(MID_AT, MID_AT + 500) == 30
+    assert loop.poll_gap(PEAK_AT, PEAK_AT + 500) == 15
+    loop.hot_until = NIGHT_AT + 50
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500) == 15
+    off, _ = tier_loop(tiers="off")
+    assert off.poll_gap(NIGHT_AT, NIGHT_AT + 500) == 15
+
+
+def test_night_sleep_stops_at_the_gap_so_publish_is_not_late():
+    loop, _ = tier_loop()
+    loop.is_due(NIGHT_AT, 280, "m")
+    assert loop.cadence == 300
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 280) == 20
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 299) == 1
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 100) == 60
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 400) == 60  # gap passed but publish gated: no busy loop
+
+
+def test_force_and_new_mark_still_fire_at_night():
+    loop, _ = tier_loop()
+    loop.force = True
+    assert loop.is_due(NIGHT_AT, 45, "m") is True
+    assert loop.is_due(NIGHT_AT, 44, "m") is False
+
+
+def test_hot_window_not_started_when_github_spacing_blocks_the_publish():
+    loop, _ = tier_loop()
+    loop.last_mark = "old"
+    loop.last_gh = NIGHT_AT - 10
+    loop.app_channel = lambda: False
+    assert loop.is_due(NIGHT_AT, 50, "new") is False
+    assert loop.hot_until == 0
+
+
+def test_poll_sleep_never_passes_the_deadline():
+    loop, _ = tier_loop()
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 10) == 10
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 0) == 1
+    env = FakeEnv()
+    env.t = NIGHT_AT
+    loop = pl.Loop(env, base_environ(PUBLISH_LOOP_MINUTES="1", GHEYMAT_CADENCE_TIERS="on"),
+                   lambda: "m", python="python", mirror=True)
+    assert loop.serve() == 0
+    assert max(env.sleeps) <= 60
+    assert env.t <= NIGHT_AT + 60 + 1
+
+
+def test_unknown_tiers_value_warns_and_stays_off():
+    loop, env = tier_loop(tiers="maybe")
+    assert loop.tiers is False
+    assert "::warning::GHEYMAT_CADENCE_TIERS has an unknown value, using off" in env.lines

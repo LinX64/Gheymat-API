@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+import cadence
+
 TOOLS_DIR = Path(__file__).resolve().parent
 SNAPSHOT = "tools/gheymat_snapshot.py"
 VERIFY = "tools/verify_sealed.py"
@@ -55,6 +57,7 @@ STATE_FIELDS = (
     "grace",
     "force",
     "force_slow",
+    "hot_until",
     "slow_alarm",
     "pages_tried",
     "want_fetch",
@@ -225,6 +228,9 @@ class Loop:
         self.red = False
         self.alerted = set()
         self.last_mark = ""
+        self.hot_until = 0
+        self.tiers = False
+        self.tier_logged = ""
         self.last_publish = 0
         self.last_gh = 0
         self.seeded = False
@@ -309,6 +315,7 @@ class Loop:
         self.store_mode = self.choice("GHEYMAT_STORE", ("off", "shadow", "on"), "off")
         self.pages_mode = self.choice("GHEYMAT_PAGES", ("every", "shell", "off"), "every")
         self.include_v2 = self.choice("FEED_STORE_V2", ("1", "0"), "1") == "1"
+        self.tiers = self.choice("GHEYMAT_CADENCE_TIERS", ("on", "off"), "off") == "on"
         if self.store_mode != "off":
             needed = (*STORE_SECRETS, "CLOUDFLARE_ACCOUNT_ID")
             if not all(self.environ.get(name) for name in needed):
@@ -464,16 +471,35 @@ class Loop:
         self.cadence = 180
         if live_first and now >= self.quiet_until() and self.fast_ok:
             self.cadence = self.floor_seconds + self.env.rand(-15, 15)
+        name = cadence.PEAK
+        if self.tiers:
+            name = cadence.PEAK if now < self.hot_until else cadence.tier(now)
+            self.cadence = max(self.cadence, cadence.tier_seconds(name, self.cadence))
+            if name != self.tier_logged:
+                self.tier_logged = name
+                self.say(f"Cadence: {name}")
         due = False
+        moved = False
         if since >= self.cadence:
             due = True
         elif self.force and since >= 45:
             due = True
         elif since >= 45 and mark and mark != self.last_mark:
             due = True
+            moved = True
         if due and not self.app_channel() and now - self.last_gh < GITHUB_PUSH_SPACING:
             due = False
+        if due and moved and self.tiers and name != cadence.PEAK:
+            self.hot_until = now + cadence.HOT_SECONDS
         return due
+
+    def poll_gap(self, now, deadline, since=None):
+        poll = POLL_SECONDS
+        if self.tiers and now >= self.hot_until:
+            poll = cadence.poll_seconds(cadence.tier(now))
+        if self.tiers and since is not None and since < self.cadence:
+            poll = min(poll, max(1, self.cadence - since))
+        return min(poll, max(1, deadline - now))
 
     def push_pages(self, message):
         self.push_timed_out = False
@@ -827,6 +853,7 @@ class Loop:
             if name in STAMP_FIELDS and value > now:
                 continue
             setattr(self, name, value)
+        self.hot_until = max(0, min(self.hot_until, int(saved_at) + cadence.HOT_SECONDS))
         alerted = state.get("alerted")
         if isinstance(alerted, list) and all(isinstance(item, str) for item in alerted):
             self.alerted = set(alerted)
@@ -871,7 +898,7 @@ class Loop:
             mark = self.poll()
             now = self.env.now()
             if not self.is_due(now, now - self.last_publish, mark):
-                self.env.sleep(POLL_SECONDS)
+                self.env.sleep(self.poll_gap(now, deadline, now - self.last_publish))
                 continue
             ok = self.run_iteration(now, mark)
             if not ok:
