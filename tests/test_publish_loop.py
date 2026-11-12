@@ -1320,7 +1320,7 @@ def test_hot_until_survives_a_state_carry():
     env = FakeEnv()
     first = run_loop(env, 1, **state_environ(GHEYMAT_CADENCE_TIERS="on"))
     first.serve()
-    first.hot_until = env.t + 300
+    first.hot_until = env.t + cadence.HOT_SECONDS - 20
     first.save_state()
     second = run_loop(env, 1, **state_environ(GHEYMAT_CADENCE_TIERS="on"))
     assert second.load_state() is True
