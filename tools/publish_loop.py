@@ -815,7 +815,7 @@ class Loop:
             intact = (
                 state.get("want_fetch") is False
                 and state.get("have_dist") is True
-                and self.env.exists("dist/v1")
+                and self.env.exists("dist/d")
             )
         except Exception:
             return False
