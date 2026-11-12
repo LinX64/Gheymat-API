@@ -11,6 +11,7 @@ import publish_loop as pl
 T0 = 1_000_000
 TOKEN = "tok-SECRET-123"
 LIVE = "/state/live.json"
+STORE_KEYS = ("FEED_STORE_KEY_ID", "FEED_STORE_SECRET", "FEED_STORE_BUCKET")
 
 
 class FakeEnv:
@@ -145,6 +146,9 @@ def base_environ(**extra):
         "GHEYMAT_PAYLOAD_KEY": "pk",
         "CLOUDFLARE_API_TOKEN": "cft",
         "CLOUDFLARE_ACCOUNT_ID": "cfa",
+        "FEED_STORE_KEY_ID": "ksk-id",
+        "FEED_STORE_SECRET": "ksk-secret",
+        "FEED_STORE_BUCKET": "ksk-bucket",
     }
     environ.update(extra)
     return environ
@@ -506,12 +510,12 @@ def test_wrangler_setup_success():
     assert loop.mirror is True
     npm = [c for c in env.calls if c[0] == "npm"]
     assert len(npm) == 1 and npm[0][1][-1] == "wrangler@4.159.0" and npm[0][3] == 300
-    for key in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES"):
+    for key in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
         assert key not in npm[0][2]
     create = [c for c in env.calls if c[0] == "create"][0]
     assert create[1][-5:] == ["project", "create", "gheymat-feed", "--production-branch", "master"]
     assert create[2]["WRANGLER_SEND_METRICS"] == "false" and create[3] == 120
-    for key in ("GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES"):
+    for key in ("GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
         assert key not in create[2]
     assert create[2]["CLOUDFLARE_API_TOKEN"] == "cft" and create[2]["CLOUDFLARE_ACCOUNT_ID"] == "cfa"
 
@@ -570,7 +574,7 @@ def test_chain_on_master_after_an_hour():
     call = env.calls[0]
     assert call[1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
     assert call[2]["GH_TOKEN"] == TOKEN
-    for key in ("GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"):
+    for key in ("GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", *STORE_KEYS):
         assert key not in call[2]
 
 
@@ -608,7 +612,7 @@ def test_deploy_env_is_scrubbed():
     loop, env = make(3)
     loop.serve()
     deploy = env.envs("deploy")[0]
-    for key in ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES"):
+    for key in ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
         assert key not in deploy
     assert deploy["WRANGLER_SEND_METRICS"] == "false"
     assert deploy["CLOUDFLARE_API_TOKEN"] == "cft"
@@ -619,6 +623,9 @@ def test_deploy_env_is_scrubbed():
     verify_site = env.envs("verify_site")[0]
     assert "GHEYMAT_SIGNING_KEY" not in verify_site and "GH_TOKEN" not in verify_site
     assert env.envs("slow")[0]["GH_TOKEN"] == TOKEN
+    for kind in ("slow", "assemble", "verify_site", "deploy"):
+        for child in env.envs(kind):
+            assert not any(key in child for key in STORE_KEYS)
 
 
 def test_token_never_emitted():
@@ -733,3 +740,14 @@ def test_source_to_live_after_new_mark_within_build_plus_deploy_plus_poll():
     noticed = T0 + 1000
     assert first[5] - noticed <= 15 + 45 + 15
     assert deploys[0] - first[5] <= build + deploy + 15
+
+
+def test_news_waits_while_a_quick_retry_is_pending():
+    loop, env = make(30)
+    env.script["deploy"] = lambda n: 1 if n == 3 else 0
+    loop.serve()
+    kinds = env.kinds()
+    failed_at = [i for i, call in enumerate(env.calls) if call[0] == "deploy" and call[6] == 1][0]
+    after = kinds[failed_at + 1:]
+    next_build = min(after.index(kind) for kind in ("prices", "slow") if kind in after)
+    assert "news" not in after[:next_build]

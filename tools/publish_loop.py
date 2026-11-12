@@ -27,7 +27,16 @@ SLOW_LANE_SPACING = 1800
 SLOW_LANE_BACKOFF = 600
 SLOW_LANE_ALARM = 5400
 CHAIN_AFTER = 3600
-APP_SECRETS = ("GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES")
+STORE_SECRETS = ("FEED_STORE_KEY_ID", "FEED_STORE_SECRET", "FEED_STORE_BUCKET")
+APP_SECRETS = (
+    "GH_TOKEN",
+    "GHEYMAT_PAYLOAD_KEY",
+    "GHEYMAT_SIGNING_KEY",
+    "ANTHROPIC_API_KEY",
+    "GHEYMAT_AI_SOURCES",
+    *STORE_SECRETS,
+)
+KIND_PATTERN = re.compile(r"[a-z]{1,16}")
 CLOUDFLARE_SECRETS = ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID")
 
 
@@ -136,8 +145,31 @@ def make_poll():
     return poll
 
 
+def build_sync(environ, log, include_v2):
+    sys.path.insert(0, str(TOOLS_DIR))
+    import feed_sync
+    import r2_store
+    import verify_sealed
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from gheymat_seal import DEFAULT_KID, KEY_LEN, unb64
+
+    payload_key = unb64(environ["GHEYMAT_PAYLOAD_KEY"])
+    if len(payload_key) != KEY_LEN:
+        raise ValueError("bad key length")
+    public_keys = {DEFAULT_KID: Ed25519PublicKey.from_public_bytes(unb64(verify_sealed.PUBLIC_KEY_B64))}
+    store = r2_store.R2Store(
+        environ["CLOUDFLARE_ACCOUNT_ID"],
+        environ["FEED_STORE_BUCKET"],
+        environ["FEED_STORE_KEY_ID"],
+        environ["FEED_STORE_SECRET"],
+    )
+    return feed_sync.FeedSync(
+        store, payload_key, public_keys, clock=time.time, log=log, workers=8, include_v2=include_v2
+    )
+
+
 class Loop:
-    def __init__(self, env, environ, poll, python="python", mirror=False):
+    def __init__(self, env, environ, poll, python="python", mirror=False, sync_factory=None):
         self.env = env
         self.environ = environ
         self.poll = poll
@@ -171,22 +203,59 @@ class Loop:
         self.floor_seconds = 90
         self.order = "default"
         self.started = 0
+        self.sync_factory = sync_factory or build_sync
+        self.sync = None
+        self.configured = False
+        self.store_mode = "off"
+        self.pages_mode = "every"
+        self.include_v2 = True
+        self.store_failures = 0
+        self.pages_tried = False
+
+    def mask(self, line):
+        for name in ("GH_TOKEN", "CLOUDFLARE_ACCOUNT_ID", *STORE_SECRETS):
+            value = self.environ.get(name)
+            if value:
+                line = line.replace(value, "***")
+        return line
 
     def say(self, line):
-        token = self.environ.get("GH_TOKEN")
-        if token:
-            line = line.replace(token, "***")
-        self.env.emit(line)
+        self.env.emit(self.mask(line))
 
     def say_err(self, line):
-        token = self.environ.get("GH_TOKEN")
-        if token:
-            line = line.replace(token, "***")
-        self.env.emit_err(line)
+        self.env.emit_err(self.mask(line))
+
+    def choice(self, name, options, default):
+        value = self.environ.get(name, "")
+        if not value:
+            return default
+        if value in options:
+            return value
+        self.say(f"::warning::{name} has an unknown value, using {default}")
+        return default
+
+    def configure(self):
+        if self.configured:
+            return
+        self.configured = True
+        self.store_mode = self.choice("GHEYMAT_STORE", ("off", "shadow", "on"), "off")
+        self.pages_mode = self.choice("GHEYMAT_PAGES", ("every", "shell", "off"), "every")
+        self.include_v2 = self.choice("FEED_STORE_V2", ("1", "0"), "1") == "1"
+        if self.store_mode != "off":
+            needed = (*STORE_SECRETS, "CLOUDFLARE_ACCOUNT_ID")
+            if not all(self.environ.get(name) for name in needed):
+                self.say("::warning::feed store is off: repository secrets are missing")
+                self.store_mode = "off"
+
+    def store_active(self):
+        return self.store_mode in ("shadow", "on")
+
+    def app_channel(self):
+        return (self.mirror and self.pages_mode == "every") or self.store_mode == "on"
 
     def child_env(self, *dropped, **extra):
         child = dict(self.environ)
-        for key in dropped:
+        for key in (*STORE_SECRETS, *dropped):
             child.pop(key, None)
         child.update(extra)
         return child
@@ -202,6 +271,7 @@ class Loop:
 
     def start(self):
         self.started = self.env.now()
+        self.configure()
         payload = self.environ.get("GHEYMAT_PAYLOAD_KEY", "")
         signing = self.environ.get("GHEYMAT_SIGNING_KEY", "")
         if not payload or not signing:
@@ -213,6 +283,9 @@ class Loop:
         return True
 
     def setup_cloudflare(self):
+        if self.pages_mode == "off":
+            self.mirror = False
+            return
         if not self.environ.get("CLOUDFLARE_API_TOKEN") or not self.environ.get("CLOUDFLARE_ACCOUNT_ID"):
             self.mirror = False
             self.say("::warning::Cloudflare deploy is off: repository secrets are missing")
@@ -242,6 +315,7 @@ class Loop:
         self.mirror = True
 
     def apply_knobs(self):
+        self.configure()
         floor = self.environ.get("FLOOR_SECONDS", "")
         if DIGITS.fullmatch(floor):
             self.floor_seconds = int(floor)
@@ -300,7 +374,7 @@ class Loop:
             due = True
         elif since >= 45 and mark and mark != self.last_mark:
             due = True
-        if due and not self.mirror and now - self.last_gh < GITHUB_PUSH_SPACING:
+        if due and not self.app_channel() and now - self.last_gh < GITHUB_PUSH_SPACING:
             due = False
         return due
 
@@ -373,28 +447,39 @@ class Loop:
             code = 0 if self.run_visible([self.python, VERIFY, "dist"]) == 0 else 90
         return code, slow
 
-    def deploy_cloudflare(self, now, build_seconds):
+    def assemble_site(self):
         log = []
         self.env.rmtree("site")
         scrub_assemble = ("GH_TOKEN", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES")
         scrub_verify = scrub_assemble + ("GHEYMAT_SIGNING_KEY",)
-        scrub_deploy = scrub_verify + ("GHEYMAT_PAYLOAD_KEY",)
         steps = (
-            ([self.python, ASSEMBLE, "--src", "dist", "--out", "site"], self.child_env(*scrub_assemble), None),
-            ([self.python, VERIFY, "--site", "site"], self.child_env(*scrub_verify), None),
-            (
-                ["wrangler", "pages", "deploy", "site", "--project-name", CLOUDFLARE_PROJECT, "--branch", "master"],
-                self.child_env(*scrub_deploy, WRANGLER_SEND_METRICS="false"),
-                300,
-            ),
+            ([self.python, ASSEMBLE, "--src", "dist", "--out", "site"], self.child_env(*scrub_assemble)),
+            ([self.python, VERIFY, "--site", "site"], self.child_env(*scrub_verify)),
         )
-        deployed = True
-        for argv, env, timeout in steps:
-            code, output = self.env.run(argv, env=env, timeout=timeout)
+        for argv, env in steps:
+            code, output = self.env.run(argv, env=env, timeout=None)
             log.extend(output.splitlines())
             if code != 0:
-                deployed = False
-                break
+                return False, log
+        return True, log
+
+    def deploy_cloudflare(self, now, build_seconds, ready, log):
+        deployed = ready
+        if ready:
+            scrub_deploy = (
+                "GH_TOKEN",
+                "ANTHROPIC_API_KEY",
+                "GHEYMAT_AI_SOURCES",
+                "GHEYMAT_SIGNING_KEY",
+                "GHEYMAT_PAYLOAD_KEY",
+            )
+            code, output = self.env.run(
+                ["wrangler", "pages", "deploy", "site", "--project-name", CLOUDFLARE_PROJECT, "--branch", "master"],
+                env=self.child_env(*scrub_deploy, WRANGLER_SEND_METRICS="false"),
+                timeout=300,
+            )
+            log.extend(output.splitlines())
+            deployed = code == 0
         if deployed:
             self.cf_failures = 0
             self.say(
@@ -406,8 +491,43 @@ class Loop:
             self.say(f"::warning::#{self.iteration} Cloudflare deploy failed ({self.cf_failures} in a row)")
             for line in log[-8:]:
                 self.say("| " + line.replace("##[", "## ["))
-        self.env.rmtree("site")
         return deployed
+
+    def get_sync(self):
+        if self.sync is None:
+            try:
+                self.sync = self.sync_factory(environ=self.environ, log=self.say, include_v2=self.include_v2)
+            except Exception as error:
+                self.sync = None
+                kind = getattr(error, "kind", None)
+                kind = kind if kind in ("config", "connection") else "unknown"
+                self.say(f"::warning::#{self.iteration} feed store setup failed ({kind})")
+        return self.sync
+
+    def sync_store(self, now, slow, ready):
+        result = None
+        if ready:
+            sync = self.get_sync()
+            if sync is not None:
+                try:
+                    result = sync.sync(Path("site"), slow)
+                except Exception:
+                    result = None
+        stored = bool(result is not None and getattr(result, "hot_ok", False))
+        kinds = getattr(result, "keys_failed_kinds", None)
+        if isinstance(kinds, dict) and kinds:
+            parts = [
+                f"{kind} {count}"
+                for kind, count in sorted(kinds.items(), key=lambda item: str(item[0]))
+                if isinstance(kind, str) and KIND_PATTERN.fullmatch(kind) and isinstance(count, int)
+            ]
+            if parts:
+                self.say(f"#{self.iteration} feed store failed keys: " + ", ".join(parts))
+        if stored:
+            self.say(f"#{self.iteration} store ok (live {self.env.now() - now}s after detection)")
+        else:
+            self.say(f"::warning::#{self.iteration} feed store hot documents not stored")
+        return stored
 
     def publish_github(self, now):
         if now - self.last_gh < GITHUB_PUSH_SPACING:
@@ -442,6 +562,7 @@ class Loop:
         self.iteration += 1
         self.force = False
         cf_ok = False
+        store_ok = False
         gh_ok = False
         gh_skip = False
         failures_before = self.failures
@@ -458,11 +579,29 @@ class Loop:
                 self.slow_ok_at = now
                 self.fresh_restore = False
                 self.force_slow = False
-            if self.mirror:
-                cf_ok = self.deploy_cloudflare(now, build_seconds)
-            elif self.environ.get("CLOUDFLARE_API_TOKEN") and self.environ.get("CLOUDFLARE_ACCOUNT_ID"):
+            pages_wanted = self.pages_mode == "every" or (self.pages_mode == "shell" and not self.pages_tried)
+            if pages_wanted:
+                self.pages_tried = True
+            pages_run = pages_wanted and self.mirror
+            ready = False
+            log = []
+            if pages_run or self.store_active():
+                ready, log = self.assemble_site()
+            if pages_run:
+                cf_ok = self.deploy_cloudflare(now, build_seconds, ready, log)
+            elif (
+                pages_wanted
+                and self.environ.get("CLOUDFLARE_API_TOKEN")
+                and self.environ.get("CLOUDFLARE_ACCOUNT_ID")
+            ):
                 self.cf_failures += 1
                 self.say(f"::warning::#{self.iteration} Cloudflare deploy unavailable ({self.cf_failures} in a row)")
+            if self.store_active():
+                store_ok = self.sync_store(now, slow, ready)
+                if self.store_mode == "on":
+                    self.store_failures = 0 if store_ok else self.store_failures + 1
+            if pages_run or self.store_active():
+                self.env.rmtree("site")
             outcome = self.publish_github(now)
             gh_ok = outcome == "ok"
             gh_skip = outcome == "skipped"
@@ -473,8 +612,14 @@ class Loop:
                 self.have_dist = False
                 self.want_fetch = True
             self.say_err(f"#{self.iteration} failed (code {code}, {self.failures} in a row)")
-        published = cf_ok or gh_ok
-        app_published = cf_ok if self.mirror else gh_ok
+        store_ok = store_ok and self.store_mode == "on"
+        published = store_ok or cf_ok or gh_ok
+        if self.store_mode == "on":
+            app_published = store_ok
+        elif self.mirror and self.pages_mode == "every":
+            app_published = cf_ok
+        else:
+            app_published = gh_ok
         self.fast_ok = app_published
         if published:
             self.nothing = 0
@@ -496,7 +641,7 @@ class Loop:
             else:
                 self.grace = False
         self.last_publish = now
-        if code == 0:
+        if code == 0 and not self.force:
             self.refresh_news()
         if not self.slow_alarm and self.env.now() - self.slow_ok_at > SLOW_LANE_ALARM:
             self.say("::error::The slow lane has not succeeded for 90 minutes")
@@ -504,6 +649,9 @@ class Loop:
             self.slow_alarm = True
         if self.cf_failures == 5:
             self.say("::error::Cloudflare deploy failed 5 times in a row")
+            self.red = True
+        if self.store_failures == 5:
+            self.say("::error::Feed store failed 5 times in a row")
             self.red = True
         if self.failures == 5:
             self.say("::error::Restore, build or GitHub publish failed 5 times in a row")
