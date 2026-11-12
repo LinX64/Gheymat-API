@@ -36,13 +36,13 @@ class Context:
         self.lags = {k: gs.effective_lag_days(k, v, fetched_on) for k, v in self.obs.items()}
         self.news = na.latest_by_date(news_records or [])
         self.news_list = list(self.news.values())
-        days = sorted(self.news)
-        self.news_first = days[0] if days else None
+        self.news_marked = na.marked_days(self.news_list)
+        self.news_first = na.first_marked_day(self.news_list)
         self._cache = {}
 
     def has(self, signal):
         if signal == "news":
-            return len(self.news) >= fc.MIN_BACKTEST_WEEKS
+            return self.news_marked >= fc.MIN_BACKTEST_WEEKS
         return signal in self.obs
 
     def feature(self, signal, day):
