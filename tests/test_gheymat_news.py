@@ -607,3 +607,11 @@ def test_overlong_headlines_and_descriptions_are_bounded():
     store, http, _, _ = run([entry(" ".join(["word"] * 80), "1"), entry("Normal story headline", "2", minutes_ago=90, desc="d" * 5000)])
     assert [i["title"] for i in items(store)] == ["Normal story headline"]
     assert len(http.posts[0]["json"]["messages"][0]["content"]) < 800
+
+
+def test_refresh_false_never_touches_the_network_and_reseals():
+    store, _, _, _ = run([entry("Alpha story headline", "1")])
+    store.writes.clear()
+    http = FakeHttp({FEED: rss([entry("Beta story headline", "2")])}, None, None, None, None)
+    result = news.publish(store.write, store.load, NOW + timedelta(hours=2), env=ENV, http=http, refresh=False)
+    assert http.gets == [] and http.posts == [] and result["skipped"] and store.writes == [news.LOGICAL]

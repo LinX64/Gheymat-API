@@ -115,43 +115,82 @@ jobs:
           iteration=0
           failures=0
           cf_failures=0
+          gh_failures=0
           nothing=0
           red=0
           last_mark=""
           last_publish=0
           last_gh=0
-          local_ok=0
-          gh_failed=0
+          seeded=0
+          have_dist=0
+          want_fetch=1
+          clean=0
+          fast_retry=1
+          grace=0
+          force=0
+          push_pages() {
+            ( cd dist \
+              && git init -q \
+              && git checkout -q -b gh-pages \
+              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
+              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "$1" \
+              && timeout -k 10 120 git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages )
+          }
           while [ "$(date +%s)" -lt "$deadline" ]; do
             mark=$(python tools/gheymat_snapshot.py --mark 2>/dev/null) || mark=""
             now=$(date +%s)
             since=$(( now - last_publish ))
-            if [ "$since" -lt 360 ] && { [ -z "$mark" ] || [ "$mark" = "$last_mark" ] || [ "$since" -lt 45 ]; }; then
-              sleep 30
+            due=0
+            if [ "$since" -ge 360 ]; then
+              due=1
+            elif [ "$since" -ge 45 ] && { [ "$force" = "1" ] || { [ -n "$mark" ] && [ "$mark" != "$last_mark" ]; }; }; then
+              due=1
+            fi
+            # Without the Cloudflare channel a build can only go to GitHub Pages, so wait until that push is allowed.
+            if [ "$due" = "1" ] && [ "${MIRROR:-}" != "true" ] && [ $(( now - last_gh )) -lt 400 ]; then due=0; fi
+            if [ "$due" = "0" ]; then
+              sleep 15
               continue
             fi
             iteration=$((iteration + 1))
+            force=0
             cf_ok=0
             gh_ok=0
-            gh_failed=0
-            restored=0
-            # The previous good build is the newest state, so keep it between iterations; GitHub Pages is only
-            # re-read at the start or after a failed build.
-            if [ "$local_ok" = "1" ] && [ -d dist ]; then
-              restored=1
-            else
-              rm -rf dist && mkdir -p dist
-              if git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=dist checkout -q FETCH_HEAD -- .; then
+            gh_skip=0
+            failures_before=$failures
+            nothing_before=$nothing
+            # The last verified build is the newest state, so it is kept between iterations. GitHub Pages is re-read
+            # at the start, after a bad build, or when its push keeps failing; the copy is swapped in only when the
+            # read worked, so a GitHub outage never empties the state the Cloudflare channel builds from.
+            if [ "$want_fetch" = "1" ]; then
+              rm -rf restore && mkdir -p restore
+              if timeout -k 10 120 git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=restore checkout -q FETCH_HEAD -- .; then
                 git reset -q
-                restored=1
+                rm -rf dist && mv restore dist
+                have_dist=1
+                want_fetch=0
+                if [ "$seeded" = "0" ]; then
+                  last_gh=$(git log -1 --format=%ct FETCH_HEAD 2>/dev/null) || last_gh=0
+                  seeded=1
+                fi
+              else
+                git reset -q 2>/dev/null || true
               fi
+              rm -rf restore
             fi
-            local_ok=0
-            find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name archive -exec rm -rf {} +
-            touch dist/.nojekyll
-            if [ "$restored" = "1" ] \
-              && python tools/gheymat_snapshot.py --out dist --history --ai $EXTRA --pace 3 \
-              && python tools/verify_sealed.py dist; then
+            rc=0
+            clean=0
+            if [ "$have_dist" = "1" ]; then
+              find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name archive -exec rm -rf {} +
+              touch dist/.nojekyll
+              python tools/gheymat_snapshot.py --out dist --history --ai --defer-news $EXTRA --pace 3 || rc=$?
+              if [ "$rc" = "0" ]; then python tools/verify_sealed.py dist || rc=90; fi
+            else
+              rc=91
+            fi
+            t_build=$(( $(date +%s) - now ))
+            if [ "$rc" = "0" ]; then
+              clean=1
               if [ "${MIRROR:-}" = "true" ]; then
                 rm -rf site
                 if env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES python tools/assemble_site.py --src dist --out site 2>mirror.log \
@@ -159,7 +198,7 @@ jobs:
                   && env -u GH_TOKEN -u GHEYMAT_PAYLOAD_KEY -u GHEYMAT_SIGNING_KEY -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES WRANGLER_SEND_METRICS=false timeout -k 15 300 wrangler pages deploy site --project-name gheymat-feed --branch master >/dev/null 2>>mirror.log; then
                   cf_failures=0
                   cf_ok=1
-                  echo "#$iteration cloudflare $(date -u +%H:%M:%SZ)"
+                  echo "#$iteration cloudflare $(date -u +%H:%M:%SZ) (build ${t_build}s, live $(( $(date +%s) - now ))s after detection)"
                 else
                   cf_failures=$((cf_failures + 1))
                   echo "::warning::#$iteration Cloudflare deploy failed ($cf_failures in a row)"
@@ -170,36 +209,74 @@ jobs:
                 cf_failures=$((cf_failures + 1))
                 echo "::warning::#$iteration Cloudflare deploy unavailable ($cf_failures in a row)"
               fi
-              # Cloudflare (what the apps read) gets every build; the legacy GitHub Pages copy is throttled to stay
-              # under its 10 builds an hour, unless Cloudflare is off or just failed.
-              if [ "$cf_ok" = "1" ] && [ $(( now - last_gh )) -lt 360 ]; then
-                gh_ok=1
+              # Cloudflare (what the apps read) gets every build. The legacy GitHub Pages copy is always throttled,
+              # within a run and across runs, to stay under its 10 builds an hour.
+              if [ $(( now - last_gh )) -lt 400 ]; then
+                gh_skip=1
                 echo "#$iteration github push skipped (throttle)"
-              elif ( cd dist \
-                && git init -q \
-                && git checkout -q -b gh-pages \
-                && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
-                && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish $iteration" \
-                && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
+              elif push_pages "Publish $iteration"; then
                 failures=0
+                gh_failures=0
                 gh_ok=1
                 last_gh=$now
                 echo "#$iteration published $(date -u +%H:%M:%SZ)"
               else
                 failures=$((failures + 1))
+                gh_failures=$((gh_failures + 1))
                 last_gh=0
-                gh_failed=1
+                # Keep the newer local state for one retry; a second failure in a row re-reads the published copy,
+                # so a file the host rejects cannot repeat forever.
+                if [ "$gh_failures" -eq 2 ]; then want_fetch=1; fi
                 echo "#$iteration GitHub push failed ($failures in a row)" >&2
               fi
+              rm -rf dist/.git
             else
               failures=$((failures + 1))
-              echo "#$iteration failed ($failures in a row)" >&2
+              # Exit 2 means too few rates and nothing written, so the state is still good; anything else is not.
+              if [ "$rc" != "2" ]; then
+                have_dist=0
+                want_fetch=1
+              fi
+              echo "#$iteration failed (code $rc, $failures in a row)" >&2
             fi
-            rm -rf dist/.git
-            if [ "$restored" = "1" ] && [ "$gh_failed" = "0" ] && [ "$gh_ok$cf_ok" != "00" ]; then local_ok=1; fi
-            last_mark=$mark
+            published=0
+            if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then published=1; fi
+            if [ "$published" = "1" ]; then
+              nothing=0
+            elif [ "$rc" != "0" ] || [ "$gh_skip" = "0" ]; then
+              nothing=$((nothing + 1))
+            fi
+            # One quick retry (about 45 s) after the first unpublished iteration, then back to the 6-minute spacing.
+            # The quick retry itself does not count towards the 5-in-a-row limits, so they are reached no sooner.
+            if [ "$published" = "1" ]; then
+              last_mark=$mark
+              fast_retry=1
+              grace=0
+            else
+              if [ "$grace" = "1" ]; then
+                failures=$failures_before
+                nothing=$nothing_before
+              fi
+              last_mark=$mark
+              if [ "$fast_retry" = "1" ]; then
+                force=1
+                fast_retry=0
+                grace=1
+              else
+                grace=0
+              fi
+            fi
             last_publish=$now
-            if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then nothing=0; else nothing=$((nothing + 1)); fi
+            # News is refreshed after prices are out, never inside the price build; a refresh ships on the next build.
+            if [ "$rc" = "0" ]; then
+              news_rc=0
+              news=$(timeout -k 10 150 python tools/gheymat_snapshot.py --out dist --news-only 2>/dev/null) || news_rc=$?
+              if [ "$news_rc" != "0" ]; then echo "::warning::#$iteration news step exit $news_rc"; fi
+              if printf '%s\n' "$news" | grep -qx "news: refreshed"; then
+                force=1
+                echo "#$iteration news refreshed"
+              fi
+            fi
             if [ "$cf_failures" -eq 5 ]; then
               echo "::error::Cloudflare deploy failed 5 times in a row"
               red=1
@@ -214,14 +291,8 @@ jobs:
             fi
           done
           # Final flush: bring the legacy copy level with the last build so the next loop restores the newest state.
-          if [ "$last_gh" -lt "$last_publish" ] && [ -d dist ] && [ "$local_ok" = "1" ]; then
-            ( cd dist \
-              && git init -q \
-              && git checkout -q -b gh-pages \
-              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
-              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish final" \
-              && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ) \
-              || echo "::warning::Final GitHub push failed"
+          if [ "$clean" = "1" ] && [ "$have_dist" = "1" ] && [ "$last_gh" -lt "$last_publish" ]; then
+            { python tools/verify_sealed.py dist && push_pages "Publish final"; } || echo "::warning::Final GitHub push failed"
             rm -rf dist/.git
           fi
           [ "$red" = "0" ] || exit 1
