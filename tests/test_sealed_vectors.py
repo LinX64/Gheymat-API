@@ -11,7 +11,8 @@ sys.path.insert(0, str(HERE))
 import gheymat_seal as gs
 import make_sealed_vectors as mk
 
-FIXTURE = mk.DEFAULT_OUT
+FIXTURE = mk.DEFAULT_OUT  # the app repo's copy, compared only when that checkout is present
+LOCAL = HERE / "fixtures" / "sealed-vectors.json"
 
 
 @pytest.fixture(scope="module")
@@ -21,9 +22,7 @@ def generated() -> dict:
 
 @pytest.fixture(scope="module")
 def fixture() -> dict:
-    if not FIXTURE.exists():
-        pytest.skip(f"Swift fixture not present at {FIXTURE}")
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return json.loads(LOCAL.read_text(encoding="utf-8"))
 
 
 def keys(fx: dict) -> tuple[bytes, dict[int, Ed25519PublicKey]]:
@@ -41,8 +40,11 @@ def test_generator_is_deterministic(generated):
 
 
 def test_fixture_on_disk_matches_the_generator(generated, fixture):
-    assert FIXTURE.read_text(encoding="utf-8") == mk.render(generated), \
-        "regenerate with: python tests/make_sealed_vectors.py"
+    assert LOCAL.read_text(encoding="utf-8") == mk.render(generated), \
+        "regenerate with: python tests/make_sealed_vectors.py tests/fixtures/sealed-vectors.json"
+    if FIXTURE.exists():  # cross-repo check when the app checkout sits next to this one
+        assert FIXTURE.read_text(encoding="utf-8") == mk.render(generated), \
+            "regenerate with: python tests/make_sealed_vectors.py"
 
 
 def test_every_vector_opens_or_fails_as_labelled(fixture):
