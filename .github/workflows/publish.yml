@@ -19,6 +19,12 @@ on:
         required: false
       CLOUDFLARE_ACCOUNT_ID:
         required: false
+      FEED_STORE_KEY_ID:
+        required: false
+      FEED_STORE_SECRET:
+        required: false
+      FEED_STORE_BUCKET:
+        required: false
 
 jobs:
   publish:
@@ -47,6 +53,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FEED_STORE_KEY_ID: ${{ secrets.FEED_STORE_KEY_ID }}
+          FEED_STORE_SECRET: ${{ secrets.FEED_STORE_SECRET }}
+          FEED_STORE_BUCKET: ${{ secrets.FEED_STORE_BUCKET }}
+          GHEYMAT_STORE: ${{ vars.GHEYMAT_STORE || 'off' }}
+          GHEYMAT_PAGES: ${{ vars.GHEYMAT_PAGES || 'every' }}
+          FEED_STORE_V2: ${{ vars.FEED_STORE_V2 || '1' }}
           BACKFILL: ${{ inputs.backfill && '40' || '12' }}
           GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
           GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
