@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import pathlib
+import re
 import sys
 
 import pytest
@@ -259,3 +260,10 @@ def test_seal_redraws_nonce_when_output_looks_like_a_credential(sealer, monkeypa
     assert len(calls) == 2
     assert not gs.CREDENTIAL_LOOKALIKE.search(json.dumps(env))
     assert opened(env) == {"a": 1}
+
+
+def test_lookalike_pattern_is_narrow_and_seal_never_raises(sealer, monkeypatch):
+    assert gs.CREDENTIAL_LOOKALIKE.search("xAKID" + "a" * 32)
+    assert not gs.CREDENTIAL_LOOKALIKE.search("AIDAabcdefghijklmnop" + "LTAI" + "b" * 20)
+    monkeypatch.setattr(gs, "CREDENTIAL_LOOKALIKE", re.compile(r"."))
+    assert opened(sealer.seal("v1/latest", {"a": 1}, issued=NOW)) == {"a": 1}

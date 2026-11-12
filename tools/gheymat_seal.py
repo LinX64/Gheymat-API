@@ -47,7 +47,7 @@ SIG_LEN = 64
 DEFAULT_KID = 1
 # Random base64 now and then spells the start of a well-known credential format, and the host's push protection
 # rejects the whole publish. Re-drawing the nonce changes every byte, so such an envelope is simply sealed again.
-CREDENTIAL_LOOKALIKE = re.compile(r"(?:AKID|AKIA|ASIA|AIza|LTAI|AIDA|AROA|AGPA)[A-Za-z0-9]{16}")
+CREDENTIAL_LOOKALIKE = re.compile(r"AKID[A-Za-z0-9]{32}|(?:AKIA|ASIA)[A-Z2-7]{16}|AIza[A-Za-z0-9]{35}")
 MAX_AGE = 2 * 60 * 60
 MAX_FUTURE = 5 * 60
 MAX_ENVELOPE_BYTES = 2 * 1024 * 1024
@@ -133,7 +133,9 @@ class Sealer:
                         "ciphertext": b64(ciphertext), "sig": b64(signature)}
             if not CREDENTIAL_LOOKALIKE.search(json.dumps(envelope)):
                 return envelope
-        raise RuntimeError("could not seal without a credential-like run")
+        # Out of draws (only possible for a very large payload): ship the last one. A blocked legacy push heals on
+        # the next iteration; failing the build would stop the app channel too.
+        return envelope
 
 
 def _int_field(envelope: dict, name: str) -> int:
