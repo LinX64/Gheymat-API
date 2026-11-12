@@ -167,7 +167,10 @@ def test_no_source_names_anywhere(src, tmp_path):
     asm.assemble(src, out, SEALER, log=lambda *_: None)
     texts = [(out / "versions.json").read_text(), (out / "_headers").read_text()]
     texts += [(TOOLS / n).read_text() for n in ("site_versions.py", "assemble_site.py")]
-    texts += [pathlib.Path(__file__).read_text(), (TOOLS.parent / "CLAUDE.md").read_text()]
+    texts += [pathlib.Path(__file__).read_text()]
+    local_notes = TOOLS.parent / "CLAUDE.md"
+    if local_notes.is_file():
+        texts.append(local_notes.read_text())
     for text in texts:
         for name in vs.SOURCES:
             assert name not in text.lower()
