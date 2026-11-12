@@ -1,6 +1,8 @@
 """Offline labelled eval for the AI news effect tags. No model calls, no network.
 
 Gate for enabling tags: see TAGS_ENABLED in gheymat_news. Labels and predictions are JSON Lines.
+Run on the private labelled set: python tools/news_eval.py --labels L.jsonl --predictions P.jsonl
+(exit 0 = gate passed, 1 = failed, 2 = bad input).
 """
 import argparse
 import json
