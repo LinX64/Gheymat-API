@@ -4,6 +4,7 @@ import hashlib
 import html
 import json
 import os
+import queue
 import re
 import threading
 import time
@@ -23,14 +24,23 @@ MAX_ITEMS = 40
 MAX_NEW_PER_RUN = 20
 MAX_CANDIDATES = 200
 MIN_INTERVAL = timedelta(minutes=30)
-BUDGET_SECONDS = 40.0
-FEED_DEADLINE_SECONDS = 20.0
-FEED_HARD_SECONDS = 25.0
+FETCH_SECONDS = 15.0
+MODEL_SECONDS = 35.0
+MODEL_CALL_SECONDS = 40.0
+BUDGET_SECONDS = FETCH_SECONDS + MODEL_SECONDS
+FETCH_THREADS = 6
+FEED_DEADLINE_SECONDS = 12.0
+RANKING_VERSION = 1
 SUMMARY_MAX = 140
 TITLE_MAX = 300
 TEXT_MAX = 600
 FEED_MAX_BYTES = 2_000_000
-MAX_SOURCES = 12
+MAX_SOURCES = 30
+DEFAULT_MAX_ITEMS = 15
+CATEGORIES = ("fx", "gold", "oil", "sanctions", "politics", "economy", "general")
+CATEGORY_PRIOR = {"fx": 1.5, "gold": 1.5, "oil": 1.5, "sanctions": 1.5, "economy": 1.0, "politics": 0.5, "general": 0.0}
+TOPICS = ("fx", "gold", "oil", "sanctions", "politics")
+MAX_HITS = 4
 MAX_CONSECUTIVE_API_ERRORS = 3
 NEAR_DUPLICATE = 0.85
 TAGS_ENABLED = False
@@ -60,6 +70,19 @@ MAGNITUDES = {"hundred": "H", "thousand": "K", "million": "M", "billion": "B", "
 AMBIGUOUS = {"one", "یک"}
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
+
+LEXICON = {
+    "fx": ("dollar", "rial", "toman", "exchange rate", "currency", "currencies", "forex", "central bank", "inflation",
+           "interest rate", "دلار", "ریال", "تومان", "نرخ ارز", "ارز", "بانک مرکزی", "تورم", "نرخ بهره"),
+    "gold": ("gold", "coin", "bullion", "ounce", "طلا", "سکه"),
+    "oil": ("oil", "crude", "barrel", "opec", "نفت", "بشکه", "اوپک"),
+    "sanctions": ("sanction", "embargo", "تحریم"),
+    "politics": ("negotiation", "talks", "diplomat", "ceasefire", "مذاکره", "مذاکرات", "دیپلماسی", "آتش بس"),
+}
+SUFFIX = "(?:s|es|ها|های|ی|ای|ان)?"
+LEXICON_RE = {topic: [re.compile(r"(?<![^\W\d_])" + re.escape(term) + SUFFIX + r"(?![^\W\d_])") for term in terms]
+              for topic, terms in LEXICON.items()}
+PERSIAN_FIX = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " "})
 
 SYSTEM = (
     "You write one-line news summaries for a currency and gold price app. The user message holds one news item "
@@ -92,6 +115,16 @@ class ApiStop(Exception):
 
 class ApiError(Exception):
     pass
+
+
+class ModelTimeout(Exception):
+    pass
+
+
+class FeedError(Exception):
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
 
 
 def iso(dt: datetime) -> str:
@@ -209,39 +242,62 @@ def near_identical(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(a & b) / len(a | b) >= NEAR_DUPLICATE
 
 
-DEFAULT_SOURCES = [
-    {"name": "BBC Persian", "url": "https://feeds.bbci.co.uk/persian/rss.xml", "lang": "fa"},
-    {"name": "DW Persian", "url": "https://rss.dw.com/xml/rss-per-all", "lang": "fa"},
-    {"name": "Iran International", "url": "https://www.iranintl.com/feed", "lang": "fa"},
-    {"name": "Radio Farda", "url": "https://www.radiofarda.com/api/epiqq", "lang": "fa"},
-    {"name": "Independent Persian", "url": "https://www.independentpersian.com/rss.xml", "lang": "fa"},
-    {"name": "IRNA", "url": "https://www.irna.ir/rss", "lang": "fa"},
-    {"name": "ISNA", "url": "https://www.isna.ir/rss", "lang": "fa"},
-    {"name": "Donya-e-Eqtesad", "url": "https://donya-e-eqtesad.com/feeds/", "lang": "fa"},
-    {"name": "Eghtesad Online", "url": "https://www.eghtesadonline.com/rss", "lang": "fa"},
-    {"name": "Tejarat News", "url": "https://www.tejaratnews.com/rss", "lang": "fa"},
-    {"name": "BBC Middle East", "url": "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml", "lang": "en"},
-    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lang": "en"},
-]
-
-
-def load_sources(env) -> list[dict]:
+def parse_sources(env) -> tuple[list[dict], int]:
     configured = env.get("GHEYMAT_AI_SOURCES")
     if not configured or not configured.strip():
-        return list(DEFAULT_SOURCES)
+        return [], 0
     try:
         raw = json.loads(configured)
     except ValueError:
-        return []
-    sources = []
-    for entry in raw if isinstance(raw, list) else []:
+        return [], 0
+    if not isinstance(raw, list):
+        return [], 0
+    sources, seen, rejected = [], set(), 0
+    for entry in raw:
         if not isinstance(entry, dict):
+            rejected += 1
             continue
         name, url, lang = entry.get("name"), entry.get("url"), entry.get("lang")
-        if (isinstance(name, str) and 0 < len(name) <= 40 and isinstance(url, str) and url.startswith("https://")
-                and lang in (None, "fa", "en")):
-            sources.append({"name": name, "url": url, "lang": lang})
-    return sources[:MAX_SOURCES]
+        canonical = canonical_url(url)
+        if not (isinstance(name, str) and 0 < len(name) <= 40 and isinstance(url, str)
+                and lang in (None, "fa", "en") and canonical and canonical.startswith("https:")):
+            rejected += 1
+            continue
+        if entry.get("enabled") is False:
+            continue
+        if canonical in seen or len(sources) >= MAX_SOURCES:
+            rejected += 1
+            continue
+        seen.add(canonical)
+        limit, only = entry.get("max_items"), entry.get("keywords_only")
+        sources.append({
+            "name": name, "url": url, "lang": lang,
+            "category": entry["category"] if entry.get("category") in CATEGORIES else "general",
+            "max_items": limit if isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 50
+            else DEFAULT_MAX_ITEMS,
+            "keywords_only": only if isinstance(only, bool) else False,
+        })
+    return sources, rejected
+
+
+def load_sources(env) -> list[dict]:
+    return parse_sources(env)[0]
+
+
+def lexicon_topics(text: str) -> tuple[list[str], int]:
+    flat = SPACE.sub(" ", (text or "").translate(DIGITS).translate(PERSIAN_FIX).lower())
+    topics, hits = [], 0
+    for topic in TOPICS:
+        found = sum(1 for pattern in LEXICON_RE[topic] if pattern.search(flat))
+        if found:
+            topics.append(topic)
+            hits += found
+    return topics, hits
+
+
+def score_of(hits: int, category: str, published: datetime, now: datetime) -> float:
+    age = max(0.0, (now - published).total_seconds()) / WINDOW.total_seconds()
+    return min(hits, MAX_HITS) + CATEGORY_PRIOR.get(category, 0.0) + max(0.0, 1.0 - age)
 
 
 def text_of(node, *names: str) -> str:
@@ -254,7 +310,7 @@ def text_of(node, *names: str) -> str:
 
 def parse_feed(data: bytes) -> list[dict]:
     if b"\x00" in data or UNSAFE_DOCTYPE.search(data):
-        raise ValueError("unsafe")
+        raise FeedError("unsafe")
     root = ET.fromstring(data)
     out = []
     for node in list(root.iter("item")) + list(root.iter(ATOM + "entry")):
@@ -279,8 +335,10 @@ def read_feed(resp, clock) -> bytes:
     try:
         for chunk in resp.iter_content(chunk_size=65536):
             size += len(chunk)
-            if size > FEED_MAX_BYTES or clock() > deadline:
-                raise ValueError("feed")
+            if size > FEED_MAX_BYTES:
+                raise FeedError("size")
+            if clock() > deadline:
+                raise FeedError("timeout")
             chunks.append(chunk)
     finally:
         close = getattr(resp, "close", None)
@@ -293,7 +351,7 @@ def fetch_source(http, source: dict, now: datetime, clock=time.monotonic) -> lis
     resp = http.get(source["url"], headers={"User-Agent": USER_AGENT}, timeout=(5, 10), stream=True)
     if resp.status_code != 200:
         resp.close() if hasattr(resp, "close") else None
-        raise ValueError("feed")
+        raise FeedError("status")
     items = []
     for raw in parse_feed(read_feed(resp, clock)):
         title, published = raw["title"], raw["published"]
@@ -309,19 +367,85 @@ def fetch_source(http, source: dict, now: datetime, clock=time.monotonic) -> lis
     return items
 
 
-def fetch_bounded(make_http, source: dict, now: datetime, clock) -> list[dict] | None:
+def outcome_of(exc: Exception) -> str:
+    if isinstance(exc, FeedError):
+        return exc.kind
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, requests.RequestException):
+        return "status"
+    return "parse"
+
+
+def fetch_all(make_http, sources: list[dict], now: datetime, clock) -> list[tuple[list[dict] | None, str]]:
+    total = len(sources)
+    slots: list = [None] * total
+    outcomes: list = [None] * total
+    todo: queue.Queue = queue.Queue()
+    for index in range(total):
+        todo.put(index)
+    lock = threading.Lock()
+    closed = []
+
+    def work():
+        try:
+            session = make_http()
+        except Exception:
+            session = None
+        try:
+            while not closed:
+                try:
+                    index = todo.get_nowait()
+                except queue.Empty:
+                    return
+                try:
+                    if session is None:
+                        raise FeedError("status")
+                    got = fetch_source(session, sources[index], now, clock)
+                    outcome = None
+                except Exception as exc:
+                    got, outcome = None, outcome_of(exc)
+                with lock:
+                    if not closed:
+                        slots[index], outcomes[index] = got, outcome
+        finally:
+            close = getattr(session, "close", None)
+            if close:
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    threads = [threading.Thread(target=work, daemon=True) for _ in range(min(FETCH_THREADS, total))]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + FETCH_SECONDS
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        closed.append(True)
+        done = list(slots), list(outcomes)
+    return [(done[0][i], "ok" if done[0][i] is not None else (done[1][i] or "timeout")) for i in range(total)]
+
+
+def call_bounded(fn, seconds: float):
     box = []
 
     def work():
         try:
-            box.append(fetch_source(make_http(), source, now, clock))
-        except Exception:
-            pass
+            box.append((True, fn()))
+        except Exception as exc:
+            box.append((False, exc))
 
     worker = threading.Thread(target=work, daemon=True)
     worker.start()
-    worker.join(FEED_HARD_SECONDS)
-    return box[0] if box else None
+    worker.join(max(0.0, seconds))
+    if not box:
+        raise ModelTimeout("model")
+    ok, value = box[0]
+    if not ok:
+        raise value
+    return value
 
 
 def valid_summary(text, script, source_quantities: set[str]) -> str | None:
@@ -355,8 +479,10 @@ def parse_output(payload, item: dict) -> dict | None:
     fa = valid_summary(obj.get("fa"), "fa", allowed)
     if en is None or fa is None:
         return None
-    effect = obj.get("effect") if obj.get("confidence") == "high" and TAGS_ENABLED else None
-    return {"en": en, "fa": fa, "effect": effect if effect in EFFECTS else None}
+    seen = obj.get("effect") if obj.get("confidence") == "high" else None
+    shadow = seen if seen in EFFECTS else None
+    effect = shadow if TAGS_ENABLED else None
+    return {"en": en, "fa": fa, "effect": effect, "shadowEffect": shadow}
 
 
 def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
@@ -401,7 +527,8 @@ def previous_items(doc, now: datetime) -> list[dict]:
         except (KeyError, TypeError):
             continue
         if ok:
-            items.append({**raw, "canonical": canonical, "published": published, "tokens": headline_tokens(raw["title"])})
+            items.append({**raw, "canonical": canonical, "published": published, "tokens": headline_tokens(raw["title"]),
+                          "topics": lexicon_topics(raw["title"])[0], "shadowEffect": "unknown"})
     return items
 
 
@@ -431,14 +558,37 @@ def last_check(previous) -> datetime | None:
     return max((s for s in stamps if s), default=None)
 
 
-def archive_news(root, now: datetime, rendered: list[dict], log=print) -> None:
+def config_version(sources: list[dict]) -> str:
+    prompt = hashlib.sha256(SYSTEM.encode("utf-8")).hexdigest()
+    parts = [MODEL, prompt, str(RANKING_VERSION), str(MAX_NEW_PER_RUN), str(len(sources))]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def archive_news(root, now: datetime, items: list[dict], log=print, version: str = "") -> None:
     if not root:
         return
     try:
         import news_archive
-        news_archive.record_day(root, now, rendered)
+        rows = [{**render(i), "shadowEffect": i.get("shadowEffect") if i.get("shadowEffect") in ("usd_up", "usd_down", "unknown") else None,
+                 "topics": list(i.get("topics") or [])} for i in items]
+        news_archive.record_day(root, now, rows, config_version=version)
     except Exception as exc:
         log(f"::warning::news: archive skipped ({type(exc).__name__})")
+
+
+def choose(fresh: list[dict], kept: list[dict]) -> list[dict]:
+    ranked = sorted(fresh, key=lambda c: (-c["score"], -c["published"].timestamp(), c["id"]))
+    held = [(i["published"], i["id"]) for i in kept]
+    chosen: list[tuple] = []
+    picked = []
+    for cand in ranked:
+        if len(picked) >= MAX_NEW_PER_RUN:
+            break
+        trial = chosen + [(cand["published"], cand["id"])]
+        if all(sum(1 for o in held if o > k) + sum(1 for o in trial if o > k) < MAX_ITEMS for k in trial):
+            chosen = trial
+            picked.append(cand)
+    return picked
 
 
 def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=None,
@@ -448,23 +598,39 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     env = env if env is not None else os.environ
     previous = load_doc(LOGICAL)
     kept = previous_items(previous, now)
-    key, sources = env.get("ANTHROPIC_API_KEY"), load_sources(env)
+    key = env.get("ANTHROPIC_API_KEY")
+    sources, rejected = parse_sources(env)
+    if refresh:
+        if (env.get("GHEYMAT_AI_SOURCES") or "").strip():
+            log(f"news: sources {len(sources)} usable ({rejected} rejected)")
+        if not sources:
+            log("::warning::news: no usable sources configured")
     checked = last_check(previous)
     if not refresh or not key or not sources or (checked and now - checked < MIN_INTERVAL):
         return reseal(write_doc, previous, now)
     make_http = (lambda: http) if http is not None else requests.Session
     http = http or requests.Session()
     started = clock()
-    candidates, reached = [], 0
-    for source in sources:
-        if clock() - started > budget_seconds:
-            break
-        got = fetch_bounded(make_http, source, now, clock)
+    fetched = fetch_all(make_http, sources, now, clock)
+    candidates, reached, scoring_cut = [], 0, False
+    for number, (source, (got, outcome)) in enumerate(zip(sources, fetched), 1):
         if got is None:
+            log(f"news: source #{number:02d} {outcome}")
             continue
-        candidates.extend(got)
         reached += 1
+        rows = []
+        for cand in got:
+            if clock() - started > budget_seconds:
+                scoring_cut = True
+                break
+            topics, hits = lexicon_topics(cand["title"] + " " + cand["desc"])
+            if source["keywords_only"] and not hits:
+                continue
+            rows.append({**cand, "topics": topics, "score": score_of(hits, source["category"], cand["published"], now)})
+        rows.sort(key=lambda c: (c["published"], c["id"]), reverse=True)
+        candidates.extend(rows[:source["max_items"]])
     if not reached:
+        log(f"news: fetched 0/{len(sources)} ok, items 0, summarised 0, published 0")
         return reseal(write_doc, previous, now)
     seen = {i["id"] for i in kept}
     titles = [i["tokens"] for i in kept]
@@ -477,17 +643,22 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
         fresh.append(cand)
     stats = {"new": 0, "dropped": 0, "in": 0, "out": 0}
     api_errors = 0
-    incomplete = False
-    oldest = min((i["published"] for i in kept), default=None)
-    pool = sorted((c for c in fresh if len(kept) < MAX_ITEMS or c["published"] > oldest),
-                  key=lambda c: c["published"], reverse=True)[:MAX_NEW_PER_RUN]
+    incomplete = scoring_cut
+    pool = choose(fresh, kept)
+    model_deadline = clock() + MODEL_SECONDS
     try:
         for cand in pool:
-            if clock() - started > budget_seconds:
+            moment = clock()
+            if moment - started > budget_seconds or moment >= model_deadline:
                 incomplete = True
                 break
             try:
-                result, used_in, used_out = summarize(http, key, cand)
+                result, used_in, used_out = call_bounded(lambda: summarize(http, key, cand),
+                                                         min(model_deadline - moment, MODEL_CALL_SECONDS))
+            except ModelTimeout:
+                incomplete = True
+                log("::warning::news: model call timed out")
+                break
             except ApiError:
                 incomplete = True
                 stats["dropped"] += 1
@@ -511,7 +682,12 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     if generated is None:
         return None
     items = sorted(kept, key=lambda i: (i["published"], i["id"]), reverse=True)[:MAX_ITEMS]
+    published_ids = {i["id"] for i in items}
+    stats["dropped"] += sum(1 for i in kept if i.get("shadowEffect") != "unknown" and i["id"] not in published_ids)
     rendered = [render(i) for i in items]
     write_doc(LOGICAL, {"generatedAt": iso(generated), "checkedAt": iso(now), "items": rendered})
-    archive_news(archive_root if archive_root is not None else env.get("GHEYMAT_ARCHIVE_ROOT"), now, rendered, log)
+    log(f"news: fetched {reached}/{len(sources)} ok, items {len(fresh)}, summarised {stats['new']}, published {len(items)}")
+    log(f"news: dropped {stats['dropped']}")
+    archive_news(archive_root if archive_root is not None else env.get("GHEYMAT_ARCHIVE_ROOT"), now, items, log,
+                 config_version(sources))
     return {"ids": [i["id"] for i in items], "skipped": False, "complete": complete, **stats}

@@ -111,3 +111,13 @@ def test_run_step_passes_refresh_news_through(monkeypatch):
     ai.run_step(daily_from({}), store.write, store.load, NOW, log=lambda *_: None, env={}, refresh_news=False)
     ai.run_step(daily_from({}), store.write, store.load, NOW, log=lambda *_: None, env={})
     assert seen == [False, True]
+
+
+def test_a_failing_step_logs_only_the_exception_type():
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("request to https://example.invalid/secret-path failed")
+
+    logs = []
+    assert ai.run_step(daily_from({"usd": tf.walk(seed=7)}), boom, lambda _: None, NOW, log=logs.append, env={}) is None
+    assert any("step failed" in line for line in logs)
+    assert not any("http" in line or "secret-path" in line for line in logs)

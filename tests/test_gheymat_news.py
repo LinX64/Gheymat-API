@@ -1,9 +1,12 @@
 import hashlib
 import json
 import pathlib
+import random
 import re
 import sys
+import threading
 import time
+import types
 from xml.sax.saxutils import escape
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -22,6 +25,8 @@ FEED2 = "https://b.example/rss"
 ENV = {"ANTHROPIC_API_KEY": "test-key", "GHEYMAT_AI_SOURCES": json.dumps([{"name": "Source A", "url": FEED, "lang": "en"}])}
 ENV2 = {"ANTHROPIC_API_KEY": "test-key", "GHEYMAT_AI_SOURCES": json.dumps(
     [{"name": "Source A", "url": FEED, "lang": "en"}, {"name": "Source B", "url": FEED2, "lang": "en"}])}
+ENV_BIG = {"ANTHROPIC_API_KEY": "test-key", "GHEYMAT_AI_SOURCES": json.dumps(
+    [{"name": "Source A", "url": FEED, "lang": "en", "max_items": 50}])}
 EN, FA = "Oil prices rose", "قیمت نفت افزایش یافت"
 ITEM_KEYS = {"id", "url", "source", "publishedAt", "title", "lang", "en", "fa", "effect", "tagger"}
 
@@ -238,11 +243,11 @@ def test_published_items_are_never_summarized_again_and_beat_new_duplicates():
 
 def test_window_cap_order_and_backlog_across_runs():
     entries = [entry(f"Story {i} headline words", f"s{i}", minutes_ago=5 + i * 10) for i in range(45)]
-    store, http, _, first = run(entries)
+    store, http, _, first = run(entries, env=ENV_BIG)
     assert len(http.posts) == news.MAX_NEW_PER_RUN == len(items(store))
-    store, http, _, _ = run(entries, store=store, now=NOW + timedelta(minutes=31))
+    store, http, _, _ = run(entries, store=store, now=NOW + timedelta(minutes=31), env=ENV_BIG)
     assert len(http.posts) == 20 and len(items(store)) == 40
-    store, http, _, _ = run(entries, store=store, now=NOW + timedelta(minutes=62))
+    store, http, _, _ = run(entries, store=store, now=NOW + timedelta(minutes=62), env=ENV_BIG)
     assert http.posts == [] and len(items(store)) == 40
     published = [i["publishedAt"] for i in items(store)]
     assert published == sorted(published, reverse=True)
@@ -292,18 +297,6 @@ def test_atom_feeds_parse_with_published_dates():
             f"<summary>text</summary></entry></feed>").encode()
     store, _, _, _ = run(feeds={FEED: Resp(200, atom)})
     assert [(i["title"], i["publishedAt"]) for i in items(store)] == [("Atom story headline", "2026-11-09T10:00:00Z")]
-
-
-def test_sources_default_to_the_built_in_list_and_the_environment_overrides_and_is_validated():
-    assert news.load_sources({}) == news.DEFAULT_SOURCES and len(news.DEFAULT_SOURCES) <= news.MAX_SOURCES
-    assert all(s["url"].startswith("https://") and s["lang"] in ("fa", "en") for s in news.DEFAULT_SOURCES)
-    assert news.load_sources({"GHEYMAT_AI_SOURCES": "not json"}) == []
-    good = {"name": "N", "url": "https://x.example/rss", "lang": "fa"}
-    bad = [{"name": "N", "url": "http://x.example/rss"}, {"name": "", "url": "https://x.example"}, {"name": "N", "url": "https://x.example", "lang": "de"},
-           {"name": "x" * 41, "url": "https://x.example"}, "str", 5]
-    assert news.load_sources({"GHEYMAT_AI_SOURCES": json.dumps(bad + [good])}) == [good]
-    many = [{"name": f"N{i}", "url": f"https://x.example/{i}"} for i in range(30)]
-    assert len(news.load_sources({"GHEYMAT_AI_SOURCES": json.dumps(many)})) == news.MAX_SOURCES
 
 
 def test_canonical_url_and_dates():
@@ -494,7 +487,7 @@ def test_utf16_and_nul_byte_feeds_are_rejected_before_parsing():
 
 
 def test_tracking_parameters_of_common_feeds_are_not_part_of_the_identity():
-    assert news.canonical_url("https://bbc.example/a?at_medium=RSS&at_campaign=rss&keep=1") == "https://bbc.example/a?keep=1"
+    assert news.canonical_url("https://feed-a.example/a?at_medium=RSS&at_campaign=rss&keep=1") == "https://feed-a.example/a?keep=1"
     assert news.canonical_url("https://x.example/p?id=&b=2") == "https://x.example/p?b=2&id="
 
 
@@ -522,7 +515,7 @@ def test_a_valid_feed_delivered_too_slowly_is_rejected_by_the_deadline():
 
 
 def test_a_feed_that_never_answers_is_cut_off_by_the_hard_limit(monkeypatch):
-    monkeypatch.setattr(news, "FEED_HARD_SECONDS", 0.2)
+    monkeypatch.setattr(news, "FETCH_SECONDS", 0.2)
 
     class Hang(FakeHttp):
         def get(self, url, **kwargs):
@@ -615,3 +608,265 @@ def test_refresh_false_never_touches_the_network_and_reseals():
     http = FakeHttp({FEED: rss([entry("Beta story headline", "2")])}, None, None, None, None)
     result = news.publish(store.write, store.load, NOW + timedelta(hours=2), env=ENV, http=http, refresh=False)
     assert http.gets == [] and http.posts == [] and result["skipped"] and store.writes == [news.LOGICAL]
+
+
+def secret(entries):
+    return {"GHEYMAT_AI_SOURCES": json.dumps(entries)}
+
+
+def test_load_sources_matrix():
+    assert not hasattr(news, "DEFAULT_SOURCES")
+    for env in ({}, {"GHEYMAT_AI_SOURCES": ""}, {"GHEYMAT_AI_SOURCES": "  "}, {"GHEYMAT_AI_SOURCES": "not json"},
+                {"GHEYMAT_AI_SOURCES": "{}"}, {"GHEYMAT_AI_SOURCES": '"x"'}):
+        assert news.load_sources(env) == []
+    defaults = {"category": "general", "max_items": 15, "keywords_only": False}
+    good = {"name": "N", "url": "https://x.example/rss", "lang": "fa"}
+    bad = [{"name": "N", "url": "http://x.example/rss"}, {"name": "", "url": "https://x.example"}, {"name": "N", "url": "https://x.example", "lang": "de"},
+           {"name": "x" * 41, "url": "https://x.example"}, "str", 5]
+    assert news.load_sources(secret(bad + [good])) == [{**good, **defaults}]
+    parsed = news.load_sources(secret([
+        {"name": "A", "url": "https://x.example/a", "category": "fx", "max_items": 5, "keywords_only": True},
+        {"name": "B", "url": "https://x.example/b", "category": "zzz", "max_items": 99, "keywords_only": "yes", "enabled": "no"},
+        {"name": "C", "url": "https://x.example/c", "max_items": True, "enabled": False},
+        {"name": "D", "url": "https://X.example/a/"},
+    ]))
+    assert parsed == [
+        {"name": "A", "url": "https://x.example/a", "lang": None, "category": "fx", "max_items": 5, "keywords_only": True},
+        {"name": "B", "url": "https://x.example/b", "lang": None, **defaults}]
+    many = [{"name": f"N{i}", "url": f"https://x.example/{i}"} for i in range(31)]
+    assert len(news.load_sources(secret(many))) == news.MAX_SOURCES == 30
+
+
+def test_config_line_and_zero_source_warning_never_show_names_or_urls():
+    env = {"ANTHROPIC_API_KEY": "k", **secret([{"name": "Secret Outlet", "url": "https://secret.example/feed"},
+                                               {"name": "", "url": "https://x.example"}])}
+    _, _, logs, _ = run([entry("Alpha story headline", "1")], env=env, feeds={"https://secret.example/feed": rss([])})
+    assert "news: sources 1 usable (1 rejected)" in logs
+    assert not any(w in line.lower() for line in logs for w in ("secret", "http", "example"))
+    for blank in ({"ANTHROPIC_API_KEY": "k"}, {"ANTHROPIC_API_KEY": "k", "GHEYMAT_AI_SOURCES": "[]"}):
+        _, _, logs, _ = run(env=blank)
+        assert "::warning::news: no usable sources configured" in logs
+    _, _, logs, _ = run(env={"ANTHROPIC_API_KEY": "k"})
+    assert not any(line.startswith("news: sources") for line in logs)
+
+
+class Gate(FakeHttp):
+    def __init__(self, feeds, blocked=(), delays=None):
+        super().__init__(feeds)
+        self.blocked, self.delays, self.release = set(blocked), delays or {}, threading.Event()
+
+    def get(self, url, **kwargs):
+        if url in self.blocked:
+            self.release.wait(30)
+        time.sleep(self.delays.get(url, 0))
+        return super().get(url, **kwargs)
+
+
+def numbered_sources(count):
+    return [{"name": f"Source {i}", "url": f"https://s{i}.example/rss", "lang": "en"} for i in range(count)]
+
+
+def test_parallel_fetch_survives_blocked_sources_within_the_shared_deadline(monkeypatch):
+    monkeypatch.setattr(news, "FETCH_SECONDS", 0.6)
+    sources = numbered_sources(12)
+    feeds = {s["url"]: rss([entry(f"Headline number {i} appears here", f"p{i}", minutes_ago=10 + i, host=f"s{i}.example")])
+             for i, s in enumerate(sources)}
+    http = Gate(feeds, blocked={sources[3]["url"], sources[7]["url"]})
+    store, logs, started = Store(), [], time.monotonic()
+    try:
+        result = news.publish(store.write, store.load, NOW, env={"ANTHROPIC_API_KEY": "k", **secret(sources)}, http=http, log=logs.append)
+    finally:
+        http.release.set()
+    assert time.monotonic() - started < 3
+    assert result["new"] == 10 and len(items(store)) == 10
+    assert "news: fetched 10/12 ok, items 10, summarised 10, published 10" in logs
+    assert "news: source #04 timeout" in logs and "news: source #08 timeout" in logs
+
+
+def test_candidates_are_merged_in_source_order_whatever_the_completion_order():
+    sources = numbered_sources(8)
+    for seed in range(3):
+        rng = random.Random(seed)
+        feeds = {s["url"]: rss([entry(f"Headline number {i} appears here", f"p{i}", host=f"s{i}.example")]) for i, s in enumerate(sources)}
+        http = Gate(feeds, delays={s["url"]: rng.random() * 0.2 for s in sources})
+        got = news.fetch_all(lambda: http, sources, NOW, time.monotonic)
+        assert [g[0][0]["source"] for g in got] == [s["name"] for s in sources]
+        assert {g[1] for g in got} == {"ok"}
+
+
+def test_fetch_failures_are_reported_with_a_closed_outcome_set():
+    sources = numbered_sources(5)
+    big = Resp(200, rss([entry("Alpha story headline", "1")]).content + b"<!--" + b"x" * news.FEED_MAX_BYTES + b"-->")
+    feeds = {sources[0]["url"]: Resp(500), sources[1]["url"]: requests.Timeout("slow https://example.invalid/x"), sources[2]["url"]: big,
+             sources[3]["url"]: Resp(200, b"<rss><nope>"), sources[4]["url"]: Resp(200, b"<!DOCTYPE x><rss/>")}
+    got = news.fetch_all(lambda: FakeHttp(feeds), sources, NOW, time.monotonic)
+    assert [g[1] for g in got] == ["status", "timeout", "size", "parse", "unsafe"]
+
+
+def test_a_hung_model_call_ends_the_phase_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(news, "MODEL_SECONDS", 0.3)
+    release = threading.Event()
+
+    class Hang(FakeHttp):
+        def post(self, url, **kwargs):
+            self.posts.append(1)
+            release.wait(30)
+            return reply()
+
+    store = previous_store([prev_item(1, 3)], checked="2026-11-09T01:00:00Z")
+    http = Hang({FEED: rss([entry("Alpha story headline", "1", minutes_ago=5), entry("Beta story headline", "2", minutes_ago=9)])})
+    logs, started = [], time.monotonic()
+    try:
+        result = news.publish(store.write, store.load, NOW, env=ENV, http=http, clock=lambda: 0.0, log=logs.append)
+    finally:
+        release.set()
+    assert time.monotonic() - started < 2 and len(http.posts) == 1
+    assert result["complete"] is False and result["new"] == 0 and "::warning::news: model call timed out" in logs
+
+
+MARKET = [f"Gold and dollar rates move in Tehran bazaar part {i}" for i in range(10)]
+
+
+def ranked_entries():
+    return ([entry(f"General update number {i} headline", f"g{i}", minutes_ago=5 + i) for i in range(30)]
+            + [entry(title, f"m{i}", minutes_ago=600 + i) for i, title in enumerate(MARKET)])
+
+
+def test_ranking_prefers_market_items_and_is_deterministic():
+    _, http, _, _ = run(ranked_entries(), env=ENV_BIG)
+    sent = [p["json"]["messages"][0]["content"] for p in http.posts]
+    assert len(sent) == 20 and all(any(title in text for text in sent) for title in MARKET)
+    _, again, _, _ = run(list(reversed(ranked_entries())), env=ENV_BIG)
+    assert [p["json"]["messages"][0]["content"] for p in again.posts] == sent
+
+
+def test_lexicon_topics_cover_both_scripts_and_persian_digits():
+    assert news.lexicon_topics("Central bank cuts the interest rate")[0] == ["fx"]
+    assert news.lexicon_topics("قیمت طلا و سکه و دلار")[0] == ["fx", "gold"]
+    assert news.lexicon_topics("نفت و تحریم‌ها و مذاکرات")[0] == ["oil", "sanctions", "politics"]
+    assert news.lexicon_topics("انسان و طبیعت")[0] == [] and news.lexicon_topics("Foreign currencies fall")[0] == ["fx"]
+    assert news.lexicon_topics("تحریم تحریمی")[1] == 1
+    assert news.lexicon_topics("طلاق در سال ۱۴۰۵")[0] == [] and news.lexicon_topics("Boiling water")[0] == []
+
+
+def test_keywords_only_sources_contribute_only_market_items():
+    env = {"ANTHROPIC_API_KEY": "k", **secret([{"name": "Source A", "url": FEED, "lang": "en", "keywords_only": True}])}
+    store, http, _, _ = run([entry("Weather is sunny and pleasant today", "1"), entry("Gold rises in the bazaar today", "2", minutes_ago=90)], env=env)
+    assert [i["title"] for i in items(store)] == ["Gold rises in the bazaar today"] and len(http.posts) == 1
+
+
+def test_max_items_limits_each_source_to_its_newest_stories():
+    env = {"ANTHROPIC_API_KEY": "k", **secret([{"name": "Source A", "url": FEED, "lang": "en", "max_items": 2}])}
+    store, _, _, _ = run([entry(f"Story {i} headline words", f"s{i}", minutes_ago=5 + i) for i in range(6)], env=env)
+    assert [i["title"] for i in items(store)] == ["Story 0 headline words", "Story 1 headline words"]
+
+
+def test_every_summarised_item_is_published_or_counted_as_dropped():
+    kept = [prev_item(i, 1 + i * 0.9) for i in range(40)]
+    store = previous_store(kept, checked="2026-11-09T01:00:00Z")
+    entries = [entry(f"Candidate story number {i} words", f"c{i}", minutes_ago=30 + i * 61) for i in range(25)]
+    store, http, _, result = run(entries, store=store, env=ENV_BIG)
+    shown = [i for i in items(store) if i["title"].startswith("Candidate")]
+    assert len(items(store)) == 40 and len(http.posts) == len(shown) + result["dropped"]
+    assert result["dropped"] == 0 and len(http.posts) > 0
+
+
+class FakeArchive:
+    def __init__(self):
+        self.calls = []
+
+    def record_day(self, root, now, rows, config_version=None):
+        self.calls.append({"root": root, "rows": json.loads(json.dumps(rows)), "config_version": config_version})
+
+
+@pytest.fixture
+def archive(monkeypatch):
+    fake = FakeArchive()
+    module = types.ModuleType("news_archive")
+    module.record_day = fake.record_day
+    monkeypatch.setitem(sys.modules, "news_archive", module)
+    return fake
+
+
+def test_shadow_direction_goes_to_the_archive_but_never_to_the_published_document(archive):
+    env = {**ENV, "GHEYMAT_ARCHIVE_ROOT": "x"}
+    entries = [entry("Oil prices rise sharply", "1")]
+    store, _, _, _ = run(entries, env=env)
+    (item,) = items(store)
+    assert item["effect"] is None and item["tagger"] is None and set(item) == ITEM_KEYS
+    (call,) = archive.calls
+    (row,) = call["rows"]
+    assert row["shadowEffect"] == "usd_up" and row["topics"] == ["oil"] and ITEM_KEYS <= set(row)
+    assert {k: row[k] for k in ITEM_KEYS} == item
+    other, _, _, _ = run(entries, env=env, replies=[reply(effect="unclear")])
+    assert archive.calls[1]["rows"][0]["shadowEffect"] is None
+    assert json.dumps(store.docs[news.LOGICAL], sort_keys=True) == json.dumps(other.docs[news.LOGICAL], sort_keys=True)
+    third = [entry("Gold rises sharply today", "2", minutes_ago=5)]
+    run(third, store=store, env=env, now=NOW + timedelta(minutes=31), replies=[reply(effect="usd_down")])
+    rows = {r["title"]: r for r in archive.calls[2]["rows"]}
+    assert rows["Oil prices rise sharply"]["shadowEffect"] == "unknown"
+    assert rows["Gold rises sharply today"]["shadowEffect"] == "usd_down"
+
+
+def test_the_archive_receives_a_stable_config_version_of_twelve_hex(archive):
+    env = {**ENV, "GHEYMAT_ARCHIVE_ROOT": "x"}
+    run([entry("Oil prices rise sharply", "1")], env=env)
+    run([entry("Oil prices rise sharply", "1")], env=env)
+    versions = [c["config_version"] for c in archive.calls]
+    assert re.fullmatch(r"[0-9a-f]{12}", versions[0]) and versions[0] == versions[1]
+    assert news.config_version(news.load_sources(ENV)) != news.config_version(news.load_sources(ENV2))
+    assert news.config_version(numbered_sources(2)) == news.config_version(numbered_sources(2))
+
+
+def test_the_module_names_no_feed_and_has_only_the_model_url():
+    text = (TOOLS / "gheymat_news.py").read_text(encoding="utf-8")
+    assert re.findall(r"https://[^\s\"']+", text) == [news.API_URL]
+    hosts = set(re.findall(r"\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ir|org|net|uk|de|tv|info)\b", text.lower()))
+    assert hosts <= {"api.anthropic.com", "www.w3.org", "purl.org"}
+
+
+def test_exception_text_with_a_url_never_reaches_logs_or_output(capsys):
+    boom = requests.ConnectionError("failed https://example.invalid/x")
+    _, _, logs, _ = run(feeds={FEED: boom})
+    entries = [entry(f"Headline number {i} here", str(i), minutes_ago=10 + i) for i in range(5)]
+    _, _, more, _ = run(entries, replies=[boom, boom, boom, boom], env={**ENV, "GHEYMAT_ARCHIVE_ROOT": "x"})
+    seen = capsys.readouterr()
+    text = "\n".join(logs + more) + seen.out + seen.err
+    assert "http" not in text.lower() and "example" not in text.lower()
+    assert any(line.startswith("news: source #01") for line in logs) and any("::warning::" in line for line in more)
+
+
+def test_deferred_runs_print_no_source_counts_or_warning():
+    for env in (ENV, {"ANTHROPIC_API_KEY": "k"}):
+        logs = []
+        store = Store()
+        news.publish(store.write, store.load, NOW, env=env, http=FakeHttp(), log=logs.append, refresh=False)
+        assert logs == []
+
+
+def test_a_failed_session_is_a_status_failure_and_sessions_are_closed():
+    sources = numbered_sources(2)
+
+    def broken():
+        raise RuntimeError("no https://example.invalid/x")
+
+    assert [g[1] for g in news.fetch_all(broken, sources, NOW, time.monotonic)] == ["status", "status"]
+    closed = []
+
+    class Closing(FakeHttp):
+        def close(self):
+            closed.append(1)
+
+    feeds = {s["url"]: rss([]) for s in sources}
+    news.fetch_all(lambda: Closing(feeds), sources, NOW, time.monotonic)
+    assert len(closed) == 2
+
+
+def test_scoring_stops_once_the_overall_budget_is_spent(monkeypatch):
+    calls = []
+    real = news.lexicon_topics
+    monkeypatch.setattr(news, "lexicon_topics", lambda text: calls.append(1) or real(text))
+    t = [0.0]
+    run([entry("Alpha story headline", "1"), entry("Beta story headline", "2")], clock=lambda: t[0],
+        on_get=lambda: t.__setitem__(0, 100.0))
+    assert calls == []
