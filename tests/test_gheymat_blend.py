@@ -187,3 +187,43 @@ def test_vol_fit_widens_only_when_shocks_are_wilder():
     quiet = gb._fit_vol({"x": xs, "y": calm}, idx)
     assert quiet is None or quiet[1] < 1.15
     assert gb._fit_vol({"x": xs[:50], "y": wild[:50]}, list(range(50))) is None
+
+
+def marked_news(n, cfg="c1", start=date(2026, 1, 1)):
+    return [
+        {"date": (start + timedelta(days=i)).isoformat(), "cfg": cfg, "shadowUp": 5, "shadowDown": 1}
+        for i in range(n)
+    ]
+
+
+def test_unmarked_news_records_never_enable_signal():
+    news = [{"date": (date(2025, 1, 1) + timedelta(days=i)).isoformat(), "up": 5, "down": 1} for i in range(400)]
+    ctx = gb.Context({}, TODAY, news)
+    assert ctx.has("news") is False
+    assert ctx.feature("news", TODAY) is None
+
+
+def test_marked_news_below_threshold_does_not_enable_signal():
+    ctx = gb.Context({}, TODAY, marked_news(fc.MIN_BACKTEST_WEEKS))
+    assert ctx.has("news") is False
+
+
+def test_enough_marked_news_enables_signal():
+    ctx = gb.Context({}, TODAY, marked_news(fc.MIN_BACKTEST_WEEKS + 1))
+    assert ctx.has("news") is True
+
+
+def test_cfg_change_restarts_marked_count():
+    news = marked_news(fc.MIN_BACKTEST_WEEKS + 10, "c1")
+    later = date(2026, 1, 1) + timedelta(days=len(news))
+    news += marked_news(5, "c2", later)
+    assert gb.Context({}, TODAY, news).has("news") is False
+
+
+def test_news_feature_none_before_first_marked_day_plus_lookback():
+    news = marked_news(fc.MIN_BACKTEST_WEEKS + 5)
+    ctx = gb.Context({}, TODAY, news)
+    first = date.fromisoformat(ctx.news_first)
+    lookback = timedelta(days=gb.NEWS_LOOKBACK_DAYS)
+    assert ctx.feature("news", first + lookback - timedelta(days=1)) is None
+    assert ctx.feature("news", first + lookback + timedelta(days=3)) is not None

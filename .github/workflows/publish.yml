@@ -64,4 +64,5 @@ jobs:
           GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
           GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
           FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
+          GHEYMAT_SIGNAL_SHADOW: ${{ vars.GHEYMAT_SIGNAL_SHADOW }}
           GHEYMAT_LIVE_STATE: ${{ runner.temp }}/live-guard.json

@@ -121,3 +121,47 @@ def test_a_failing_step_logs_only_the_exception_type():
     assert ai.run_step(daily_from({"usd": tf.walk(seed=7)}), boom, lambda _: None, NOW, log=logs.append, env={}) is None
     assert any("step failed" in line for line in logs)
     assert not any("http" in line or "secret-path" in line for line in logs)
+
+
+class CsvHttp:
+    def __init__(self):
+        self.calls = 0
+
+    def get(self, url, timeout=None):
+        self.calls += 1
+        rows = "\n".join(f"2026-10-{d:02d},{70 + d}" for d in range(1, 29))
+        return type("R", (), {"status_code": 200, "text": "DATE,VALUE\n" + rows})()
+
+
+def run_shadow(env, http, monkeypatch=None):
+    store = Store()
+    logs = []
+    daily = daily_from({"usd": tf.walk(seed=7)})
+    summary = ai.run_step(daily, store.write, store.load, NOW, log=logs.append, env=env, signals_http=http)
+    return summary, store, logs
+
+
+def test_shadow_flag_unset_never_touches_signals_http():
+    http = CsvHttp()
+    _, _, logs = run_shadow({}, http)
+    assert http.calls == 0 and not any("signal shadow" in m for m in logs)
+
+
+def test_shadow_flag_logs_one_line_and_changes_no_document():
+    http = CsvHttp()
+    off_summary, off_store, _ = run_shadow({}, http)
+    on_summary, on_store, logs = run_shadow({"GHEYMAT_SIGNAL_SHADOW": "1"}, http)
+    assert http.calls > 0
+    assert len([m for m in logs if m.startswith("ai: signal shadow")]) == 1
+    assert on_summary == off_summary
+    assert on_store.writes == off_store.writes and on_store.docs == off_store.docs
+
+
+def test_shadow_failure_logs_skip_and_keeps_summary(monkeypatch):
+    def boom(*_a, **_k):
+        raise ValueError("secret detail")
+    monkeypatch.setattr(ai.signal_shadow, "score", boom)
+    _, _, logs = run_shadow({"GHEYMAT_SIGNAL_SHADOW": "1"}, CsvHttp())
+    assert "ai: signal shadow skipped: ValueError" in logs
+    assert not any("secret detail" in m for m in logs)
+    assert any(m.startswith("ai: 1 forecasts") for m in logs)
