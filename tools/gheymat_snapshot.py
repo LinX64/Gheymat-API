@@ -474,6 +474,25 @@ def rates_fingerprint(rates: list[dict]) -> str:
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:12]
 
 
+def _row_hash(r: dict) -> str:
+    return hashlib.sha256(json.dumps([r.get("buy"), r.get("sell"), r.get("price")]).encode()).hexdigest()[:12]
+
+
+def changed_rows_line(previous, rates: list[dict], instruments: list[dict]) -> str:
+    """Log text: rows whose [buy, sell, price] differ from the previous latest, by kind."""
+    prev = previous.get("rates") if isinstance(previous, dict) else None
+    if not isinstance(prev, list) or not prev:
+        return "Changed rows: n/a (first run)"
+    before = {r.get("code"): _row_hash(r) for r in prev if isinstance(r, dict)}
+    kinds = {i["code"]: i["kind"] for i in instruments}
+    counts = {k: 0 for k in dict.fromkeys(kinds.values())}
+    for r in rates:
+        if before.get(r["code"]) != _row_hash(r):
+            k = kinds.get(r["code"], "other")
+            counts[k] = counts.get(k, 0) + 1
+    return "Changed rows: " + ", ".join(f"{k} {n}" for k, n in counts.items()) + f" (of {len(rates)})"
+
+
 def parse_converter_table(obj) -> dict | None:
     if not isinstance(obj, dict):
         return None
@@ -1040,6 +1059,10 @@ def _publish(args) -> int:
         print(f"converter: unexpected error computing cross-rates: {e}", file=sys.stderr)
         computed_rates = []
     snapshot["rates"] = merge_rates(snapshot["rates"], computed_rates, instruments)
+    try:
+        print(changed_rows_line(load_published(out, "v1/latest", SEALER), snapshot["rates"], instruments))
+    except Exception:
+        print("Changed rows: n/a")
     write(out / "v1" / "latest", snapshot)
     write(out / "v1" / "instruments", instruments)
     (out / "privacy.html").write_text(PRIVACY_HTML, encoding="utf-8")
