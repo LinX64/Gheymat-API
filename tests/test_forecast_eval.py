@@ -31,7 +31,8 @@ def make_daily(codes=("a", "b")):
 def test_evaluate_keys_and_ranges():
     for method in fc.METHODS:
         r = fe.evaluate(make_points(), method)
-        assert set(r) == {"method", "weeks", "coverage", "coverageRecent", "intervalScore", "mape", "naiveMape", "skill"}
+        assert set(r) >= {"method", "weeks", "coverage", "coverageRecent", "intervalScore", "mape", "naiveMape", "skill"}
+        assert {"recent_skill", "recent_weeks", "miss_below", "miss_above"} <= set(r)
         assert 0 <= r["coverage"] <= 1 and 0 <= r["coverageRecent"] <= 1
         assert r["weeks"] >= fc.MIN_BACKTEST_WEEKS
 
@@ -109,3 +110,46 @@ def test_main_json_and_missing_file(tmp_path, capsys):
     assert fe.main(["--daily", str(f)]) == 0
     assert fe.main(["--daily", str(tmp_path / "nope.json")]) == 2
     assert capsys.readouterr().err.strip() == "FileNotFoundError"
+
+
+def _wk(err, naive, actual=100.0, low=90.0, high=110.0):
+    return {"err": err, "naiveErr": naive, "actual": actual, "intervalScore": 0.0, "low": low, "high": high,
+            "inside": low <= actual <= high}
+
+
+def test_recent_skill_better_recently_worse_overall():
+    old = [_wk(0.10, 0.05)] * 100          # model worse than naive
+    new = [_wk(0.01, 0.05)] * 52           # model better recently
+    weeks = old + new
+    rs, n = fe.recent_skill(weeks)
+    assert n == 52 and math.isclose(rs, 0.8)
+    assert fe._metrics(weeks, "fhs")["skill"] < 0   # all-weeks skill is negative
+
+
+def test_recent_skill_worse_recently_better_overall():
+    weeks = [_wk(0.01, 0.05)] * 100 + [_wk(0.10, 0.05)] * 52
+    rs, n = fe.recent_skill(weeks)
+    assert n == 52 and math.isclose(rs, -1.0)
+    assert fe._metrics(weeks, "fhs")["skill"] > 0
+
+
+def test_recent_skill_none_when_short_or_zero_naive():
+    rs, n = fe.recent_skill([_wk(0.01, 0.05)] * 51)
+    assert rs is None and n == 51
+    rs, n = fe.recent_skill([_wk(0.01, 0.0)] * 60)
+    assert rs is None and n == 52
+
+
+def test_tail_misses_all_below_mixed_and_empty():
+    assert fe.tail_misses([]) == (None, None)
+    assert fe.tail_misses([_wk(0, 0, actual=80.0)] * 4) == (1.0, 0.0)
+    weeks = [_wk(0, 0, actual=80.0), _wk(0, 0, actual=120.0), _wk(0, 0, actual=130.0), _wk(0, 0)]
+    assert fe.tail_misses(weeks) == (0.25, 0.5)
+
+
+def test_tail_misses_sum_with_coverage():
+    weeks = [_wk(0, 0, actual=a) for a in (80, 95, 105, 120, 130, 100, 70)]
+    below, above = fe.tail_misses(weeks)
+    assert math.isclose(below + above, 1 - fc.coverage(weeks))
+    r = fe.evaluate(make_points(), "fhs")
+    assert math.isclose(r["miss_below"] + r["miss_above"], 1 - r["coverage"], abs_tol=1e-12)
