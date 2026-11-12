@@ -1,4 +1,3 @@
-"""Signal variants for the 7-day forecast, gated by the walk-forward backtest (Gheymat CONTRACT.md "AI feed", Signal gate)."""
 from __future__ import annotations
 
 import math

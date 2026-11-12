@@ -4,8 +4,8 @@ from datetime import date, datetime, timezone
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
-import gheymat_news as news  # noqa: E402
-import news_archive as na  # noqa: E402
+import gheymat_news as news
+import news_archive as na
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
 

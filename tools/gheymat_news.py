@@ -1,4 +1,3 @@
-"""Pro AI feed news step (Gheymat CONTRACT.md "AI feed"): RSS headlines plus one-line EN/FA summaries from Claude Haiku."""
 from __future__ import annotations
 
 import hashlib
@@ -34,7 +33,7 @@ FEED_MAX_BYTES = 2_000_000
 MAX_SOURCES = 12
 MAX_CONSECUTIVE_API_ERRORS = 3
 NEAR_DUPLICATE = 0.85
-TAGS_ENABLED = False  # AC-N3: effect chips stay off until the 100-headline eval passes
+TAGS_ENABLED = False
 EFFECTS = ("usd_up", "usd_down", "gold_up", "gold_down", "coins_up", "coins_down", "neutral")
 TRACKING = {"fbclid", "gclid", "ocid", "igshid", "ref", "ref_src", "mc_cid", "mc_eid"}
 TRACKING_PREFIXES = ("utm_", "at_")
@@ -58,7 +57,7 @@ NUMBER_WORDS.update({"صفر": "0", "یک": "1", "دو": "2", "سه": "3", "چه
                      "سی": "30", "چهل": "40", "پنجاه": "50", "شصت": "60", "هفتاد": "70", "هشتاد": "80", "نود": "90"})
 MAGNITUDES = {"hundred": "H", "thousand": "K", "million": "M", "billion": "B", "trillion": "T",
               "صد": "H", "هزار": "K", "میلیون": "M", "میلیارد": "B", "تریلیون": "T"}
-AMBIGUOUS = {"one", "یک"}  # also an article: counted only right before a magnitude word
+AMBIGUOUS = {"one", "یک"}
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
 
@@ -88,11 +87,11 @@ SCHEMA = {
 
 
 class ApiStop(Exception):
-    """The API refused the key or the rate, or keeps failing: no further call this run."""
+    pass
 
 
 class ApiError(Exception):
-    """One call failed (HTTP status, network, malformed body): skip that story."""
+    pass
 
 
 def iso(dt: datetime) -> str:
@@ -116,7 +115,6 @@ def parse_date(text) -> datetime | None:
 
 
 def clean(text: str | None, strict: bool = False) -> str | None:
-    """Plain one-line text. strict: None when angle brackets survive tag stripping (the headline could not be kept as published)."""
     text = html.unescape(TAG.sub(" ", text or ""))
     if "<" in text or ">" in text:
         if strict:
@@ -126,7 +124,6 @@ def clean(text: str | None, strict: bool = False) -> str | None:
 
 
 def quantities(text: str) -> set[str]:
-    """Numbers as canonical tokens; a number followed by a magnitude word is one token ("5M"), so 5, 5 million and 5 billion differ."""
     text = re.sub(r"(?<=[۰-۹])/(?=[۰-۹])", ".", text)
     flat = re.sub(r"(?<=[۰-۹٠-٩])٫(?=[۰-۹٠-٩])", ".", text).translate(DIGITS)
     flat = re.sub(r"(?<=\d)[٬,](?=\d{3}(?!\d))", "", flat)
@@ -178,7 +175,6 @@ def canonical_url(url: str | None) -> str | None:
 
 
 def publish_url(url: str | None) -> str | None:
-    """The link as the source published it, minus fragment; credentials or a malformed host reject it."""
     if not isinstance(url, str):
         return None
     try:
@@ -314,7 +310,6 @@ def fetch_source(http, source: dict, now: datetime, clock=time.monotonic) -> lis
 
 
 def fetch_bounded(make_http, source: dict, now: datetime, clock) -> list[dict] | None:
-    """fetch_source in a daemon thread: socket timeouts restart on every byte, so only a join bounds a drip-fed feed."""
     box = []
 
     def work():
@@ -418,7 +413,6 @@ def render(item: dict) -> dict:
 
 
 def reseal(write_doc, previous, now: datetime) -> dict | None:
-    """Publish the last good document again (fresh envelope, real generatedAt), minus items past the 48 h window."""
     if not isinstance(previous, dict) or not isinstance(previous.get("items"), list):
         return None
     keep = []

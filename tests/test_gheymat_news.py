@@ -13,8 +13,8 @@ import requests
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
-import gheymat_ai as ai  # noqa: E402
-import gheymat_news as news  # noqa: E402
+import gheymat_ai as ai
+import gheymat_news as news
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
 FEED = "https://a.example/rss"

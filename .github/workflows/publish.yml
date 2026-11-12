@@ -1,0 +1,54 @@
+name: Publish loop (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      backfill:
+        type: boolean
+        default: false
+    secrets:
+      GHEYMAT_PAYLOAD_KEY:
+        required: false
+      GHEYMAT_SIGNING_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      GHEYMAT_AI_SOURCES:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python and dependencies
+        uses: ./.github/actions/setup-python-deps
+
+      - name: Publish
+        run: python tools/publish_loop.py
+        env:
+          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
+          GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
+          GHEYMAT_PLAIN: "0"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GHEYMAT_AI_SOURCES: ${{ secrets.GHEYMAT_AI_SOURCES }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BACKFILL: ${{ inputs.backfill && '40' || '12' }}
+          GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
+          GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
+          FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
+          GHEYMAT_LIVE_STATE: ${{ runner.temp }}/live-guard.json

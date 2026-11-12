@@ -1,5 +1,3 @@
-"""Multi-source publishing (CONTRACT.md "Static publisher sources"): hansha first, bonbast fills and takes over.
-No network: hansha rows are a trimmed copy of a live /latest response (2026-11-07), timestamps made relative."""
 import importlib.util
 import json
 import pathlib
@@ -19,7 +17,6 @@ HANSHA_ONLY = {"eth", "xrp", "bch", "ltc", "bnb", "usdt"}
 
 @pytest.fixture(autouse=True)
 def no_repairs(monkeypatch, tmp_path):
-    """Hermetic: the committed tools/intraday_repairs.json reaches only the tests that point at it."""
     monkeypatch.setattr(mod, "INTRADAY_REPAIRS", tmp_path / "no-repairs.json")
 
 
@@ -40,7 +37,6 @@ def hansha_rows(minutes_ago: float = 2) -> list[dict]:
         {"ab": "btc", "av": "💰", "en": "Bitcoin", "fa": "بیتکوین", "ty": "cc", "ps": [{"sp": 20352630000, "ts": ts}]},
         {"ab": "eth", "av": "🔊", "en": "Ethereum", "fa": "اتریوم", "ty": "cc", "ps": [{"sp": 600379000, "ts": ts}]},
         {"ab": "usdt", "av": "🪙", "en": "Tether USDT", "fa": "تتر", "ty": "cc", "ps": [{"sp": 267700, "ts": ts}]},
-        # hansha quotes these per 1 unit; our table (bonbast's convention) quotes per 10, 10 and 100
         {"ab": "jpy", "av": "🇯🇵", "en": "Japanese Yen", "fa": "ین ژاپن", "ty": "cu",
          "ps": [{"bp": 1670.0, "sp": 1680.0, "ts": ts}]},
         {"ab": "amd", "av": "🇦🇲", "en": "Armenian Dram", "fa": "درام ارمنستان", "ty": "cu",
@@ -84,7 +80,7 @@ def test_hansha_snapshot_maps_rows_with_our_names_and_skips_usd_quoted_btc():
     assert by["gram"]["price"] == 25709865.0 and by["gram"]["buy"] is None
     assert by["emami"]["buy"] == 255500000 and by["emami"]["sell"] == 260500000
     assert by["eth"]["price"] == 600379000.0 and by["eth"]["flag"] == "💎"
-    assert by["usdt"]["en"] == "Tether"  # our table's name, not hansha's "Tether USDT"
+    assert by["usdt"]["en"] == "Tether"
     assert "btc" not in by and "ounce" not in by and "zzz" not in by
     assert [r["code"] for r in snap["rates"]] == [c for c in (i["code"] for i in INSTRUMENTS) if c in by]
     assert snap["fetchedAt"] == snap["sourceModified"]
@@ -92,7 +88,7 @@ def test_hansha_snapshot_maps_rows_with_our_names_and_skips_usd_quoted_btc():
 
 def test_hansha_row_far_behind_the_feed_is_dropped_so_it_cannot_age_the_snapshot():
     rows = hansha_rows(minutes_ago=1)
-    rows[1]["ps"][0]["ts"] = iso(90)  # eur frozen 90 min behind the rest
+    rows[1]["ps"][0]["ts"] = iso(90)
     snap = mod.build_hansha_snapshot(rows, INSTRUMENTS)
     codes = {r["code"] for r in snap["rates"]}
     assert "eur" not in codes and "usd" in codes
@@ -131,11 +127,11 @@ def test_combine_takes_hansha_first_and_fills_ounce_and_btc_from_bonbast():
     bon = bonbast_snapshot()
     snap, counts, _ = mod.combine_sources([mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS), bon], INSTRUMENTS)
     by = {r["code"]: r for r in snap["rates"]}
-    assert by["usd"]["sell"] == 266600 and by["gram"]["price"] == 25709865.0  # hansha wins
-    assert by["ounce"]["price"] == 4094.2 and by["btc"]["price"] == 81476.39  # only bonbast has them
+    assert by["usd"]["sell"] == 266600 and by["gram"]["price"] == 25709865.0
+    assert by["ounce"]["price"] == 4094.2 and by["btc"]["price"] == 81476.39
     assert "eth" in by and "usdt" in by
     assert counts == {"hansha": 9, "bonbast": 2} and snap["source"] == "hansha"
-    assert snap["fetchedAt"] == min(bon["fetchedAt"], snap["sourceModified"])  # oldest observation used
+    assert snap["fetchedAt"] == min(bon["fetchedAt"], snap["sourceModified"])
     assert [r["code"] for r in snap["rates"]] == [i["code"] for i in INSTRUMENTS if i["code"] in by]
 
 
@@ -236,27 +232,26 @@ def test_intraday_samples_are_keyed_by_each_rows_own_observation(tmp_path):
     snap, _, observed = mod.combine_sources([mod.build_hansha_snapshot(rows, INSTRUMENTS), bon], INSTRUMENTS)
     assert (observed["usd"], observed["eur"], observed["ounce"]) == (usd_ts, eur_ts, bon["fetchedAt"])
     assert set(observed) == {r["code"] for r in snap["rates"]}
-    assert snap["fetchedAt"] == eur_ts  # Snapshot.fetchedAt is still the oldest observation used
+    assert snap["fetchedAt"] == eur_ts
     mod.append_intraday(tmp_path, snap, observed)
     assert [_stamps(tmp_path, c) for c in ("usd", "eur", "ounce")] == [[usd_ts], [eur_ts], [bon["fetchedAt"]]]
 
 
 def test_a_hansha_run_after_a_bonbast_only_run_ticks_every_code_whose_own_stamp_advanced(tmp_path):
-    """Hansha's oldest kept row can sit behind the bonbast-era sample; a snapshot-wide key would skip every code."""
     bonbast_ts, lagging_ts, fresh_ts, bonbast_now = iso(10), iso(20), iso(2), iso(0)
     first, _, observed = mod.combine_sources([dict(bonbast_snapshot(), fetchedAt=bonbast_ts)], INSTRUMENTS)
     mod.append_intraday(tmp_path, first, observed)
     rows = [row for row in hansha_rows() if isinstance(row, dict)]
     for row in rows:
         row["ps"][0]["ts"] = fresh_ts
-    rows[1]["ps"][0]["ts"] = lagging_ts  # eur, 18 min behind hansha's newest: kept, and the oldest stamp used
+    rows[1]["ps"][0]["ts"] = lagging_ts
     second, _, observed = mod.combine_sources(
         [mod.build_hansha_snapshot(rows, INSTRUMENTS), dict(bonbast_snapshot(), fetchedAt=bonbast_now)], INSTRUMENTS)
     assert second["fetchedAt"] == lagging_ts < bonbast_ts
     assert mod.append_intraday(tmp_path, second, observed) == len(second["rates"]) - 1
     assert _stamps(tmp_path, "usd") == _stamps(tmp_path, "jpy") == [bonbast_ts, fresh_ts]
-    assert _stamps(tmp_path, "ounce") == [bonbast_ts, bonbast_now]  # bonbast's own fetch time advanced too
-    assert _stamps(tmp_path, "eur") == [bonbast_ts]  # its own observation is older than its last sample
+    assert _stamps(tmp_path, "ounce") == [bonbast_ts, bonbast_now]
+    assert _stamps(tmp_path, "eur") == [bonbast_ts]
 
 
 SNAPSHOT_KEYS = {"seq", "fetchedAt", "sourceModified", "source", "flags", "rates"}
@@ -264,15 +259,14 @@ RATE_KEYS = {"code", "kind", "unit", "quote", "buy", "sell", "price", "en", "fa"
 
 
 def test_published_latest_keeps_exactly_the_old_keys(tmp_path, monkeypatch):
-    """Per-row stamps never leave the publisher: shipped App Store builds decode v1/latest within 6 minutes."""
     rows = hansha_rows()
     usd_ts, eur_ts = rows[0]["ps"][0]["ts"], iso(9)
-    rows[1]["ps"][0]["ts"] = eur_ts  # eur is the oldest row, so usd's own stamp differs from fetchedAt
+    rows[1]["ps"][0]["ts"] = eur_ts
     sources = [mod.build_hansha_snapshot(rows, INSTRUMENTS), bonbast_snapshot()]
     monkeypatch.setattr(mod, "collect_sources", lambda session, instruments, order: sources)
     monkeypatch.setattr(mod, "fetch_computed_rates", lambda session, rates, instruments: [])
-    monkeypatch.setattr(mod, "MIN_DIRECT", 1)  # the fixtures carry 11 rates, not a real publish's 29
-    for name in ("SEALER", "PLAIN_ALSO", "_DIST_ROOT"):  # main() reassigns these globals; teardown restores them
+    monkeypatch.setattr(mod, "MIN_DIRECT", 1)
+    for name in ("SEALER", "PLAIN_ALSO", "_DIST_ROOT"):
         monkeypatch.setattr(mod, name, getattr(mod, name))
     for key in ("GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PLAIN"):
         monkeypatch.delenv(key, raising=False)
@@ -281,19 +275,18 @@ def test_published_latest_keeps_exactly_the_old_keys(tmp_path, monkeypatch):
     latest = json.loads((tmp_path / "v1" / "latest").read_text(encoding="utf-8"))
     assert set(latest) == SNAPSHOT_KEYS and latest["fetchedAt"] == eur_ts
     assert len(latest["rates"]) == 11 and all(set(r) == RATE_KEYS for r in latest["rates"])
-    assert _stamps(tmp_path, "usd") == [usd_ts]  # main hands the per-row stamps to append_intraday
+    assert _stamps(tmp_path, "usd") == [usd_ts]
 
 
 def test_hansha_per_one_quotes_are_scaled_to_our_unit():
     by = {r["code"]: r for r in mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS)["rates"]}
     assert (by["jpy"]["unit"], by["jpy"]["buy"], by["jpy"]["sell"]) == (10, 16700, 16800)
-    assert (by["amd"]["unit"], by["amd"]["buy"], by["amd"]["sell"]) == (10, 7370, 7375)  # rounded, not truncated
+    assert (by["amd"]["unit"], by["amd"]["buy"], by["amd"]["sell"]) == (10, 7370, 7375)
     assert (by["iqd"]["unit"], by["iqd"]["buy"], by["iqd"]["sell"]) == (100, 17450, 17550)
-    assert (by["usd"]["buy"], by["usd"]["sell"]) == (266400, 266600)  # unit 1 untouched
+    assert (by["usd"]["buy"], by["usd"]["sell"]) == (266400, 266600)
 
 
 def test_every_code_both_sources_carry_agrees_within_five_percent():
-    """A unit or quote mismatch between the sources (10x, 100x, usd vs toman) can never pass silently."""
     hansha = {r["code"]: r for r in mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS)["rates"]}
     bonbast = {r["code"]: r for r in bonbast_snapshot()["rates"]}
     both = sorted(set(hansha) & set(bonbast))
@@ -313,11 +306,10 @@ def _intraday(tmp_path, code, points):
 
 UNIT_REPAIR = {"codes": ["amd", "jpy", "iqd"], "from": "2026-11-07T12:00:00Z", "to": "2026-11-08T00:00:00Z",
                "belowFactor": 3, "note": "hansha per-1 quotes published unscaled until 4e02873d7"}
-DAY = 24 * 60  # minutes, for iso()
+DAY = 24 * 60
 
 
 def _repairs(tmp_path, monkeypatch, body):
-    """Point the publisher at a repairs file holding `body` (a list of entries, or raw text)."""
     path = tmp_path / "repairs.json"
     path.write_text(body if isinstance(body, str) else json.dumps(body), encoding="utf-8")
     monkeypatch.setattr(mod, "INTRADAY_REPAIRS", path)
@@ -325,7 +317,6 @@ def _repairs(tmp_path, monkeypatch, body):
 
 
 def test_committed_repairs_file_parses_entry_for_entry(capsys):
-    """A malformed file is ignored with only a stderr line, so a typo pushed under tools/ would repair nothing."""
     path = mod.HERE / "intraday_repairs.json"
     entries = mod.load_repairs(path)
     assert capsys.readouterr().err == ""
@@ -333,7 +324,7 @@ def test_committed_repairs_file_parses_entry_for_entry(capsys):
 
 
 def test_intraday_repair_drops_only_the_unscaled_jpy_points_in_the_window(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "INTRADAY_DAYS", 100_000)  # keep the 2026-11-07 fixture inside the retention window
+    monkeypatch.setattr(mod, "INTRADAY_DAYS", 100_000)
     _repairs(tmp_path, monkeypatch, [UNIT_REPAIR])
     good_before = {"ts": "2026-11-07T11:55:00Z", "buy": 16650, "sell": 16750, "price": None}
     bad = [{"ts": f"2026-11-07T1{h}:20:00Z", "buy": 1670, "sell": 1680, "price": None} for h in (2, 4, 6)]
@@ -344,8 +335,8 @@ def test_intraday_repair_drops_only_the_unscaled_jpy_points_in_the_window(tmp_pa
              {"code": "usd", "buy": 266400, "sell": 266600, "price": None, "computed": False}]
     assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T17:00:00Z", "rates": rates}) == 2
     pts = json.loads(jpy.read_text(encoding="utf-8"))["points"]
-    assert [p["sell"] for p in pts] == [16750, 16800]  # bad window points gone, good history and new sample kept
-    assert len(json.loads(usd.read_text(encoding="utf-8"))["points"]) == 2  # other codes untouched
+    assert [p["sell"] for p in pts] == [16750, 16800]
+    assert len(json.loads(usd.read_text(encoding="utf-8"))["points"]) == 2
 
 
 def test_intraday_repair_writes_even_when_the_observation_is_unchanged(tmp_path, monkeypatch):
@@ -361,11 +352,11 @@ def test_intraday_repair_writes_even_when_the_observation_is_unchanged(tmp_path,
 
 def test_intraday_repair_ignores_points_outside_the_window_or_codes(tmp_path, monkeypatch):
     repairs = mod.load_repairs(_repairs(tmp_path, monkeypatch, [UNIT_REPAIR]))
-    early = {"ts": "2026-11-06T12:20:00Z", "buy": 1670, "sell": 1680, "price": None}  # before the window
+    early = {"ts": "2026-11-06T12:20:00Z", "buy": 1670, "sell": 1680, "price": None}
     assert mod.drop_repaired_points("jpy", [early], 16800.0, repairs) == [early]
     inside = {"ts": "2026-11-07T12:20:00Z", "buy": 1, "sell": 2, "price": None}
-    assert mod.drop_repaired_points("usd", [inside], 266600.0, repairs) == [inside]  # not a repaired code
-    assert mod.drop_repaired_points("jpy", [inside], None, repairs) == [inside]  # no reference, no drop
+    assert mod.drop_repaired_points("usd", [inside], 266600.0, repairs) == [inside]
+    assert mod.drop_repaired_points("jpy", [inside], None, repairs) == [inside]
 
 
 def test_intraday_repair_without_below_factor_drops_every_window_point_of_its_codes_only(tmp_path, monkeypatch):
@@ -376,7 +367,7 @@ def test_intraday_repair_without_below_factor_drops_every_window_point_of_its_co
         _intraday(tmp_path, code, [{"ts": ts, "buy": 1, "sell": 2, "price": None} for ts in (t400, lo, t200, hi, t60)])
         rates.append({"code": code, "buy": 1, "sell": 2, "price": None, "computed": False})
     assert mod.append_intraday(tmp_path, {"fetchedAt": now, "rates": rates}) == 3
-    assert _stamps(tmp_path, "usd") == _stamps(tmp_path, "eur") == [t400, hi, t60, now]  # `from` in, `to` out
+    assert _stamps(tmp_path, "usd") == _stamps(tmp_path, "eur") == [t400, hi, t60, now]
     assert _stamps(tmp_path, "jpy") == [t400, lo, t200, hi, t60, now]
 
 
@@ -386,11 +377,11 @@ def test_intraday_repair_whose_window_left_the_retention_is_a_no_op(tmp_path, mo
     usd = _intraday(tmp_path, "usd", [{"ts": iso(15 * DAY), "buy": 1, "sell": 2, "price": None}, last])
     before = usd.read_text(encoding="utf-8")
     rates = [{"code": "usd", "buy": 3, "sell": 4, "price": None, "computed": False}]
-    assert mod.append_intraday(tmp_path, {"fetchedAt": last["ts"], "rates": rates}) == 0  # no forced rewrite
+    assert mod.append_intraday(tmp_path, {"fetchedAt": last["ts"], "rates": rates}) == 0
     assert usd.read_text(encoding="utf-8") == before
 
 
-WIDE = {"codes": ["usd"], "from": "2000-01-01T00:00:00Z", "to": "2100-01-01T00:00:00Z"}  # drops every usd point
+WIDE = {"codes": ["usd"], "from": "2000-01-01T00:00:00Z", "to": "2100-01-01T00:00:00Z"}
 
 
 @pytest.mark.parametrize("body", [
@@ -408,8 +399,8 @@ def test_malformed_repairs_file_is_logged_and_ignored_whole(tmp_path, monkeypatc
     old, now = iso(30), iso(1)
     _intraday(tmp_path, "usd", [{"ts": old, "buy": 1, "sell": 2, "price": None}])
     rates = [{"code": "usd", "buy": 1, "sell": 2, "price": None, "computed": False}]
-    assert mod.append_intraday(tmp_path, {"fetchedAt": now, "rates": rates}) == 1  # the publish carries on
-    assert _stamps(tmp_path, "usd") == [old, now]  # not even the valid entry beside the bad one applies
+    assert mod.append_intraday(tmp_path, {"fetchedAt": now, "rates": rates}) == 1
+    assert _stamps(tmp_path, "usd") == [old, now]
     assert "intraday repairs:" in capsys.readouterr().err
 
 
