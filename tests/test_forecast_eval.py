@@ -118,12 +118,12 @@ def _wk(err, naive, actual=100.0, low=90.0, high=110.0):
 
 
 def test_recent_skill_better_recently_worse_overall():
-    old = [_wk(0.10, 0.05)] * 100          # model worse than naive
-    new = [_wk(0.01, 0.05)] * 52           # model better recently
+    old = [_wk(0.10, 0.05)] * 100
+    new = [_wk(0.01, 0.05)] * 52
     weeks = old + new
     rs, n = fe.recent_skill(weeks)
     assert n == 52 and math.isclose(rs, 0.8)
-    assert fe._metrics(weeks, "fhs")["skill"] < 0   # all-weeks skill is negative
+    assert fe._metrics(weeks, "fhs")["skill"] < 0
 
 
 def test_recent_skill_worse_recently_better_overall():

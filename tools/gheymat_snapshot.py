@@ -479,7 +479,6 @@ def _row_hash(r: dict) -> str:
 
 
 def changed_rows_line(previous, rates: list[dict], instruments: list[dict]) -> str:
-    """Log text: rows whose [buy, sell, price] differ from the previous latest, by kind."""
     prev = previous.get("rates") if isinstance(previous, dict) else None
     if not isinstance(prev, list) or not prev:
         return "Changed rows: n/a (first run)"
