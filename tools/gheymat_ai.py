@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +10,7 @@ import gheymat_forecast as fc
 import gheymat_news
 import gheymat_signals
 import news_archive
+import signal_shadow
 
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
 BUDGET_SECONDS = 120.0
@@ -123,6 +125,18 @@ def run_news(write_doc, load_doc, now: datetime | None = None, log=print, env=No
 SIGNALS_ENABLED = False
 
 
+def shadow_signals(daily, signals_http, archive_root, now, log, env) -> None:
+    flags = env if env is not None else os.environ
+    if SIGNALS_ENABLED or signals_http is None or flags.get("GHEYMAT_SIGNAL_SHADOW") != "1":
+        return
+    try:
+        ctx = signal_context(signals_http, archive_root, now, log)
+        if ctx is not None:
+            log(signal_shadow.line(signal_shadow.score(daily, ctx)))
+    except Exception as e:
+        log(f"ai: signal shadow skipped: {type(e).__name__}")
+
+
 def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None,
              signals_http=None, archive_root=None, refresh_news: bool = True) -> dict | None:
     news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root, refresh_news)
@@ -132,6 +146,7 @@ def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}")
         return None
+    shadow_signals(daily, signals_http, archive_root, now, log, env)
     log(f"ai: {len(summary['published'])} forecasts ({summary['rebuilt']} rebuilt, {summary['resealed']} re-sealed), "
         f"{len(summary['withheld'])} withheld")
     return summary

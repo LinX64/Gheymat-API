@@ -1,0 +1,111 @@
+import json
+import math
+import random
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import gheymat_forecast as fc
+import forecast_eval as fe
+
+
+def make_points(n=1100, seed=7, vol=0.01):
+    rng = random.Random(seed)
+    d0 = date(2020, 1, 1)
+    p = 100.0
+    pts = []
+    for i in range(n):
+        p *= math.exp(rng.gauss(0, vol))
+        pts.append({"date": (d0 + timedelta(days=i)).isoformat(), "price": p})
+    return pts
+
+
+def make_daily(codes=("a", "b")):
+    out = {}
+    for i, c in enumerate(codes):
+        out[c] = {p["date"]: (None, p["price"]) for p in make_points(seed=i + 1)}
+    return {"codes": out}
+
+
+def test_evaluate_keys_and_ranges():
+    for method in fc.METHODS:
+        r = fe.evaluate(make_points(), method)
+        assert set(r) == {"method", "weeks", "coverage", "coverageRecent", "intervalScore", "mape", "naiveMape", "skill"}
+        assert 0 <= r["coverage"] <= 1 and 0 <= r["coverageRecent"] <= 1
+        assert r["weeks"] >= fc.MIN_BACKTEST_WEEKS
+
+
+def test_evaluate_none_on_short_history():
+    assert fe.evaluate(make_points(n=200), "fhs") is None
+    assert fe.evaluate([], "eq") is None
+
+
+def test_no_lookahead_three_cuts():
+    pts = make_points()
+    for method in fc.METHODS:
+        for cut in (date(2022, 6, 1), date(2022, 12, 15), date(2022, 9, 1)):
+            assert fe.check_no_lookahead(pts, method, cut)
+
+
+def test_no_lookahead_detects_future_leak(monkeypatch):
+    pts = make_points()
+    original = fc.backtest
+    returns = fc.Series(fc.clean_series(pts)).horizon_returns()
+
+    for method in fc.METHODS:
+        def leaky(series, rets, m=method, band_fn=None, _method=method):
+            return original(
+                series, rets, m,
+                band_fn=lambda b, s: fc.band_at(returns, b + timedelta(days=fc.HORIZON_DAYS), s, _method),
+            )
+
+        monkeypatch.setattr(fc, "backtest", leaky)
+        for cut in (date(2022, 6, 1), date(2022, 9, 1)):
+            assert fe.check_no_lookahead(pts, method, cut) is False
+        monkeypatch.setattr(fc, "backtest", original)
+
+
+def test_compare_picks_lower_aligned_score(monkeypatch):
+    pts = make_points()
+    monkeypatch.setattr(fc, "COVERAGE_ALL", (0.0, 1.0))
+    out = fe.compare(pts)
+    assert out["best"] in fc.METHODS
+    weeks = {m: fc.backtest(fc.Series(fc.clean_series(pts)), fc.Series(fc.clean_series(pts)).horizon_returns(), m)
+             for m in fc.METHODS}
+    shared = set.intersection(*({w["basisDate"] for w in ws} for ws in weeks.values()))
+    mean = {m: sum(w["intervalScore"] for w in ws if w["basisDate"] in shared) / len(shared) for m, ws in weeks.items()}
+    assert out["best"] == min(mean, key=mean.get)
+
+
+def test_compare_none_when_no_method_in_band(monkeypatch):
+    monkeypatch.setattr(fc, "COVERAGE_ALL", (2.0, 3.0))
+    out = fe.compare(make_points())
+    assert out["best"] is None
+    assert set(out["results"]) == set(fc.METHODS)
+
+
+def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
+    monkeypatch.setattr(fc, "COVERAGE_ALL", (0.0, 1.0))
+    monkeypatch.setattr(fc, "COVERAGE_RECENT", (2.0, 3.0))
+    out = fe.compare(make_points())
+    assert out["best"] is None
+    assert set(out["results"]) == set(fc.METHODS)
+
+
+def test_report_lines():
+    lines = fe.report(make_daily())
+    assert any(line.startswith("a best") for line in lines)
+    assert lines[-1].startswith("totals ")
+    assert len(fe.report(make_daily(), codes=["b"])) < len(lines)
+
+
+def test_main_json_and_missing_file(tmp_path, capsys):
+    f = tmp_path / "daily.json"
+    f.write_text(json.dumps(make_daily()))
+    assert fe.main(["--daily", str(f), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fc.METHODS)
+    assert fe.main(["--daily", str(f)]) == 0
+    assert fe.main(["--daily", str(tmp_path / "nope.json")]) == 2
+    assert capsys.readouterr().err.strip() == "FileNotFoundError"
