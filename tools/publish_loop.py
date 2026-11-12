@@ -27,6 +27,8 @@ SLOW_LANE_SPACING = 1800
 SLOW_LANE_BACKOFF = 600
 SLOW_LANE_ALARM = 5400
 CHAIN_AFTER = 3600
+ALERT_PAGES = "Feed: Cloudflare deploy failing"
+ALERT_STORE = "Feed: store failing"
 STORE_SECRETS = ("FEED_STORE_KEY_ID", "FEED_STORE_SECRET", "FEED_STORE_BUCKET")
 APP_SECRETS = (
     "GH_TOKEN",
@@ -181,6 +183,7 @@ class Loop:
         self.gh_failures = 0
         self.nothing = 0
         self.red = False
+        self.alerted = set()
         self.last_mark = ""
         self.last_publish = 0
         self.last_gh = 0
@@ -252,6 +255,29 @@ class Loop:
 
     def app_channel(self):
         return (self.mirror and self.pages_mode == "every") or self.store_mode == "on"
+
+    def alert(self, title, detail):
+        if title in self.alerted:
+            return
+        env = self.child_env(*APP_SECRETS[1:], *CLOUDFLARE_SECRETS)
+        repo = self.environ.get("GITHUB_REPOSITORY", "")
+        if repo:
+            env["GH_REPO"] = repo
+        code, output = self.env.run(
+            ["gh", "issue", "list", "--state", "open", "--search", f'"{title}" in:title', "--json", "title", "--jq", ".[].title"],
+            env=env,
+            timeout=30,
+        )
+        if code == 0 and title in output.splitlines():
+            self.alerted.add(title)
+            return
+        owner = self.environ.get("GITHUB_REPOSITORY_OWNER", "")
+        body = f"{detail} @{owner}" if owner else detail
+        code, _ = self.env.run(["gh", "issue", "create", "--title", title, "--body", body], env=env, timeout=30)
+        if code == 0:
+            self.alerted.add(title)
+        else:
+            self.say(f"::warning::The alert issue could not be opened (code {code})")
 
     def child_env(self, *dropped, **extra):
         child = dict(self.environ)
@@ -647,12 +673,20 @@ class Loop:
             self.say("::error::The slow lane has not succeeded for 90 minutes")
             self.red = True
             self.slow_alarm = True
+        if self.cf_failures == 0:
+            self.alerted.discard(ALERT_PAGES)
+        if self.store_failures == 0:
+            self.alerted.discard(ALERT_STORE)
         if self.cf_failures == 5:
             self.say("::error::Cloudflare deploy failed 5 times in a row")
             self.red = True
+        if self.cf_failures and self.cf_failures % 5 == 0 and self.store_mode != "on":
+            self.alert(ALERT_PAGES, "The Cloudflare deploy has failed 5 times in a row. The app host serves the last good feed until it recovers.")
         if self.store_failures == 5:
             self.say("::error::Feed store failed 5 times in a row")
             self.red = True
+        if self.store_failures and self.store_failures % 5 == 0 and self.store_mode == "on":
+            self.alert(ALERT_STORE, "The feed store has failed 5 times in a row. The app host serves the last good feed until it recovers.")
         if self.failures == 5:
             self.say("::error::Restore, build or GitHub publish failed 5 times in a row")
             self.red = True
