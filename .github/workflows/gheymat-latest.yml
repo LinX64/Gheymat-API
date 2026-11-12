@@ -128,6 +128,10 @@ jobs:
           fast_retry=1
           grace=0
           force=0
+          last_slow=0
+          slow_after=0
+          fresh_restore=1
+          force_slow=0
           push_pages() {
             ( cd dist \
               && git init -q \
@@ -141,7 +145,7 @@ jobs:
             now=$(date +%s)
             since=$(( now - last_publish ))
             due=0
-            if [ "$since" -ge 360 ]; then
+            if [ "$since" -ge 180 ]; then
               due=1
             elif [ "$since" -ge 45 ] && { [ "$force" = "1" ] || { [ -n "$mark" ] && [ "$mark" != "$last_mark" ]; }; }; then
               due=1
@@ -168,6 +172,7 @@ jobs:
                 git reset -q
                 rm -rf dist && mv restore dist
                 have_dist=1
+                fresh_restore=1
                 want_fetch=0
                 if [ "$seeded" = "0" ]; then
                   last_gh=$(git log -1 --format=%ct FETCH_HEAD 2>/dev/null) || last_gh=0
@@ -179,11 +184,30 @@ jobs:
               rm -rf restore
             fi
             rc=0
+            slow=0
             clean=0
             if [ "$have_dist" = "1" ]; then
               find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name archive -exec rm -rf {} +
               touch dist/.nojekyll
-              python tools/gheymat_snapshot.py --out dist --history --ai --defer-news $EXTRA --pace 3 || rc=$?
+              # Two lanes. Every build refreshes the prices, intraday points and health (what the apps need first). The
+              # history, forecast and brief documents are rebuilt only when due: after a fresh restore, after a news
+              # refresh, and at least every 30 min (the clients accept a document for 2 h).
+              slow=0
+              if [ "$now" -ge "$slow_after" ] && { [ "$fresh_restore" = "1" ] || [ "$force_slow" = "1" ] || [ $(( now - last_slow )) -ge 1800 ]; }; then slow=1; fi
+              if [ "$slow" = "1" ]; then
+                python tools/gheymat_snapshot.py --out dist --history --ai --defer-news $EXTRA --pace 3 || rc=$?
+                # A failing slow lane must not hold the prices back: exit 2 (too few rates) and 3 (archive shrank)
+                # stop before anything is written, so only other failures fall back to a prices-only build.
+                if [ "$rc" != "0" ] && [ "$rc" != "2" ] && [ "$rc" != "3" ]; then
+                  echo "::warning::#$iteration slow lane failed (code $rc), publishing prices only"
+                  rc=0
+                  slow=0
+                  slow_after=$(( now + 600 ))
+                  python tools/gheymat_snapshot.py --out dist || rc=$?
+                fi
+              else
+                python tools/gheymat_snapshot.py --out dist || rc=$?
+              fi
               if [ "$rc" = "0" ]; then python tools/verify_sealed.py dist || rc=90; fi
             else
               rc=91
@@ -191,6 +215,11 @@ jobs:
             t_build=$(( $(date +%s) - now ))
             if [ "$rc" = "0" ]; then
               clean=1
+              if [ "$slow" = "1" ]; then
+                last_slow=$now
+                fresh_restore=0
+                force_slow=0
+              fi
               if [ "${MIRROR:-}" = "true" ]; then
                 rm -rf site
                 if env -u GH_TOKEN -u ANTHROPIC_API_KEY -u GHEYMAT_AI_SOURCES python tools/assemble_site.py --src dist --out site 2>mirror.log \
@@ -274,6 +303,7 @@ jobs:
               if [ "$news_rc" != "0" ]; then echo "::warning::#$iteration news step exit $news_rc"; fi
               if printf '%s\n' "$news" | grep -qx "news: refreshed"; then
                 force=1
+                force_slow=1
                 echo "#$iteration news refreshed"
               fi
             fi
