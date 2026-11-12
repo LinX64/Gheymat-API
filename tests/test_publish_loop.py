@@ -893,8 +893,8 @@ def test_unusable_state_falls_back_to_cold_start(case):
     loop = run_loop(env, **state_environ())
     loop.serve()
     assert env.counts["fetch"] == 1
-    assert env.removed == [LIVE]
-    assert loop.iteration < 7 + 1
+    assert env.removed == ([] if case == "no_dist" else [LIVE])
+    assert (loop.iteration > 7) == (case == "no_dist")
 
 
 def test_wrong_field_types_keep_defaults_but_state_is_used():
@@ -1053,8 +1053,8 @@ def test_chain_has_a_fixed_timeout_when_budgeted():
 
 def test_news_and_slow_lane_respect_the_remaining_budget():
     env = TimedEnv()
-    env.durations = {"prices": 110}
-    loop = run_loop(env, 3, PUBLISH_HARD_SECONDS="180")
+    env.durations = {"prices": 60}
+    loop = run_loop(env, 3, PUBLISH_HARD_SECONDS="140")
     loop.serve()
     assert env.counts.get("slow", 0) == 0 and env.counts["prices"] >= 1
     assert "news" not in env.kinds()
@@ -1137,3 +1137,85 @@ def test_a_push_timeout_keeps_the_throttle_clock():
     env.script["push"] = 1
     assert loop.publish_github(T0) == "failed"
     assert loop.last_gh == 0
+
+
+def warm_state(env, age):
+    env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(
+        {"saved_at": env.t - age, "have_dist": True, "want_fetch": False, "fresh_restore": False}
+    )
+
+
+@pytest.mark.parametrize("age,warm", [(150, True), (201, False)])
+def test_state_age_is_measured_at_process_start(age, warm):
+    env = TimedEnv()
+    env.durations = {"npm": 60}
+    warm_state(env, age)
+    run_loop(env, 3, GITHUB_REF="refs/heads/develop", **HARD, **state_environ()).run()
+    assert env.counts.get("fetch", 0) == (0 if warm else 1)
+
+
+def test_broken_build_across_runs_alarms_once_then_exits_without_chaining():
+    env = FakeEnv()
+    env.script["prices"] = 3
+    env.script["slow"] = 3
+    codes = []
+    for _ in range(8):
+        before = env.counts.get("fetch", 0)
+        loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
+        codes.append(loop.run())
+        assert env.counts["fetch"] > before
+        if codes[-1] == 1 and any("Nothing could be published" in line for line in env.lines):
+            break
+    errors = [line for line in env.lines if "failed 5 times in a row" in line]
+    assert len(errors) == 1
+    assert codes[-1] == 1 and set(codes[:-1]) == {0}
+    assert env.counts["gh"] == len(codes) - 1
+    assert saved(env)["nothing"] == 0
+
+
+def test_hung_deploy_never_blocks_the_github_push():
+    env = TimedEnv()
+    env.durations = {"deploy": 100_000}
+    for _ in range(8):
+        run_loop(env, 3, GITHUB_REF="refs/heads/master", **HARD, **state_environ()).run()
+    stamps = env.times("push")
+    assert len(stamps) >= 2
+    assert all(gap >= pl.GITHUB_PUSH_SPACING for gap in zip_gaps(stamps))
+    assert all(call[3] <= pl.DEPLOY_CAP for call in env.calls if call[0] == "deploy")
+    errors = [line for line in env.lines if "Cloudflare deploy failed 5 times in a row" in line]
+    assert len(errors) == 1
+
+
+def test_hung_install_every_run_still_builds_pushes_and_alarms_once():
+    env = TimedEnv()
+    env.durations = {"npm": 100_000}
+    env.script["npm"] = 1
+    for _ in range(18):
+        run_loop(env, 3, GITHUB_REF="refs/heads/master", **HARD, **state_environ()).run()
+    assert env.counts.get("prices", 0) + env.counts.get("slow", 0) >= 5
+    assert env.counts["push"] >= 2
+    assert "deploy" not in env.kinds()
+    errors = [line for line in env.lines if "Cloudflare deploy failed 5 times in a row" in line]
+    assert len(errors) == 1
+
+
+def test_a_due_slow_lane_runs_after_a_short_install():
+    env = TimedEnv()
+    env.durations = {"npm": 50}
+    run_loop(env, 3, **HARD, **state_environ()).run()
+    assert env.counts["slow"] == 1
+
+
+def test_a_deferred_slow_lane_runs_first_in_the_next_run():
+    env = TimedEnv()
+    env.durations = {"npm": 55, "create": 45}
+    first = run_loop(env, 3, **HARD, **state_environ())
+    first.run()
+    assert env.counts.get("slow", 0) == 0
+    assert first.last_slow == 0
+    env.durations = {}
+    env.t += 150
+    fetches = env.counts["fetch"]
+    run_loop(env, 3, **HARD, **state_environ()).run()
+    assert env.counts["fetch"] == fetches
+    assert env.counts["slow"] == 1

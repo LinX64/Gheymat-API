@@ -34,7 +34,8 @@ ITERATION_MIN = 60
 INSTALL_CAP = 60
 FLUSH_MIN = 20
 NEWS_MIN_SECONDS = 40
-SLOW_MIN_SECONDS = 150
+SLOW_MIN_SECONDS = 110
+DEPLOY_CAP = 90
 STAMP_FIELDS = ("last_publish", "last_gh", "last_slow", "slow_ok_at")
 STATE_FIELDS = (
     "last_mark",
@@ -58,6 +59,7 @@ STATE_FIELDS = (
     "pages_tried",
     "want_fetch",
     "have_dist",
+    "fresh_restore",
 )
 ALERT_PAGES = "Feed: Cloudflare deploy failing"
 ALERT_STORE = "Feed: store failing"
@@ -273,10 +275,10 @@ class Loop:
     def time_left(self):
         return None if self.hard is None else self.usable_end() - self.env.now()
 
-    def capped(self, timeout):
+    def capped(self, timeout, cap=INSTALL_CAP):
         if self.hard is None:
             return timeout
-        return self.bounded(min(timeout, INSTALL_CAP))
+        return self.bounded(min(timeout, cap))
 
     def mask(self, line):
         for name in ("GH_TOKEN", "CLOUDFLARE_ACCOUNT_ID", *STORE_SECRETS):
@@ -382,10 +384,9 @@ class Loop:
             return
         install = ["npm", "install", "--global", "--loglevel=error", f"wrangler@{WRANGLER_VERSION}"]
         installed = False
+        tried = 0
         for attempt in (1, 2, 3):
-            left = self.time_left()
-            if attempt > 1 and left is not None and left < 60:
-                break
+            tried = attempt
             code, _ = self.env.run(
                 install,
                 env=self.child_env(*APP_SECRETS, *CLOUDFLARE_SECRETS),
@@ -395,10 +396,13 @@ class Loop:
                 installed = True
                 break
             if attempt < 3:
+                left = self.time_left()
+                if left is not None and left < INSTALL_CAP + attempt * 10 + ITERATION_MIN + 30:
+                    break
                 self.env.sleep(attempt * 10)
         if not installed:
             self.mirror = False
-            self.say("::error::Cloudflare deploy is off: Wrangler install failed 3 times")
+            self.say(f"::error::Cloudflare deploy is off: Wrangler install failed{' 3 times' if tried == 3 else ''}")
             return
         self.env.run(
             ["wrangler", "pages", "project", "create", CLOUDFLARE_PROJECT, "--production-branch", "master"],
@@ -576,7 +580,7 @@ class Loop:
             code, output = self.env.run(
                 ["wrangler", "pages", "deploy", "site", "--project-name", CLOUDFLARE_PROJECT, "--branch", "master"],
                 env=self.child_env(*scrub_deploy, WRANGLER_SEND_METRICS="false"),
-                timeout=self.bounded(300),
+                timeout=self.capped(300, DEPLOY_CAP),
             )
             log.extend(output.splitlines())
             deployed = code == 0
@@ -803,15 +807,16 @@ class Loop:
             state = json.loads(self.env.read_text(path))
             if not isinstance(state, dict):
                 return False
-            if state.get("want_fetch") is not False or state.get("have_dist") is not True:
-                return False
             saved_at = state.get("saved_at")
             if isinstance(saved_at, bool) or not isinstance(saved_at, (int, float)):
                 return False
-            if not 0 <= self.env.now() - saved_at <= STATE_MAX_AGE:
+            if not 0 <= (self.started or self.env.now()) - saved_at <= STATE_MAX_AGE:
                 return False
-            if not self.env.exists("dist/v1"):
-                return False
+            intact = (
+                state.get("want_fetch") is False
+                and state.get("have_dist") is True
+                and self.env.exists("dist/v1")
+            )
         except Exception:
             return False
         now = self.env.now()
@@ -825,10 +830,14 @@ class Loop:
         alerted = state.get("alerted")
         if isinstance(alerted, list) and all(isinstance(item, str) for item in alerted):
             self.alerted = set(alerted)
-        self.have_dist = True
-        self.want_fetch = False
-        self.fresh_restore = False
         self.seeded = True
+        if intact:
+            self.have_dist = True
+            self.want_fetch = False
+        else:
+            self.have_dist = False
+            self.want_fetch = True
+            self.fresh_restore = True
         return True
 
     def save_state(self):
@@ -856,7 +865,7 @@ class Loop:
         self.set_hard()
         if self.hard is not None:
             deadline = min(deadline, self.usable_end() - ITERATION_MIN)
-        if not carried:
+        if not carried or not self.slow_ok_at:
             self.slow_ok_at = self.env.now()
         while self.env.now() < deadline:
             mark = self.poll()
