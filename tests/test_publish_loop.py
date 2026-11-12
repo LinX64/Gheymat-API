@@ -887,7 +887,7 @@ def test_unusable_state_falls_back_to_cold_start(case):
         env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(
             {"saved_at": T0, "have_dist": True, "want_fetch": False, "iteration": 7}
         )
-        env.missing = {"dist/v1"}
+        env.missing = {"dist/d"}
     else:
         env.files[f"{STATE}/{pl.STATE_FILE}"] = cold_start_cases()[case]
     loop = run_loop(env, **state_environ())
