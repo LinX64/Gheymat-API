@@ -119,23 +119,34 @@ jobs:
           red=0
           last_mark=""
           last_publish=0
+          last_gh=0
+          local_ok=0
+          gh_failed=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
             mark=$(python tools/gheymat_snapshot.py --mark 2>/dev/null) || mark=""
             now=$(date +%s)
             since=$(( now - last_publish ))
-            if [ "$since" -lt 360 ] && { [ -z "$mark" ] || [ "$mark" = "$last_mark" ] || [ "$since" -lt 120 ]; }; then
+            if [ "$since" -lt 360 ] && { [ -z "$mark" ] || [ "$mark" = "$last_mark" ] || [ "$since" -lt 45 ]; }; then
               sleep 30
               continue
             fi
             iteration=$((iteration + 1))
             cf_ok=0
             gh_ok=0
+            gh_failed=0
             restored=0
-            rm -rf dist && mkdir -p dist
-            if git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=dist checkout -q FETCH_HEAD -- .; then
-              git reset -q
+            # The previous good build is the newest state, so keep it between iterations; GitHub Pages is only
+            # re-read at the start or after a failed build.
+            if [ "$local_ok" = "1" ] && [ -d dist ]; then
               restored=1
+            else
+              rm -rf dist && mkdir -p dist
+              if git fetch -q --depth 1 origin gh-pages 2>/dev/null && git --work-tree=dist checkout -q FETCH_HEAD -- .; then
+                git reset -q
+                restored=1
+              fi
             fi
+            local_ok=0
             find dist -mindepth 1 -maxdepth 1 ! -name v1 ! -name d ! -name archive -exec rm -rf {} +
             touch dist/.nojekyll
             if [ "$restored" = "1" ] \
@@ -159,7 +170,12 @@ jobs:
                 cf_failures=$((cf_failures + 1))
                 echo "::warning::#$iteration Cloudflare deploy unavailable ($cf_failures in a row)"
               fi
-              if ( cd dist \
+              # Cloudflare (what the apps read) gets every build; the legacy GitHub Pages copy is throttled to stay
+              # under its 10 builds an hour, unless Cloudflare is off or just failed.
+              if [ "$cf_ok" = "1" ] && [ $(( now - last_gh )) -lt 360 ]; then
+                gh_ok=1
+                echo "#$iteration github push skipped (throttle)"
+              elif ( cd dist \
                 && git init -q \
                 && git checkout -q -b gh-pages \
                 && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
@@ -167,9 +183,12 @@ jobs:
                 && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ); then
                 failures=0
                 gh_ok=1
+                last_gh=$now
                 echo "#$iteration published $(date -u +%H:%M:%SZ)"
               else
                 failures=$((failures + 1))
+                last_gh=0
+                gh_failed=1
                 echo "#$iteration GitHub push failed ($failures in a row)" >&2
               fi
             else
@@ -177,6 +196,7 @@ jobs:
               echo "#$iteration failed ($failures in a row)" >&2
             fi
             rm -rf dist/.git
+            if [ "$restored" = "1" ] && [ "$gh_failed" = "0" ] && [ "$gh_ok$cf_ok" != "00" ]; then local_ok=1; fi
             last_mark=$mark
             last_publish=$now
             if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then nothing=0; else nothing=$((nothing + 1)); fi
@@ -193,6 +213,17 @@ jobs:
               exit 1
             fi
           done
+          # Final flush: bring the legacy copy level with the last build so the next loop restores the newest state.
+          if [ "$last_gh" -lt "$last_publish" ] && [ -d dist ] && [ "$local_ok" = "1" ]; then
+            ( cd dist \
+              && git init -q \
+              && git checkout -q -b gh-pages \
+              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com add -A \
+              && git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -q -m "Publish final" \
+              && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages ) \
+              || echo "::warning::Final GitHub push failed"
+            rm -rf dist/.git
+          fi
           [ "$red" = "0" ] || exit 1
 
       # Scheduled starts are delayed or skipped by GitHub, which left gaps of hours between loops. Queue the next loop

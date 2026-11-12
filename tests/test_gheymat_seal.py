@@ -232,3 +232,30 @@ def test_load_published_reads_a_state_file_larger_than_the_client_envelope_bound
     assert gs.load_published(tmp_path, "v1/daily.json", sealer) == daily
     sealed.write_text("x" * (gs.MAX_STATE_BYTES + 1), encoding="utf-8")
     assert gs.load_published(tmp_path, "v1/daily.json", sealer) is None
+
+
+def test_seal_redraws_nonce_when_output_looks_like_a_credential(sealer, monkeypatch):
+    """Push protection once rejected a publish over a random base64 run; such envelopes are sealed again."""
+    real = gs.os.urandom
+    calls = []
+
+    def fake(n):
+        calls.append(n)
+        return real(n)
+
+    monkeypatch.setattr(gs.os, "urandom", fake)
+    orig = gs.b64
+    state = {"first": True}
+
+    def bad_first(data):
+        out = orig(data)
+        if len(data) > gs.SIG_LEN - 1 and state["first"]:
+            state["first"] = False
+            return "AKID" + "a" * 32
+        return out
+
+    monkeypatch.setattr(gs, "b64", bad_first)
+    env = sealer.seal("v1/latest", {"a": 1}, issued=NOW)
+    assert len(calls) == 2
+    assert not gs.CREDENTIAL_LOOKALIKE.search(json.dumps(env))
+    assert opened(env) == {"a": 1}

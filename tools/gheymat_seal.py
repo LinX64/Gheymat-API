@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,9 @@ NONCE_LEN = 12
 TAG_LEN = 16
 SIG_LEN = 64
 DEFAULT_KID = 1
+# Random base64 now and then spells the start of a well-known credential format, and the host's push protection
+# rejects the whole publish. Re-drawing the nonce changes every byte, so such an envelope is simply sealed again.
+CREDENTIAL_LOOKALIKE = re.compile(r"(?:AKID|AKIA|ASIA|AIza|LTAI|AIDA|AROA|AGPA)[A-Za-z0-9]{16}")
 MAX_AGE = 2 * 60 * 60
 MAX_FUTURE = 5 * 60
 MAX_ENVELOPE_BYTES = 2 * 1024 * 1024
@@ -120,12 +124,16 @@ class Sealer:
     def seal(self, logical: str, obj, issued: int | None = None) -> dict:
         issued = int(issued if issued is not None else time.time())
         plaintext = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        nonce = os.urandom(NONCE_LEN)
-        aad = header(logical, issued, nonce, self.kid)
-        ciphertext = ChaCha20Poly1305(self.enc_key).encrypt(nonce, plaintext, aad)
-        signature = self.signing_key.sign(aad + ciphertext)
-        return {"v": VERSION, "kid": self.kid, "issued": issued, "nonce": b64(nonce),
-                "ciphertext": b64(ciphertext), "sig": b64(signature)}
+        for _ in range(16):
+            nonce = os.urandom(NONCE_LEN)
+            aad = header(logical, issued, nonce, self.kid)
+            ciphertext = ChaCha20Poly1305(self.enc_key).encrypt(nonce, plaintext, aad)
+            signature = self.signing_key.sign(aad + ciphertext)
+            envelope = {"v": VERSION, "kid": self.kid, "issued": issued, "nonce": b64(nonce),
+                        "ciphertext": b64(ciphertext), "sig": b64(signature)}
+            if not CREDENTIAL_LOOKALIKE.search(json.dumps(envelope)):
+                return envelope
+        raise RuntimeError("could not seal without a credential-like run")
 
 
 def _int_field(envelope: dict, name: str) -> int:
