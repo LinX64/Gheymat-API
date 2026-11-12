@@ -1,5 +1,3 @@
-"""CI gate tools/verify_sealed.py: exit 0 only for an authentic, fresh, complete sealed v1/latest; fixed output lines,
-no key material in any output. Throwaway test keys only."""
 import base64
 import json
 import pathlib
@@ -11,8 +9,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
-import gheymat_seal as gs  # noqa: E402
-import verify_sealed as vs  # noqa: E402
+import gheymat_seal as gs
+import verify_sealed as vs
 
 MASTER = bytes(range(7, 39))
 MASTER_B64 = base64.b64encode(MASTER).decode()
@@ -21,12 +19,10 @@ PUBLIC_B64 = base64.b64encode(SIGNING.public_key().public_bytes_raw()).decode()
 OTHER = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
 
 DIRECT, OPTIONAL = vs.load_instrument_codes()
-DIRECT, OPTIONAL = sorted(DIRECT), sorted(OPTIONAL)  # fixed order for deterministic test fixtures
+DIRECT, OPTIONAL = sorted(DIRECT), sorted(OPTIONAL)
 
 
 def snapshot(codes: list[str] | None = None) -> dict:
-    """A sealed-looking rate list by code; defaults to the 37 real direct (non-computed) codes, which the
-    instrument-table-driven gate (the bare, workflow-invoked default) must accept."""
     if codes is None:
         codes = DIRECT
     return {"seq": 1, "fetchedAt": "2026-10-15T08:00:12Z", "source": "bonbast", "flags": ["static"],
@@ -73,7 +69,7 @@ def test_gate_fails_closed(tmp_path, monkeypatch, capsys):
     code, text = run(monkeypatch, capsys, tmp_path, key=None)
     assert code == 1 and "GHEYMAT_PAYLOAD_KEY is not set" in text
 
-    sealed = publish(tmp_path, snapshot(DIRECT[:28]))  # under the 29-direct floor
+    sealed = publish(tmp_path, snapshot(DIRECT[:28]))
     assert run(monkeypatch, capsys, tmp_path) == (1, failed)
     assert run(monkeypatch, capsys, tmp_path, "--expect-rates", "28") == (0, "verify_sealed: sealed v1/latest ok, 28 rates\n")
 
@@ -118,18 +114,15 @@ def test_production_public_key_constant_is_a_valid_ed25519_key():
 
 
 def test_gate_passes_with_some_or_all_optional_rows_present(tmp_path, monkeypatch, capsys):
-    # some computed / hansha-only rows this run ...
     publish(tmp_path, snapshot(DIRECT + OPTIONAL[:3]))
     code, text = run(monkeypatch, capsys, tmp_path)
     assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 40 rates\n"
-    # ... and all 14, on a clean fetch from both sources
     publish(tmp_path, snapshot(DIRECT + OPTIONAL))
     code, text = run(monkeypatch, capsys, tmp_path)
     assert code == 0 and text == "verify_sealed: sealed v1/latest ok, 51 rates\n"
 
 
 def test_gate_passes_a_hansha_snapshot_missing_the_bonbast_only_codes(tmp_path, monkeypatch, capsys):
-    """bonbast down: hansha alone has no ounce and no usd-quoted btc, which must still deploy."""
     snap = snapshot([c for c in DIRECT if c not in ("ounce", "btc")] + ["eth", "usdt"])
     snap["source"] = "hansha"
     publish(tmp_path, snap)
@@ -141,5 +134,4 @@ def test_gate_fails_closed_on_an_unrecognized_code(tmp_path, monkeypatch, capsys
     failed = "verify_sealed: sealed v1/latest FAILED verification; not deploying\n"
     publish(tmp_path, snapshot(DIRECT + ["xx"]))
     assert run(monkeypatch, capsys, tmp_path) == (1, failed)
-    # an unrecognized code is fine under an explicit exact-count override (legacy behavior, unchanged)
     assert run(monkeypatch, capsys, tmp_path, "--expect-rates", "38") == (0, "verify_sealed: sealed v1/latest ok, 38 rates\n")

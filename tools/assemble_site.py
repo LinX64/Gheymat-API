@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Assemble the versioned static site from a publisher output directory.
-
-    python tools/assemble_site.py --src dist --out site
-
-The legacy layout (root `d/`, pages) is copied unchanged. Each version in tools/site_versions.py then gets its
-own `<id>/d/` folder: a version that derives from none gets byte-identical copies of the root documents,
-a derived version gets the documents read back (verified), transformed and sealed again for its own logical
-paths. `versions.json` and `_headers` are generated from the registry. Needs GHEYMAT_PAYLOAD_KEY and
-GHEYMAT_SIGNING_KEY; never prints key material.
-"""
 from __future__ import annotations
 
 import argparse
@@ -20,16 +10,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import site_versions  # noqa: E402
-import verify_sealed  # noqa: E402
-from gheymat_seal import EnvelopeError, MAX_STATE_BYTES, Sealer, open_envelope  # noqa: E402
+import site_versions
+import verify_sealed
+from gheymat_seal import EnvelopeError, MAX_STATE_BYTES, Sealer, open_envelope
 
-ROOT_ONLY = ("health",)  # published at the root only, claimed so they are not reported as orphans
+ROOT_ONLY = ("health",)
 DROP = (".git", ".nojekyll", "_headers", "versions.json", "archive")
 
 
 def read_sealed(src: Path, logical: str, sealer: Sealer):
-    """(document, issued) from a sealed copy, verified for its logical path; None when absent or unreadable."""
     path = src / sealer.opaque_path(logical)
     try:
         text = path.read_text(encoding="utf-8")
@@ -92,7 +81,6 @@ def assemble(src: Path, out: Path, sealer: Sealer, registry: list[dict] | None =
                     written += 1
                 continue
             source_logical = f"{source}/{rel}"
-            # Versions are processed in order, so a derived source is already assembled under out/<source>/d.
             got = read_sealed(out / source, source_logical, sealer)
             if got is None:
                 if rel in ("ai/news", "ai/brief"):
@@ -118,7 +106,7 @@ def assemble(src: Path, out: Path, sealer: Sealer, registry: list[dict] | None =
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description="Assemble the versioned static site from a publisher output directory.")
     ap.add_argument("--src", required=True)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()

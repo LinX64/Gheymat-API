@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import archive_store as a  # noqa: E402
+import archive_store as a
 
 
 def test_roundtrip_and_dedupe(tmp_path):

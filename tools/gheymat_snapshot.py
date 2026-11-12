@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""Static channel publisher for the Gheymat app (its only data path).
-
-Combines several sources in priority order (GHEYMAT_SOURCES, default "hansha,bonbast"; CONTRACT.md "Static
-publisher sources"): every source is fetched, each code takes its value from the first source that supplies
-one, and a source that fails or goes stale is skipped. Same wire shapes as Gheymat/CONTRACT.md; runs as a
-one-shot script inside GitHub Actions and writes extensionless files that GitHub Pages serves at the same
-paths the app requests:
-
-  dist/health, dist/v1/latest, dist/v1/instruments, dist/v1/intraday/<code>
-  dist/v1/daily.json (all daily closes since 2012-10-09, filled by --history and --backfill from the archive page)
-  dist/v1/history/<code> (full daily series per instrument), dist/v1/longhistory/<code> (coarse 1978-> seed)
-
-dist/v1/latest additionally carries up to 8 computed cross-rate rows (Rate.computed=true) derived from
-bonbast's separate /converter endpoint - CONTRACT.md "Computed cross-rates". See fetch_converter,
-compute_cross_rates, fetch_computed_rates and merge_rates below; stateless per run, by design (no
-persisted converter table), so a bad fetch just drops the 8 rows for that publish, never the other 37.
-"""
 from __future__ import annotations
 
 import argparse
@@ -33,10 +16,10 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gheymat_seal import Sealer, load_published  # noqa: E402
-import gheymat_ai  # noqa: E402
-import gheymat_news  # noqa: E402
-import live_guard  # noqa: E402
+from gheymat_seal import Sealer, load_published
+import gheymat_ai
+import gheymat_news
+import live_guard
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -47,18 +30,16 @@ HERE = Path(__file__).resolve().parent
 HANSHA = "https://hansha.online"
 SOURCES_ENV = "GHEYMAT_SOURCES"
 DEFAULT_SOURCES = ("hansha", "bonbast")
-MIN_DIRECT = 29  # publish floor on combined direct rates (unchanged from the bonbast-only publisher)
-STALE_SOURCE_SECONDS = 30 * 60  # a source whose newest observation is older than this is skipped
+MIN_DIRECT = 29
+STALE_SOURCE_SECONDS = 30 * 60
 FUTURE_SLACK_SECONDS = 5 * 60
 
 
 class SourceError(RuntimeError):
-    """A source failed as a whole (HTTP error, challenge page, bad body, stale feed); the run moves on."""
+    pass
 
 
 class SourceBlocked(SourceError):
-    """The live source refused or answered with something unusable; `kind` is one of live_guard.KINDS and
-    `retry_after` the seconds it asked us to wait (or None). The message is neutral on purpose."""
 
     def __init__(self, kind: str, retry_after: int | None = None):
         super().__init__("live source blocked")
@@ -67,7 +48,6 @@ class SourceBlocked(SourceError):
 
 
 def _classify(r) -> None:
-    """Raise SourceBlocked when the response is a block; raise the HTTP error for a plain failure."""
     outcome, kind, retry_after = live_guard.classify_response(
         r.status_code, r.text[:2000], r.headers.get("Retry-After"))
     if outcome == "blocked":
@@ -137,10 +117,10 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
     rates = []
     for ins in instruments:
         if ins.get("computed"):
-            continue  # direct-only here; computed cross-rates come from fetch_computed_rates/compute_cross_rates
+            continue
         key = ins.get("bonbast_key")
         if not key:
-            continue  # hansha-only instrument (CONTRACT.md "Static publisher sources")
+            continue
         rate = {
             "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
             "buy": None, "sell": None, "price": None,
@@ -177,8 +157,6 @@ def build_snapshot(raw: dict, instruments: list[dict]) -> dict:
 
 
 def normalize_ts(value) -> str | None:
-    """A source timestamp as CONTRACT.md's `%Y-%m-%dT%H:%M:%SZ` UTC, clamped to now if it is in the future;
-    None when it is missing or unparseable."""
     if not isinstance(value, str) or not value:
         return None
     try:
@@ -230,14 +208,6 @@ def hansha_mark(rows: list) -> str | None:
 
 
 def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
-    """Map hansha /latest rows onto our instrument table (CONTRACT.md "Static publisher sources").
-
-    `ab` is our code and `ps[0]` the newest point. Hansha has no `ounce` and prices `btc` in toman while ours
-    quotes usd, so usd-quoted instruments are never taken from here. Names and glyphs always come from our
-    table, never hansha's `en`/`fa`/`av`. fetchedAt is the oldest observation used, sourceModified the newest.
-    Hansha quotes every row per 1 unit while our table quotes amd/jpy per 10 and iqd per 100 (bonbast's
-    convention), so values are scaled to the instrument's `unit`. `observed` maps each kept code to its own
-    `ps[0].ts`; it is internal (combine_sources reads it for the intraday keys) and never published."""
     by_ab = {row["ab"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("ab"), str)}
     rates, stamps = [], []
     for ins in instruments:
@@ -248,7 +218,7 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
         point = ps[0] if isinstance(ps, list) and ps and isinstance(ps[0], dict) else None
         stamp = normalize_ts(point.get("ts")) if point else None
         if stamp is None:
-            continue  # no point, or no trustworthy observation time for it
+            continue
         rate = {
             "code": ins["code"], "kind": ins["kind"], "unit": ins["unit"], "quote": ins["quote"],
             "buy": None, "sell": None, "price": None,
@@ -267,8 +237,8 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
             rate["price"] = float(round(price * ins["unit"]))
         rates.append(rate)
         stamps.append(stamp)
-    if stamps:  # a row frozen far behind the feed counts as missing (the next source fills it), so one stale
-        newest = max(stamps)  # row never drags the whole snapshot's fetchedAt back
+    if stamps:
+        newest = max(stamps)
         keep = [i for i, s in enumerate(stamps) if age_seconds(s) - age_seconds(newest) <= STALE_SOURCE_SECONDS]
         rates, stamps = [rates[i] for i in keep], [stamps[i] for i in keep]
     return {
@@ -283,7 +253,6 @@ def build_hansha_snapshot(rows: list, instruments: list[dict]) -> dict:
 
 
 def source_order(raw: str | None = None) -> list[str]:
-    """GHEYMAT_SOURCES as a de-duplicated list of known source names; the default when empty or unknown."""
     raw = os.environ.get(SOURCES_ENV, "") if raw is None else raw
     names = [n.strip().lower() for n in raw.split(",") if n.strip()]
     known = [n for n in dict.fromkeys(names) if n in DEFAULT_SOURCES]
@@ -302,8 +271,6 @@ def _explicit_sources() -> bool:
 
 
 def effective_mode(now: float) -> str:
-    """default | live-first | primary-only from the environment, read lazily; a valid start time in the past
-    turns `default` into `live-first`. An explicit source list is left alone by plan_sources."""
     mode = os.environ.get(ORDER_ENV, "").strip().lower()
     if mode not in ORDER_MODES:
         mode = "default"
@@ -326,7 +293,6 @@ def live_first_active(now: float) -> bool:
 
 
 def plan_sources(now: float, state: dict, primary_short: bool = False) -> list[str]:
-    """The source order for this run: the configured mode, then the guard's view of the live source."""
     order = source_order()
     if not _explicit_sources():
         mode = effective_mode(now)
@@ -335,7 +301,7 @@ def plan_sources(now: float, state: dict, primary_short: bool = False) -> list[s
         elif mode == "primary-only":
             order = [PRIMARY_NAME]
     if not live_first_active(now):
-        state = live_guard.new_state()  # the persistent quiet only acts once live-first is on
+        state = live_guard.new_state()
     return live_guard.effective_order(order, LIVE_NAME, state, now, primary_short)
 
 
@@ -370,7 +336,6 @@ def fetch_source(name: str, session: requests.Session, instruments: list[dict]) 
 
 def collect_sources(session: requests.Session, instruments: list[dict], order: list[str],
                     fetch=fetch_source) -> list[dict]:
-    """One snapshot per source that worked, in priority order; a failed or stale source is logged and skipped."""
     results = []
     for index, name in enumerate(order, start=1):
         try:
@@ -395,15 +360,6 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
 
 def combine_sources(results: list[dict], instruments: list[dict],
                     live_first: bool = False) -> tuple[dict, dict[str, int], dict[str, str]]:
-    """Per-instrument fill: each code from the first snapshot (priority order) that carries it.
-
-    Returns the combined snapshot, per-source counts and {code: observation stamp} for the chosen rows (a hansha
-    row's own `ps[0].ts`, else its source's fetchedAt, which for bonbast is the fetch time). The stamps key the
-    intraday samples and stay out of the snapshot, so v1/latest keeps its shape. `source` is the source that supplied
-    the most rates (ties go to the higher priority), `sourceModified` is its stamp, and `fetchedAt` is the OLDEST
-    observation among the sources used, so the app never shows a republished value as fresher than it is. With
-    `live_first` it is the oldest observation over the core instruments only (those the live source carries),
-    so a primary-only code never drags it back; it falls back to the old minimum when that leaves no rows."""
     chosen: dict[str, tuple[dict, str, str]] = {}
     for snap in results:
         observed = snap.get("observed", {})
@@ -436,9 +392,9 @@ def combine_sources(results: list[dict], instruments: list[dict],
     return snapshot, {s["source"]: counts[s["source"]] for s in used}, {c: chosen[c][2] for c in order if c in chosen}
 
 
-DIVERGE_CODES = 5        # this many shared codes apart by DIVERGE_PCT drops the live snapshot
+DIVERGE_CODES = 5
 DIVERGE_PCT = 0.03
-REPLACE_PCT = 0.05       # one code further apart than this takes the primary source's row
+REPLACE_PCT = 0.05
 
 
 def _sell_of(r: dict):
@@ -452,10 +408,6 @@ def _shared_usable(r: dict | None) -> bool:
 
 
 def check_divergence(live: dict, primary: dict) -> tuple[dict | None, int]:
-    """Compare sells over the codes both snapshots carry. Returns (live snapshot to use or None, rows replaced).
-
-    Five or more codes at DIVERGE_PCT or more apart drop the live snapshot; a code beyond REPLACE_PCT is removed
-    from the live snapshot so the primary row fills it."""
     mine = {r["code"]: r for r in primary["rates"]}
     far, replace = 0, set()
     for r in live["rates"]:
@@ -478,7 +430,6 @@ def check_divergence(live: dict, primary: dict) -> tuple[dict | None, int]:
 
 
 def count_apart(live: dict, primary: dict) -> int:
-    """How many shared codes have sells DIVERGE_PCT or more apart (a count only, for the default-mode log)."""
     mine = {r["code"]: r for r in primary["rates"]}
     far = 0
     for r in live["rates"]:
@@ -490,16 +441,12 @@ def count_apart(live: dict, primary: dict) -> int:
 
 
 def core_fingerprint(primary: dict, instruments: list[dict]) -> str:
-    """Fingerprint of the primary's rows for instruments the live source also carries, so the primary-only
-    codes (which tick around the clock) never count as the desk moving."""
     core = {i["code"] for i in instruments if i.get("bonbast_key") and not i.get("computed")}
     return rates_fingerprint([r for r in primary["rates"] if r["code"] in core])
 
 
 def apply_live_first_guards(results: list[dict], now: float,
                             instruments: list[dict] | None = None) -> tuple[list[dict], int]:
-    """Live-first only: when both sources answered, drop the live snapshot on divergence or a frozen desk, or
-    replace a few far-off rows. Returns (results, rows replaced)."""
     global _LIVE_STATE
     live = next((s for s in results if s["source"] == LIVE_NAME), None)
     primary = next((s for s in results if s["source"] == PRIMARY_NAME), None)
@@ -523,14 +470,11 @@ def apply_live_first_guards(results: list[dict], now: float,
 
 
 def rates_fingerprint(rates: list[dict]) -> str:
-    """Short hash of the published values only (never timestamps), whichever source supplied them."""
     values = {r["code"]: [r.get("buy"), r.get("sell"), r.get("price")] for r in rates}
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:12]
 
 
 def parse_converter_table(obj) -> dict | None:
-    """Defensive float-coerce a bonbast /converter body into {UPPERCASE code: units per 1 EUR}, or None
-    when `obj` isn't a JSON object."""
     if not isinstance(obj, dict):
         return None
     table: dict[str, float] = {}
@@ -543,11 +487,6 @@ def parse_converter_table(obj) -> dict | None:
 
 
 def fetch_converter(session: requests.Session) -> dict | None:
-    """POST /converter: bonbast's separate 174-currency EUR-pivoted forex table, used for the 8 computed
-    cross-rate instruments (CONTRACT.md "Computed cross-rates"). Unlike /json this needs no `param` token
-    and no cookies - mirrors converter_client.py's exact request shape (base headers + accept +
-    x-requested-with, no content-type since there is no body). Never raises: a failed/blocked/non-JSON
-    fetch here must stay non-fatal to the whole publish run, unlike fetch_raw's token handling."""
     h = headers()
     h["x-requested-with"] = "XMLHttpRequest"
     h["accept"] = "application/json, text/javascript, */*; q=0.01"
@@ -570,12 +509,6 @@ def fetch_converter(session: requests.Session) -> dict | None:
 
 
 def compute_cross_rates(table: dict, eur_buy, eur_sell, instruments: list[dict]) -> list[dict]:
-    """One rate per `computed` instrument: buy/sell = round(unit * eur.{buy,sell} * conv["EUR"]/conv[key]).
-
-    Returns [] whenever the result would be untrustworthy: EUR's own direct quote is missing this run, or
-    the pivot check fails (bonbast re-based /converter - conv["EUR"] must be exactly 1.0). A single
-    instrument's own converter key being absent or non-positive only skips that one row, never the other 7.
-    """
     if eur_buy is None or eur_sell is None:
         return []
     if table.get("EUR") != 1.0:
@@ -605,9 +538,6 @@ def compute_cross_rates(table: dict, eur_buy, eur_sell, instruments: list[dict])
 
 def fetch_computed_rates(session: requests.Session, direct_rates: list[dict], instruments: list[dict],
                           fetcher=None) -> list[dict]:
-    """Thin orchestrator: skip the /converter call entirely when this run's own EUR quote can't be used to
-    pivot it, else fetch+compute. `fetcher` is an injection seam for tests (same convention as
-    fill_days(..., fetcher=...)); defaults to fetch_converter."""
     eur = next((r for r in direct_rates if r["code"] == "eur"), None)
     if eur is None or eur["buy"] is None or eur["sell"] is None:
         return []
@@ -618,8 +548,6 @@ def fetch_computed_rates(session: requests.Session, direct_rates: list[dict], in
 
 
 def merge_rates(direct_rates: list[dict], computed_rates: list[dict], instruments: list[dict]) -> list[dict]:
-    """Append computed_rates onto direct_rates and reorder to instruments.json's own order (parity with
-    the Gheymat server's merge_computed_rates); a no-op when there are no computed rows this run."""
     if not computed_rates:
         return direct_rates
     by_code = {r["code"]: r for r in direct_rates + computed_rates}
@@ -637,7 +565,6 @@ def _cells(fragment: str) -> list[str]:
 
 
 def parse_archive(page: str) -> tuple[str | None, dict[str, tuple[int | None, int | None]]]:
-    """Return (date shown on the page, {code: (buy, sell)}) from a bonbast /archive page."""
     shown = re.search(r"\d{4}-\d{2}-\d{2}", page)
     values: dict[str, tuple[int | None, int | None]] = {}
     for table in re.findall(r"<table.*?</table>", page, flags=re.S):
@@ -671,7 +598,6 @@ ARCHIVE_GUARD_DAYS = 1000
 
 
 def load_daily(out: Path) -> dict:
-    """The archive state: the plain v1/daily.json while it is still published, else the sealed copy at its opaque path."""
     daily = load_published(out, "v1/daily.json", SEALER)
     if isinstance(daily, dict) and isinstance(daily.get("codes"), dict) and isinstance(daily.get("start"), str):
         return daily
@@ -679,7 +605,6 @@ def load_daily(out: Path) -> dict:
 
 
 def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
-    """(previous, current) when the previously published health reported a large archive and this run loaded under half of it."""
     previous = load_published(out, "health", SEALER)
     before = previous.get("archiveDays") if isinstance(previous, dict) else None
     if isinstance(before, bool) or not isinstance(before, int) or before < ARCHIVE_GUARD_DAYS:
@@ -707,7 +632,6 @@ def merge_day(daily: dict, date: str, values: dict[str, tuple[int | None, int | 
 
 
 def fill_days(session: requests.Session, daily: dict, dates: list[str], pace: float, fetcher=None) -> int:
-    """Fetch the given archive dates in order; stop on a suspected soft-block (BLOCK_RUN identical payloads)."""
     fetcher = fetcher or (lambda d: fetch_archive(session, d))
     fetched = 0
     previous = None
@@ -781,10 +705,6 @@ def write_history_files(out: Path, daily: dict) -> int:
 
 
 def write_long_history(out: Path, archive_file: Path, units: dict[str, int] | None = None) -> int:
-    """Coarse pre-2012 seed (hansha 'all' series kept in archive/all.json, USD back to 1978).
-
-    Hansha quotes per 1 unit, so each price is scaled to our table's `unit` (`units`: code -> unit) to match
-    v1/history and v1/latest (jpy/amd per 10, iqd per 100)."""
     if not archive_file.exists():
         return 0
     try:
@@ -877,7 +797,6 @@ def _level(point) -> float | None:
 
 
 def _utc_stamp(value) -> str:
-    """An ISO timestamp as a `%Y-%m-%dT%H:%M:%SZ` UTC stamp (comparable with intraday `ts`); no future clamp."""
     if not isinstance(value, str):
         raise ValueError(f"{value!r} is not an ISO timestamp")
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -887,9 +806,6 @@ def _utc_stamp(value) -> str:
 
 
 def load_repairs(path: Path | None = None) -> list[dict]:
-    """tools/intraday_repairs.json (CONTRACT.md "Static publisher sources"): a list of {"codes", "from", "to",
-    "belowFactor" (optional), "note"} entries, returned with UTC stamps. A missing file means no repairs; a malformed
-    one is logged and ignored as a whole, so it never stops a publish."""
     path = path or INTRADAY_REPAIRS
     try:
         if not path.exists():
@@ -914,8 +830,6 @@ def load_repairs(path: Path | None = None) -> list[dict]:
 
 
 def drop_repaired_points(code: str, points: list, reference: float | None, repairs: list[dict]) -> list:
-    """`points` without those a repair entry for `code` covers (from <= ts < to); an entry with belowFactor takes
-    only points whose level times belowFactor is below `reference`, this run's sample level."""
     if not repairs:
         return points
 
@@ -934,7 +848,7 @@ def drop_repaired_points(code: str, points: list, reference: float | None, repai
     return [p for p in points if not repaired(p)]
 
 
-INTRADAY_MIN_GAP = 150  # seconds: a row stamped with the live fetch time adds at most one point per this gap
+INTRADAY_MIN_GAP = 150
 
 
 def _gap_seconds(newer: str, older) -> float | None:
@@ -948,20 +862,13 @@ def _gap_seconds(newer: str, older) -> float | None:
 
 def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None = None,
                     live_stamp: str | None = None) -> int:
-    """Append this run's sample to v1/intraday/<code> (last INTRADAY_DAYS days, oldest first). Returns files written.
-
-    Each sample is keyed by its row's own observation stamp (`observed`, from combine_sources; the snapshot's
-    fetchedAt when absent), so an older or equal observation adds no point for that code only. Repair entries still
-    inside the retention drop their points first, and a repair rewrites the file even without a new sample.
-    A row stamped with `live_stamp` (the live fetch time) is only added when the last stored point is at least
-    INTRADAY_MIN_GAP seconds older, so a faster loop never stores a point per build."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    repairs = [e for e in load_repairs() if e["to"] > cutoff]  # an entry whose window aged out is a no-op
+    repairs = [e for e in load_repairs() if e["to"] > cutoff]
     observed = observed or {}
     written = 0
     for r in snapshot["rates"]:
         if r.get("computed"):
-            continue  # CONTRACT.md: no server-side ticks are kept for computed codes
+            continue
         path = out / "v1" / "intraday" / r["code"]
         previous = load_published(out, f"v1/intraday/{r['code']}", SEALER)
         points = previous.get("points", []) if isinstance(previous, dict) else []
@@ -976,7 +883,7 @@ def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None =
             gap = _gap_seconds(sample["ts"], points[-1].get("ts", ""))
             fresh = gap is None or gap >= INTRADAY_MIN_GAP
         if not fresh and not repaired:
-            continue  # an unchanged (or older, after a source switch) observation adds no point
+            continue
         points = [p for p in points if isinstance(p, dict) and p.get("ts", "") >= cutoff]
         if fresh:
             points.append(sample)
@@ -990,7 +897,6 @@ PLAIN_ALSO = True
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    """Write via a temp file in the same directory, so an interrupted write leaves the previous file intact."""
     tmp = path.with_name(path.name + ".tmp")
     try:
         tmp.write_text(text, encoding="utf-8")
@@ -1000,10 +906,6 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 
 def write(path: Path, obj) -> None:
-    """Write obj at its plain path (while the app still reads plain files) and, when keys are present, sealed at the opaque path.
-
-    Once plain files are off, a plain copy carried over from an earlier publish is removed so it cannot shadow
-    the sealed state that load_published reads back on the next run."""
     if PLAIN_ALSO or SEALER is None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(path, json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
@@ -1030,7 +932,6 @@ def _dist_root(path: Path) -> Path:
 
 
 def news_only(out: Path) -> int:
-    """Refresh just the news document under out; prints whether a real refresh happened."""
     global SEALER, PLAIN_ALSO, _DIST_ROOT
     _DIST_ROOT = out
     SEALER = Sealer.from_env()
@@ -1046,7 +947,6 @@ def news_only(out: Path) -> int:
     except Exception as e:
         print(f"news: refresh failed ({type(e).__name__})", file=sys.stderr)
         return 5
-    # A re-seal keeps checkedAt/generatedAt as they were; only a real refresh writes checkedAt = now.
     print("news: refreshed" if after is not None and (before is None or after > before) else "news: unchanged")
     return 0
 
@@ -1081,8 +981,6 @@ def main() -> int:
 
 
 def collect_planned(session, instruments: list[dict], now: float, quiet: bool) -> tuple[list[dict], bool]:
-    """Collect per the plan. Returns (snapshots, live_first). In a quiet period the live source is
-    left out unless the primary alone is short of MIN_DIRECT, in which case one more pass allows it."""
     live_first = live_first_active(now)
     _LIVE_RUN.update(outcome=None, kind=None)
     order = plan_sources(now, _LIVE_STATE)

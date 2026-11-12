@@ -1,4 +1,3 @@
-"""Live-first ordering, block classification, quiet periods and the live-first guards. No network."""
 import importlib.util
 import json
 import pathlib
@@ -10,14 +9,14 @@ import pytest
 import requests
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
-import live_guard  # noqa: E402
+import live_guard
 
 SPEC = importlib.util.spec_from_file_location(
     "gheymat_snapshot_live_first", pathlib.Path(__file__).resolve().parents[1] / "tools" / "gheymat_snapshot.py")
 mod = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mod)
 
-from test_sources import bonbast_snapshot, hansha_rows, iso  # noqa: E402
+from test_sources import bonbast_snapshot, hansha_rows, iso
 
 INSTRUMENTS = mod.load_instruments()
 HANSHA_ONLY = {"eth", "xrp", "bch", "ltc", "bnb", "usdt"}
@@ -35,8 +34,6 @@ def clean_env(monkeypatch, tmp_path):
 NOW = time.time()
 
 
-# --- (i) default mode unchanged
-
 def test_default_mode_order_and_freshness_are_unchanged():
     assert mod.plan_sources(NOW, live_guard.new_state()) == ["hansha", "bonbast"]
     assert mod.source_order() == ["hansha", "bonbast"]
@@ -46,12 +43,10 @@ def test_default_mode_order_and_freshness_are_unchanged():
     next(r for r in rows if r["ab"] == "eth")["ps"][0]["ts"] = old
     results = [mod.build_hansha_snapshot(rows, INSTRUMENTS), bonbast_snapshot()]
     snap, _, _ = mod.combine_sources(results, INSTRUMENTS)
-    assert snap["fetchedAt"] == old  # oldest over everything, as before
+    assert snap["fetchedAt"] == old
     again, _, _ = mod.combine_sources(results, INSTRUMENTS, live_first=False)
     assert again["fetchedAt"] == old
 
-
-# --- (ii) modes
 
 def test_live_first_mode_and_primary_only(monkeypatch):
     state = live_guard.new_state()
@@ -77,7 +72,7 @@ def test_live_first_from_date(monkeypatch):
     monkeypatch.setenv("GHEYMAT_LIVE_FIRST_FROM", "not a date")
     assert mod.effective_mode(NOW) == "default"
     monkeypatch.setenv("GHEYMAT_LIVE_FIRST_FROM", past)
-    monkeypatch.setenv("GHEYMAT_ORDER", "primary-only")  # an explicit mode is not overridden by the date
+    monkeypatch.setenv("GHEYMAT_ORDER", "primary-only")
     assert mod.effective_mode(NOW) == "primary-only"
 
 
@@ -89,8 +84,6 @@ def test_explicit_sources_win(monkeypatch):
     assert mod.plan_sources(NOW, live_guard.new_state()) == ["hansha", "bonbast"]
     assert mod.live_first_active(NOW) is False
 
-
-# --- (iii) classification wiring
 
 class Resp:
     def __init__(self, status=200, text="", headers=None, body=None, bad_json=False):
@@ -193,8 +186,6 @@ def test_collect_sources_notes_a_live_block_and_continues():
     assert mod._LIVE_RUN == {"outcome": "blocked", "kind": "challenge"}
 
 
-# --- main harness
-
 def run_main(monkeypatch, tmp_path, collect, args=(), min_direct=1):
     calls = {"collect": [], "converter": 0, "fill": []}
 
@@ -236,8 +227,6 @@ def both(order):
     by = {"hansha": mod.build_hansha_snapshot(hansha_rows(), INSTRUMENTS), "bonbast": bonbast_snapshot()}
     return [by[n] for n in order]
 
-
-# --- (iv) quiet
 
 def test_quiet_skips_live_converter_and_archive(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("GHEYMAT_ORDER", "live-first")
@@ -298,8 +287,6 @@ def test_default_mode_prints_divergence_count_to_stderr_only(monkeypatch, tmp_pa
     assert "codes" not in cap.out
 
 
-# --- (v) guards
-
 def snap(source, sells, mark=None):
     rates = [{"code": c, "buy": s - 10, "sell": s, "price": None} for c, s in sells.items()]
     return {"source": source, "rates": rates, "fetchedAt": iso(1), "sourceModified": mark}
@@ -344,7 +331,7 @@ def test_frozen_desk_drops_live():
     live = snap("bonbast", BASE_SELLS)
     results = None
     for step in range(4):
-        moved = {c: v + step for c, v in BASE_SELLS.items()}  # core primary values change, live does not
+        moved = {c: v + step for c, v in BASE_SELLS.items()}
         results, _ = mod.apply_live_first_guards([live, snap("hansha", moved)], NOW + step * 700)
     assert [s["source"] for s in results] == ["hansha"]
     assert mod._LIVE_RUN["kind"] == "frozen"
@@ -371,7 +358,7 @@ def test_frozen_check_receives_live_fingerprint_and_core_primary_mark(monkeypatc
     primary_rows = snap("hansha", {**BASE_SELLS, "eth": 7})["rates"]
     mod.apply_live_first_guards([live, dict(primary, rates=primary_rows)], NOW, INSTRUMENTS)
     assert seen[0] == (mod.rates_fingerprint(live["rates"]), mod.rates_fingerprint(primary["rates"]))
-    assert seen[1] == seen[0]  # an extra primary-only row leaves the mark unchanged
+    assert seen[1] == seen[0]
 
 
 def test_freshness_excludes_primary_only_codes_in_live_first_only():
@@ -396,12 +383,10 @@ def test_freshness_falls_back_when_no_core_rows():
     assert out["fetchedAt"] == only["fetchedAt"]
 
 
-# --- (vi) / (vii) one line, before the exit-2 check, state saved
-
 def test_live_line_once_before_exit_2_and_state_saved(monkeypatch, tmp_path, capsys):
     path = tmp_path / "state.json"
     monkeypatch.setenv("GHEYMAT_LIVE_STATE", str(path))
-    monkeypatch.setattr(mod.sys, "stderr", sys.stdout)  # one stream, so order is observable
+    monkeypatch.setattr(mod.sys, "stderr", sys.stdout)
 
     def blocked(session):
         raise mod.SourceBlocked("challenge")
@@ -429,8 +414,6 @@ def test_unreachable_live_source_prints_failed(monkeypatch, tmp_path, capsys):
     assert capsys.readouterr().out.count("live: failed") == 1
 
 
-# --- (viii) intraday density
-
 def _points(out, code):
     return json.loads((out / "v1" / "intraday" / code).read_text(encoding="utf-8"))["points"]
 
@@ -447,11 +430,10 @@ def test_intraday_density_guard(tmp_path, monkeypatch):
         return (t0 + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     assert mod.append_intraday(tmp_path, _intraday_snap(stamp(0)), None, stamp(0)) == 1
-    assert mod.append_intraday(tmp_path, _intraday_snap(stamp(60)), None, stamp(60)) == 0  # too soon
+    assert mod.append_intraday(tmp_path, _intraday_snap(stamp(60)), None, stamp(60)) == 0
     assert mod.append_intraday(tmp_path, _intraday_snap(stamp(149)), None, stamp(149)) == 0
     assert mod.append_intraday(tmp_path, _intraday_snap(stamp(150)), None, stamp(150)) == 1
     assert [p["ts"] for p in _points(tmp_path, "usd")] == [stamp(0), stamp(150)]
-    # without a live stamp (a row's own observation) nothing changes
     assert mod.append_intraday(tmp_path, _intraday_snap(stamp(160)), None, None) == 1
     assert mod.append_intraday(tmp_path, _intraday_snap(stamp(170)), {"usd": stamp(170)}, stamp(999)) == 1
 

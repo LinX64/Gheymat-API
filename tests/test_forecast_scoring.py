@@ -4,8 +4,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import gheymat_forecast as fc  # noqa: E402
-import forecast_report  # noqa: E402
+import gheymat_forecast as fc
+import forecast_report
 
 
 def make_series(n=900):

@@ -1,5 +1,3 @@
-"""Envelope v2 reference: key derivation, header layout, policy checks, malformed input, state read-back.
-Throwaway test keys only."""
 import hashlib
 import hmac
 import json
@@ -11,7 +9,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
-import gheymat_seal as gs  # noqa: E402
+import gheymat_seal as gs
 
 MASTER = bytes(range(32))
 SIGNING = Ed25519PrivateKey.from_private_bytes(bytes(range(100, 132)))
@@ -236,7 +234,6 @@ def test_load_published_reads_a_state_file_larger_than_the_client_envelope_bound
 
 
 def test_seal_redraws_nonce_when_output_looks_like_a_credential(sealer, monkeypatch):
-    """Push protection once rejected a publish over a random base64 run; such envelopes are sealed again."""
     real = gs.os.urandom
     calls = []
 

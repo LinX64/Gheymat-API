@@ -1,9 +1,3 @@
-"""Soft-block protection for a live source that is fetched often.
-
-Pure helpers: classify a response, keep a small cooldown state, decide the
-source order, detect a frozen live source. Times are epoch seconds passed in.
-Nothing here touches the network, and no exception text is ever surfaced.
-"""
 
 import json
 import os
@@ -37,7 +31,6 @@ def _parse_retry_after(value):
 
 
 def classify_response(status, head, retry_after):
-    """-> (outcome, kind, retry_after_seconds)."""
     challenge = _has_challenge(head)
     if challenge:
         return "blocked", "challenge", _parse_retry_after(retry_after)
@@ -79,7 +72,6 @@ def _unsafe_path(path):
 
 
 def load_state(path, now):
-    """Never raises; any problem yields a fresh state."""
     try:
         if not path or not isinstance(path, str) or _unsafe_path(path):
             return new_state()
@@ -104,12 +96,11 @@ def load_state(path, now):
                 m[:_MARK_LEN] for m in marks if isinstance(m, str)
             ][:_MAX_MARKS]
         return state
-    except Exception:  # noqa: BLE001 - must never raise
+    except Exception:
         return new_state()
 
 
 def save_state(path, state):
-    """Atomic write; False on any refusal or failure."""
     tmp = None
     try:
         if not path or not isinstance(path, str) or _unsafe_path(path):
@@ -121,7 +112,7 @@ def save_state(path, state):
         os.replace(tmp, path)
         tmp = None
         return True
-    except Exception:  # noqa: BLE001 - must never raise
+    except Exception:
         return False
     finally:
         if tmp is not None:

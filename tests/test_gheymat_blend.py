@@ -9,9 +9,9 @@ import pytest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
-import gheymat_blend as gb  # noqa: E402
-import gheymat_forecast as fc  # noqa: E402
-import gheymat_signals as gs  # noqa: E402
+import gheymat_blend as gb
+import gheymat_forecast as fc
+import gheymat_signals as gs
 
 END = date(2026, 11, 8)
 TODAY = date(2026, 11, 9)

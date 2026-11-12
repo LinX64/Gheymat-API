@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""Generate the Swift test vectors for the sealed channel with the Python reference sealer.
-
-Deterministic: fixed TEST keys (never the production keys), fixed `issued`, counter-derived nonces, so the
-fixture is reproducible byte for byte and tests/test_sealed_vectors.py can detect a stale fixture.
-
-Usage: python tests/make_sealed_vectors.py [path/to/sealed-vectors.json]
-Default output: ../Gheymat/ios/GheymatTests/Fixtures/sealed-vectors.json next to this repo.
-"""
 from __future__ import annotations
 
 import base64
@@ -19,7 +11,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-import gheymat_seal as gs  # noqa: E402
+import gheymat_seal as gs
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "Gheymat" / "ios" / "GheymatTests" / "Fixtures" / "sealed-vectors.json"
 TEST_PAYLOAD_KEY = bytes(range(101, 133))

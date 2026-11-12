@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""Registry of the static site's API versions, as data, plus the files generated from it.
-
-Each version is served under its own URL prefix (`/<id>/`). Adding a version is one entry in VERSIONS and,
-only when its documents differ from the ones they derive from, one function in TRANSFORMS.
-
-Entry fields
-  id          URL prefix and logical-path prefix (`v1`, `v2`, ...)
-  status      current | stable | deprecated | sunset
-  deprecatedAt / sunsetAt   optional ISO dates; surfaced as response headers and in the registry document
-  docs        document groups the version carries ("core", "ai"; see verify_sealed.relative_logicals)
-  derivesFrom None: the documents are the publisher's own output, copied as they are.
-              "<id>": every document is read back from that version's copy, passed through the version's
-              transform and sealed again under this version's logical path.
-"""
 from __future__ import annotations
 
 import re
@@ -31,11 +17,9 @@ VERSIONS: list[dict] = [
 
 
 def v2_transform(logical: str, doc):
-    """Hook for v2 documents. Identity today: the wire shapes are unchanged."""
     return doc
 
 
-# version id -> transform(logical, doc) -> doc. A version without an entry gets the identity.
 TRANSFORMS: dict[str, Callable] = {"v2": v2_transform}
 
 
@@ -56,7 +40,7 @@ def validate(registry: list[dict]) -> None:
             raise ValueError("derivesFrom must name an earlier version")
         for key, needed in (("deprecatedAt", v["status"] in ("deprecated", "sunset")), ("sunsetAt", v["status"] == "sunset")):
             if v.get(key):
-                datetime.fromisoformat(v[key])  # ValueError when not ISO
+                datetime.fromisoformat(v[key])
             elif needed:
                 raise ValueError(f"{key} is required for status {v['status']}")
 
@@ -94,7 +78,6 @@ def _block(path: str, lines: list[str]) -> str:
 
 
 def headers_text(registry: list[dict] | None = None) -> str:
-    """The Cloudflare Pages `_headers` file for the site."""
     registry = VERSIONS if registry is None else registry
     validate(registry)
     doc_headers = ["Content-Type: application/json", "X-Robots-Tag: noindex, nofollow", "Access-Control-Allow-Origin: *"]
