@@ -29,7 +29,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 350
+    timeout-minutes: 5
     permissions:
       contents: write
       actions: write
@@ -43,8 +43,29 @@ jobs:
       - name: Python and dependencies
         uses: ./.github/actions/setup-python-deps
 
+      - name: Restore feed state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            dist
+            .feed-state
+          key: feed-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: feed-state-
+
+      - name: Restore package downloads
+        id: packages
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/publish_loop.py') }}
+          restore-keys: packages-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Publish
-        run: python tools/publish_loop.py
+        id: publish
+        timeout-minutes: 4
+        run: |
+          mkdir -p .feed-state
+          python tools/publish_loop.py
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
@@ -65,4 +86,36 @@ jobs:
           GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
           FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
           GHEYMAT_SIGNAL_SHADOW: ${{ vars.GHEYMAT_SIGNAL_SHADOW }}
-          GHEYMAT_LIVE_STATE: ${{ runner.temp }}/live-guard.json
+          GHEYMAT_LIVE_STATE: .feed-state/live-guard.json
+          GHEYMAT_STATE_DIR: .feed-state
+          PUBLISH_LOOP_MINUTES: "3"
+          PUBLISH_HARD_SECONDS: "230"
+
+      - name: Tidy feed state
+        if: always() && github.ref == 'refs/heads/master'
+        run: rm -rf dist/.git
+
+      - name: Save feed state
+        if: always() && github.ref == 'refs/heads/master'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            dist
+            .feed-state
+          key: feed-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save package downloads
+        if: always() && github.ref == 'refs/heads/master' && steps.packages.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/publish_loop.py') }}
+
+      - name: Drop old feed state
+        if: always() && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh cache list --key feed-state- --sort created_at --order desc --limit 100 --json id --jq '.[3:][].id' | xargs -r -n1 gh cache delete

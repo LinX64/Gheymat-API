@@ -1,0 +1,31 @@
+name: Publish watchdog
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: publish-watchdog
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 2
+    steps:
+      - name: Start publishing if idle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          active=$(gh run list --workflow gheymat-latest.yml --limit 20 --json status,createdAt --jq '[.[] | select(.status != "completed" and (now - (.createdAt | fromdateiso8601)) < 600)] | length')
+          if [ "$active" = "0" ]; then
+            echo "No publish run is active, starting one"
+            gh workflow run gheymat-latest.yml --ref master
+          else
+            echo "A publish run is active"
+          fi
