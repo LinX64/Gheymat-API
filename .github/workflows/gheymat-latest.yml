@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      issues: write
     uses: ./.github/workflows/publish.yml
     with:
       backfill: ${{ github.event.inputs.history == 'true' }}

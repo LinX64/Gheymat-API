@@ -91,6 +91,8 @@ class FakeEnv:
         if argv[0] == "npm":
             return "npm"
         if argv[0] == "gh":
+            if "issue" in argv:
+                return "issue_list" if "list" in argv else "issue_create"
             return "gh"
         script = argv[1]
         if script.endswith("assemble_site.py"):
@@ -751,3 +753,50 @@ def test_news_waits_while_a_quick_retry_is_pending():
     after = kinds[failed_at + 1:]
     next_build = min(after.index(kind) for kind in ("prices", "slow") if kind in after)
     assert "news" not in after[:next_build]
+
+
+def test_five_cloudflare_failures_open_one_issue():
+    loop, env = make(60)
+    env.script["deploy"] = 1
+    loop.serve()
+    assert env.counts["issue_list"] == 1
+    assert env.counts["issue_create"] == 1
+    created = [call for call in env.calls if call[0] == "issue_create"][0]
+    assert pl.ALERT_PAGES in created[1]
+    for name in (*pl.APP_SECRETS[1:], *pl.CLOUDFLARE_SECRETS):
+        assert name not in created[2]
+    assert created[2]["GH_REPO"] == "o/r"
+    assert created[2]["GH_TOKEN"] == TOKEN
+
+
+def test_an_open_issue_is_not_duplicated():
+    loop, env = make(60)
+    env.script["deploy"] = 1
+    env.outputs["issue_list"] = pl.ALERT_PAGES + "\n"
+    loop.serve()
+    assert env.counts["issue_list"] == 1
+    assert env.counts.get("issue_create", 0) == 0
+
+
+def test_a_recovered_deploy_can_alert_again():
+    loop, env = make(120)
+    env.script["deploy"] = lambda n: 0 if n in (8, 9) else 1
+    loop.serve()
+    assert env.counts["issue_create"] == 2
+
+
+def test_a_healthy_run_opens_no_issue():
+    loop, env = make(30)
+    loop.serve()
+    assert env.counts.get("issue_list", 0) == 0
+    assert env.counts.get("issue_create", 0) == 0
+
+
+def test_a_failed_alert_warns_and_retries_later():
+    loop, env = make(60)
+    env.script["deploy"] = 1
+    env.script["issue_create"] = lambda n: 1 if n == 1 else 0
+    loop.serve()
+    assert env.counts["issue_create"] == 2
+    assert any("alert issue could not be opened (code 1)" in line for line in env.lines)
+    assert env.counts["deploy"] > 10
