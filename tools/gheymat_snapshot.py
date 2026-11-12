@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gheymat_seal import Sealer, load_published  # noqa: E402
 import gheymat_ai  # noqa: E402
 import gheymat_news  # noqa: E402
+import live_guard  # noqa: E402
 
 BASE = "https://bonbast.com"
 UA = ("Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -53,6 +54,26 @@ FUTURE_SLACK_SECONDS = 5 * 60
 
 class SourceError(RuntimeError):
     """A source failed as a whole (HTTP error, challenge page, bad body, stale feed); the run moves on."""
+
+
+class SourceBlocked(SourceError):
+    """The live source refused or answered with something unusable; `kind` is one of live_guard.KINDS and
+    `retry_after` the seconds it asked us to wait (or None). The message is neutral on purpose."""
+
+    def __init__(self, kind: str, retry_after: int | None = None):
+        super().__init__("live source blocked")
+        self.kind = kind
+        self.retry_after = retry_after
+
+
+def _classify(r) -> None:
+    """Raise SourceBlocked when the response is a block; raise the HTTP error for a plain failure."""
+    outcome, kind, retry_after = live_guard.classify_response(
+        r.status_code, r.text[:2000], r.headers.get("Retry-After"))
+    if outcome == "blocked":
+        raise SourceBlocked(kind, retry_after)
+    if outcome == "failed":
+        raise SourceError("live source failed")
 
 
 def utc_now_iso() -> str:
@@ -75,12 +96,10 @@ def headers(xhr: bool = False) -> dict:
 
 def get_token(session: requests.Session) -> str:
     r = session.get(f"{BASE}/", headers=headers(), cookies=COOKIES, timeout=20)
-    r.raise_for_status()
-    if "/cdn-cgi/challenge-platform" in r.text or "Just a moment" in r.text:
-        raise SourceError("bonbast: challenge page instead of the homepage")
+    _classify(r)
     m = TOKEN_RE.search(r.text)
     if not m:
-        raise SourceError("bonbast: token not found")
+        raise SourceBlocked("token")
     return m.group(1)
 
 
@@ -89,17 +108,17 @@ def fetch_raw(session: requests.Session) -> dict:
         token = get_token(session)
         r = session.post(f"{BASE}/json", headers=headers(True), cookies=COOKIES,
                          data={"param": token}, timeout=20)
-        r.raise_for_status()
+        _classify(r)
         try:
             raw = r.json()
         except ValueError:
-            raise SourceError("bonbast: /json did not return JSON")
+            raise SourceBlocked("format")
         if not isinstance(raw, dict):
-            raise SourceError("bonbast: /json is not a JSON object")
+            raise SourceBlocked("format")
         if "reset" not in raw:
             return raw
         time.sleep(2)
-    raise SourceError("bonbast: token expired twice")
+    raise SourceBlocked("token")
 
 
 def load_instruments() -> list[dict]:
@@ -271,6 +290,70 @@ def source_order(raw: str | None = None) -> list[str]:
     return known or list(DEFAULT_SOURCES)
 
 
+ORDER_ENV = "GHEYMAT_ORDER"
+LIVE_FIRST_FROM_ENV = "GHEYMAT_LIVE_FIRST_FROM"
+LIVE_NAME = "bonbast"
+PRIMARY_NAME = "hansha"
+ORDER_MODES = ("default", "live-first", "primary-only")
+
+
+def _explicit_sources() -> bool:
+    return bool(os.environ.get(SOURCES_ENV, "").strip())
+
+
+def effective_mode(now: float) -> str:
+    """default | live-first | primary-only from the environment, read lazily; a valid start time in the past
+    turns `default` into `live-first`. An explicit source list is left alone by plan_sources."""
+    mode = os.environ.get(ORDER_ENV, "").strip().lower()
+    if mode not in ORDER_MODES:
+        mode = "default"
+    if mode == "default":
+        raw = os.environ.get(LIVE_FIRST_FROM_ENV, "").strip()
+        if raw:
+            try:
+                start = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                if now >= start.timestamp():
+                    mode = "live-first"
+            except (ValueError, OverflowError):
+                pass
+    return mode
+
+
+def live_first_active(now: float) -> bool:
+    return not _explicit_sources() and effective_mode(now) == "live-first"
+
+
+def plan_sources(now: float, state: dict, primary_short: bool = False) -> list[str]:
+    """The source order for this run: the configured mode, then the guard's view of the live source."""
+    order = source_order()
+    if not _explicit_sources():
+        mode = effective_mode(now)
+        if mode == "live-first":
+            order = [LIVE_NAME, PRIMARY_NAME]
+        elif mode == "primary-only":
+            order = [PRIMARY_NAME]
+    if not live_first_active(now):
+        state = live_guard.new_state()  # the persistent quiet only acts once live-first is on
+    return live_guard.effective_order(order, LIVE_NAME, state, now, primary_short)
+
+
+_LIVE_STATE: dict = live_guard.new_state()
+_LIVE_RUN: dict = {"outcome": None, "kind": None}
+
+
+def _note_block(kind: str, retry_after, now: float | None = None) -> None:
+    global _LIVE_STATE
+    _LIVE_STATE = live_guard.record_block(
+        _LIVE_STATE, time.time() if now is None else now, kind, retry_after)
+
+
+def _note_clean() -> None:
+    global _LIVE_STATE
+    _LIVE_STATE = live_guard.record_clean(_LIVE_STATE, time.time())
+
+
 def fetch_source(name: str, session: requests.Session, instruments: list[dict]) -> dict:
     if name == "hansha":
         snap = build_hansha_snapshot(fetch_hansha(session), instruments)
@@ -293,6 +376,13 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
         try:
             snap = fetch(name, session, instruments)
         except (SourceError, requests.RequestException, ValueError) as e:
+            if name == LIVE_NAME:
+                if isinstance(e, SourceBlocked):
+                    _note_block(e.kind, e.retry_after)
+                    _LIVE_RUN.update(outcome="blocked", kind=e.kind)
+                else:
+                    _LIVE_RUN.update(outcome="failed",
+                                     kind="timeout" if isinstance(e, requests.Timeout) else None)
             detail = str(e)
             for other_index, other in enumerate(order, start=1):
                 detail = detail.replace(other, f"source {other_index}")
@@ -303,14 +393,17 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
     return results
 
 
-def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict, dict[str, int], dict[str, str]]:
+def combine_sources(results: list[dict], instruments: list[dict],
+                    live_first: bool = False) -> tuple[dict, dict[str, int], dict[str, str]]:
     """Per-instrument fill: each code from the first snapshot (priority order) that carries it.
 
     Returns the combined snapshot, per-source counts and {code: observation stamp} for the chosen rows (a hansha
     row's own `ps[0].ts`, else its source's fetchedAt, which for bonbast is the fetch time). The stamps key the
     intraday samples and stay out of the snapshot, so v1/latest keeps its shape. `source` is the source that supplied
     the most rates (ties go to the higher priority), `sourceModified` is its stamp, and `fetchedAt` is the OLDEST
-    observation among the sources used, so the app never shows a republished value as fresher than it is."""
+    observation among the sources used, so the app never shows a republished value as fresher than it is. With
+    `live_first` it is the oldest observation over the core instruments only (those the live source carries),
+    so a primary-only code never drags it back; it falls back to the old minimum when that leaves no rows."""
     chosen: dict[str, tuple[dict, str, str]] = {}
     for snap in results:
         observed = snap.get("observed", {})
@@ -326,15 +419,107 @@ def combine_sources(results: list[dict], instruments: list[dict]) -> tuple[dict,
         return {"seq": int(time.time()), "fetchedAt": utc_now_iso(), "sourceModified": None,
                 "source": "none", "flags": ["static"], "rates": []}, {}, {}
     primary = max(used, key=lambda s: counts[s["source"]])
+    fetched_at = min(s["fetchedAt"] for s in used)
+    if live_first:
+        core = {i["code"] for i in instruments if i.get("bonbast_key") and not i.get("computed")}
+        core_stamps = [chosen[c][2] for c in order if c in chosen and c in core]
+        if core_stamps:
+            fetched_at = min(core_stamps)
     snapshot = {
         "seq": int(time.time()),
-        "fetchedAt": min(s["fetchedAt"] for s in used),
+        "fetchedAt": fetched_at,
         "sourceModified": primary["sourceModified"],
         "source": primary["source"],
         "flags": ["static"],
         "rates": rates,
     }
     return snapshot, {s["source"]: counts[s["source"]] for s in used}, {c: chosen[c][2] for c in order if c in chosen}
+
+
+DIVERGE_CODES = 5        # this many shared codes apart by DIVERGE_PCT drops the live snapshot
+DIVERGE_PCT = 0.03
+REPLACE_PCT = 0.05       # one code further apart than this takes the primary source's row
+
+
+def _sell_of(r: dict):
+    v = r.get("sell")
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
+
+
+def _shared_usable(r: dict | None) -> bool:
+    return r is not None and _sell_of(r) is not None and isinstance(r.get("buy"), (int, float)) \
+        and not isinstance(r.get("buy"), bool)
+
+
+def check_divergence(live: dict, primary: dict) -> tuple[dict | None, int]:
+    """Compare sells over the codes both snapshots carry. Returns (live snapshot to use or None, rows replaced).
+
+    Five or more codes at DIVERGE_PCT or more apart drop the live snapshot; a code beyond REPLACE_PCT is removed
+    from the live snapshot so the primary row fills it."""
+    mine = {r["code"]: r for r in primary["rates"]}
+    far, replace = 0, set()
+    for r in live["rates"]:
+        other = mine.get(r["code"])
+        if not (_shared_usable(r) and _shared_usable(other)):
+            continue
+        diff = abs(_sell_of(r) - _sell_of(other)) / _sell_of(other)
+        if diff >= DIVERGE_PCT:
+            far += 1
+        if diff > REPLACE_PCT:
+            replace.add(r["code"])
+    if far >= DIVERGE_CODES:
+        return None, 0
+    if not replace:
+        return live, 0
+    trimmed = dict(live, rates=[r for r in live["rates"] if r["code"] not in replace])
+    if "observed" in live:
+        trimmed["observed"] = {c: v for c, v in live["observed"].items() if c not in replace}
+    return trimmed, len(replace)
+
+
+def count_apart(live: dict, primary: dict) -> int:
+    """How many shared codes have sells DIVERGE_PCT or more apart (a count only, for the default-mode log)."""
+    mine = {r["code"]: r for r in primary["rates"]}
+    far = 0
+    for r in live["rates"]:
+        other = mine.get(r["code"])
+        if _shared_usable(r) and _shared_usable(other) \
+                and abs(_sell_of(r) - _sell_of(other)) / _sell_of(other) >= DIVERGE_PCT:
+            far += 1
+    return far
+
+
+def core_fingerprint(primary: dict, instruments: list[dict]) -> str:
+    """Fingerprint of the primary's rows for instruments the live source also carries, so the primary-only
+    codes (which tick around the clock) never count as the desk moving."""
+    core = {i["code"] for i in instruments if i.get("bonbast_key") and not i.get("computed")}
+    return rates_fingerprint([r for r in primary["rates"] if r["code"] in core])
+
+
+def apply_live_first_guards(results: list[dict], now: float,
+                            instruments: list[dict] | None = None) -> tuple[list[dict], int]:
+    """Live-first only: when both sources answered, drop the live snapshot on divergence or a frozen desk, or
+    replace a few far-off rows. Returns (results, rows replaced)."""
+    global _LIVE_STATE
+    live = next((s for s in results if s["source"] == LIVE_NAME), None)
+    primary = next((s for s in results if s["source"] == PRIMARY_NAME), None)
+    if live is None or primary is None:
+        return results, 0
+    checked, replaced = check_divergence(live, primary)
+    if checked is None:
+        _note_block("diverge", None, now)
+        _LIVE_RUN.update(outcome="blocked", kind="diverge")
+        return [s for s in results if s is not live], 0
+    frozen, _LIVE_STATE = live_guard.frozen_check(
+        _LIVE_STATE, rates_fingerprint(live["rates"]),
+        core_fingerprint(primary, instruments if instruments is not None else load_instruments()), now)
+    if frozen:
+        _note_block("frozen", None, now)
+        _LIVE_RUN.update(outcome="blocked", kind="frozen")
+        return [s for s in results if s is not live], 0
+    if replaced:
+        print(f"live: {replaced} row{'s' if replaced != 1 else ''} replaced", file=sys.stderr)
+    return [checked if s is live else s for s in results], replaced
 
 
 def rates_fingerprint(rates: list[dict]) -> str:
@@ -368,9 +553,13 @@ def fetch_converter(session: requests.Session) -> dict | None:
     h["accept"] = "application/json, text/javascript, */*; q=0.01"
     try:
         r = session.post(f"{BASE}/converter", headers=h, timeout=20)
-        r.raise_for_status()
+        _classify(r)
         raw = r.json()
-    except (requests.RequestException, ValueError) as e:
+    except SourceBlocked as e:
+        _note_block(e.kind, e.retry_after)
+        print("converter: blocked", file=sys.stderr)
+        return None
+    except (requests.RequestException, ValueError, SourceError) as e:
         print(f"converter: {type(e).__name__}", file=sys.stderr)
         return None
     table = parse_converter_table(raw)
@@ -745,12 +934,27 @@ def drop_repaired_points(code: str, points: list, reference: float | None, repai
     return [p for p in points if not repaired(p)]
 
 
-def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None = None) -> int:
+INTRADAY_MIN_GAP = 150  # seconds: a row stamped with the live fetch time adds at most one point per this gap
+
+
+def _gap_seconds(newer: str, older) -> float | None:
+    try:
+        a = datetime.strptime(newer, "%Y-%m-%dT%H:%M:%SZ")
+        b = datetime.strptime(str(older), "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return None
+    return (a - b).total_seconds()
+
+
+def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None = None,
+                    live_stamp: str | None = None) -> int:
     """Append this run's sample to v1/intraday/<code> (last INTRADAY_DAYS days, oldest first). Returns files written.
 
     Each sample is keyed by its row's own observation stamp (`observed`, from combine_sources; the snapshot's
     fetchedAt when absent), so an older or equal observation adds no point for that code only. Repair entries still
-    inside the retention drop their points first, and a repair rewrites the file even without a new sample."""
+    inside the retention drop their points first, and a repair rewrites the file even without a new sample.
+    A row stamped with `live_stamp` (the live fetch time) is only added when the last stored point is at least
+    INTRADAY_MIN_GAP seconds older, so a faster loop never stores a point per build."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=INTRADAY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     repairs = [e for e in load_repairs() if e["to"] > cutoff]  # an entry whose window aged out is a no-op
     observed = observed or {}
@@ -768,6 +972,9 @@ def append_intraday(out: Path, snapshot: dict, observed: dict[str, str] | None =
         kept = drop_repaired_points(r["code"], points, _level(sample), repairs)
         repaired, points = len(kept) != len(points), kept
         fresh = not points or str(points[-1].get("ts", "")) < sample["ts"]
+        if fresh and points and live_stamp is not None and sample["ts"] == live_stamp:
+            gap = _gap_seconds(sample["ts"], points[-1].get("ts", ""))
+            fresh = gap is None or gap >= INTRADAY_MIN_GAP
         if not fresh and not repaired:
             continue  # an unchanged (or older, after a source switch) observation adds no point
         points = [p for p in points if isinstance(p, dict) and p.get("ts", "") >= cutoff]
@@ -864,6 +1071,35 @@ def main() -> int:
         return 0
     if args.news_only:
         return news_only(Path(args.out))
+    global _LIVE_STATE
+    state_path = os.environ.get("GHEYMAT_LIVE_STATE")
+    _LIVE_STATE = live_guard.load_state(state_path, time.time())
+    try:
+        return _publish(args)
+    finally:
+        live_guard.save_state(state_path, _LIVE_STATE)
+
+
+def collect_planned(session, instruments: list[dict], now: float, quiet: bool) -> tuple[list[dict], bool]:
+    """Collect per the plan. Returns (snapshots, live_first). In a quiet period the live source is
+    left out unless the primary alone is short of MIN_DIRECT, in which case one more pass allows it."""
+    live_first = live_first_active(now)
+    _LIVE_RUN.update(outcome=None, kind=None)
+    order = plan_sources(now, _LIVE_STATE)
+    results = collect_sources(session, instruments, order)
+    if quiet and LIVE_NAME not in order:
+        probe, _, _ = combine_sources(results, instruments)
+        if len(probe["rates"]) < MIN_DIRECT:
+            wider = plan_sources(now, _LIVE_STATE, primary_short=True)
+            extra = [n for n in wider if n not in order]
+            if extra:
+                results = results + collect_sources(session, instruments, extra)
+                rank = {n: i for i, n in enumerate(wider)}
+                results.sort(key=lambda s: rank.get(s["source"], len(rank)))
+    return results, live_first
+
+
+def _publish(args) -> int:
     out = Path(args.out)
     global SEALER, PLAIN_ALSO, _DIST_ROOT
     _DIST_ROOT = out
@@ -872,8 +1108,25 @@ def main() -> int:
     print("sealed channel:", "on" if SEALER else "off (no keys)", "| plain files:", "on" if PLAIN_ALSO or SEALER is None else "off")
     instruments = load_instruments()
     session = requests.Session()
-    order = source_order()
-    snapshot, counts, observed = combine_sources(collect_sources(session, instruments, order), instruments)
+    now = time.time()
+    quiet = live_first_active(now) and live_guard.is_quiet(_LIVE_STATE, now)
+    results, live_first = collect_planned(session, instruments, now, quiet)
+    if live_first:
+        results, _ = apply_live_first_guards(results, now, instruments)
+    else:
+        pair = {x["source"]: x for x in results}
+        if LIVE_NAME in pair and PRIMARY_NAME in pair:
+            print(f"live: {count_apart(pair[LIVE_NAME], pair[PRIMARY_NAME])} codes "
+                  f"{round(DIVERGE_PCT * 100)}% apart", file=sys.stderr)
+    live_snap = next((s for s in results if s["source"] == LIVE_NAME), None)
+    if live_snap is not None:
+        _note_clean()
+        print(live_guard.status_line("ok", fp=rates_fingerprint(live_snap["rates"])))
+    elif _LIVE_RUN["outcome"] is not None:
+        print(live_guard.status_line(_LIVE_RUN["outcome"], _LIVE_RUN["kind"]))
+    elif quiet:
+        print(live_guard.status_line("quiet"))
+    snapshot, counts, observed = combine_sources(results, instruments, live_first=live_first)
     if len(snapshot["rates"]) < MIN_DIRECT:
         print(f"only {len(snapshot['rates'])} rates from all sources; refusing to publish", file=sys.stderr)
         return 2
@@ -884,7 +1137,7 @@ def main() -> int:
         print(f"archive state shrank from {shrank[0]} to {shrank[1]} days; refusing to publish", file=sys.stderr)
         return 3
     try:
-        computed_rates = fetch_computed_rates(session, snapshot["rates"], instruments)
+        computed_rates = [] if quiet else fetch_computed_rates(session, snapshot["rates"], instruments)
     except (ValueError, OverflowError, ArithmeticError) as e:
         print(f"converter: unexpected error computing cross-rates: {e}", file=sys.stderr)
         computed_rates = []
@@ -896,12 +1149,12 @@ def main() -> int:
     print(f"latest: {len(snapshot['rates'])} rates ({' + '.join(str(v) for v in counts.values())} + {len(computed_rates)} computed), "
           f"observed {snapshot['fetchedAt']}, "
           f"fp {fingerprint}")
-    print(f"intraday: {append_intraday(out, snapshot, observed)} files updated")
+    print(f"intraday: {append_intraday(out, snapshot, observed, live_snap["fetchedAt"] if (live_first and live_snap) else None)} files updated")
     if args.history or args.backfill:
         dates = recent_missing_dates(daily, 7) if args.history else []
-        if args.backfill:
+        if args.backfill and not quiet:
             dates += backfill_dates(daily, args.backfill)
-        dates = list(dict.fromkeys(dates))
+        dates = [] if quiet else list(dict.fromkeys(dates))
         fetched = fill_days(session, daily, dates, args.pace)
         save_daily(out, daily)
         files = write_history_files(out, daily)
