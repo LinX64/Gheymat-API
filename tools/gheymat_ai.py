@@ -130,7 +130,7 @@ def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=
     try:
         summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx)
     except Exception as e:
-        log(f"ai: step failed, prices unaffected: {type(e).__name__}: {e}")
+        log(f"ai: step failed, prices unaffected: {type(e).__name__}")
         return None
     log(f"ai: {len(summary['published'])} forecasts ({summary['rebuilt']} rebuilt, {summary['resealed']} re-sealed), "
         f"{len(summary['withheld'])} withheld")
