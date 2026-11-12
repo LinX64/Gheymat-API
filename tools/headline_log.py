@@ -67,8 +67,11 @@ def read_rows(state_dir, key: bytes) -> list[dict]:
     path = log_path(state_dir)
     if not path.exists():
         return []
-    with open(path, encoding="ascii") as fh:
-        return [decrypt_row(key, line) for line in fh if line.strip()]
+    try:
+        text = path.read_bytes().decode("ascii")
+    except UnicodeDecodeError as e:
+        raise LogError("wrong key or corrupt line") from e
+    return [decrypt_row(key, line) for line in text.splitlines() if line.strip()]
 
 
 def append(state_dir, rows: list[dict], key: bytes, now: datetime | None = None) -> list[dict]:
@@ -106,7 +109,12 @@ def collect(rows: list[dict], env=None, now: datetime | None = None, log=print) 
                 _warned = True
                 log("Headline log: off (no key)")
             return
-        kept = append(state_dir, rows, derive(key), now)
+        try:
+            kept = append(state_dir, rows, derive(key), now)
+        except LogError:
+            path = log_path(state_dir)
+            os.replace(path, path.with_name(path.name + ".unreadable"))
+            kept = append(state_dir, rows, derive(key), now)
         log(f"Headline log: {len(kept)} rows since {str(kept[0]['first_seen'])[:10]}")
     except Exception as e:
         log(f"Headline log: skipped ({type(e).__name__})")

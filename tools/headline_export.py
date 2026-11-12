@@ -12,8 +12,8 @@ from news_eval import CONFIDENCE_RANK, LABELS
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Decrypt the headline log into a labels template")
     ap.add_argument("--state-dir", required=True)
-    ap.add_argument("--out", default="labels-template.jsonl")
-    ap.add_argument("--predictions")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--predictions", required=True)
     args = ap.parse_args(argv)
     master = headline_log.master_key(os.environ)
     if master is None:
@@ -36,10 +36,9 @@ def main(argv=None) -> int:
                 preds.append({"id": r["id"], "effect": r["model_effect"], "confidence": r["model_confidence"]})
             else:
                 skipped += 1
-    if args.predictions:
-        with open(args.predictions, "w", encoding="utf-8") as fh:
-            for p in preds:
-                fh.write(json.dumps(p) + "\n")
+    with open(args.predictions, "w", encoding="utf-8") as fh:
+        for p in preds:
+            fh.write(json.dumps(p) + "\n")
     print(f"exported {len(rows)} rows, {len(preds)} predictions, {skipped} without a model effect")
     return 0
 

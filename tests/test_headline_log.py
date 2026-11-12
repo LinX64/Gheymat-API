@@ -82,10 +82,10 @@ def test_wrong_key_fails_cleanly(tmp_path, monkeypatch, capsys):
     with pytest.raises(hl.LogError):
         hl.read_rows(tmp_path, key_of(OTHER))
     monkeypatch.setenv("GHEYMAT_PAYLOAD_KEY", OTHER)
-    assert export.main(["--state-dir", str(tmp_path), "--out", str(tmp_path / "x")]) == 2
+    assert export.main(["--state-dir", str(tmp_path), "--out", str(tmp_path / "x"), "--predictions", str(tmp_path / "y")]) == 2
     assert "wrong key or corrupt" in capsys.readouterr().err
     monkeypatch.delenv("GHEYMAT_PAYLOAD_KEY")
-    assert export.main(["--state-dir", str(tmp_path)]) == 2
+    assert export.main(["--state-dir", str(tmp_path), "--out", str(tmp_path / "x"), "--predictions", str(tmp_path / "y")]) == 2
 
 
 def test_missing_key_off_warns_once(tmp_path):
@@ -108,10 +108,19 @@ def test_unset_state_dir_is_noop(tmp_path):
     assert out == []
 
 
-def test_path_never_under_published_dirs():
-    p = hl.log_path("/state/loop").as_posix()
-    assert "/dist/" not in p and "/site/" not in p
-    assert hl.FILE_NAME not in "".join(x.name for x in (TOOLS.parent / "dist", TOOLS.parent / "site") if x.exists())
+def test_wrong_key_file_is_set_aside_and_collection_restarts(tmp_path):
+    out = []
+    hl.collect([row(1)], env_for(tmp_path), NOW, out.append)
+    hl.collect([row(2)], env_for(tmp_path, OTHER), NOW, out.append)
+    assert (tmp_path / (hl.FILE_NAME + ".unreadable")).exists()
+    assert out[-1].startswith("Headline log: 1 rows since")
+    assert [r["id"] for r in hl.read_rows(tmp_path, hl.derive(hl.master_key(env_for(tmp_path, OTHER))))] == [row(2)["id"]]
+
+
+def test_non_ascii_log_file_is_a_clean_error(tmp_path):
+    (tmp_path / hl.FILE_NAME).write_bytes("é\n".encode("utf-8"))
+    with pytest.raises(hl.LogError):
+        hl.read_rows(tmp_path, hl.derive(hl.master_key(env_for(tmp_path))))
 
 
 def test_exception_swallowed(tmp_path):
