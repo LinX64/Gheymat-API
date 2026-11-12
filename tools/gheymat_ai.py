@@ -1,4 +1,3 @@
-"""Pro AI feed step of the publisher (Gheymat CONTRACT.md "AI feed"): news, forecast documents and the brief."""
 from __future__ import annotations
 
 import time

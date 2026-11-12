@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Read-only report: run the 7-day forecast gates on the published daily closes and print which codes pass."""
 from __future__ import annotations
 
 import argparse
@@ -8,9 +7,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gheymat_ai  # noqa: E402
-import gheymat_forecast as fc  # noqa: E402
-from gheymat_seal import Sealer, load_published  # noqa: E402
+import gheymat_ai
+import gheymat_forecast as fc
+from gheymat_seal import Sealer, load_published
 
 
 def points_from_daily(series: dict) -> list[dict]:
@@ -70,7 +69,7 @@ def report(daily: dict, today: date, generated_at: str, method: str = fc.DEFAULT
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = argparse.ArgumentParser(description="Run the 7-day forecast gates on the published daily closes and print which codes pass.")
     ap.add_argument("--pages", required=True, help="a local checkout of the gh-pages branch")
     ap.add_argument("--method", choices=sorted(fc.METHODS), default=fc.DEFAULT_METHOD)
     ap.add_argument("--today", help="Tehran trading day to evaluate as (YYYY-MM-DD); default: today's Tehran trading day")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
-import live_guard as lg  # noqa: E402
+import live_guard as lg
 
 CH = "<html>Just a moment...</html>"
 CH2 = '<script src="/cdn-cgi/challenge-platform/x.js">'
@@ -152,22 +152,18 @@ def test_frozen_check():
     f, s = lg.frozen_check(s, "fp1", "m2", 600)
     f, s = lg.frozen_check(s, "fp1", "m3", 1200)
     assert f is True
-    # fingerprint change resets
     f, s2 = lg.frozen_check(s, "fp2", "m4", 1300)
     assert not f and s2["live_fp"] == "fp2" and s2["live_fp_since"] == 1300
     assert s2["primary_marks"] == ["m4"]
-    # only two marks
     t = lg.new_state()
     _, t = lg.frozen_check(t, "a", "m1", 0)
     f, t = lg.frozen_check(t, "a", "m2", 1500)
     assert not f
-    # repeated mark does not count
     u = lg.new_state()
     _, u = lg.frozen_check(u, "a", "m1", 0)
     _, u = lg.frozen_check(u, "a", "m1", 600)
     f, u = lg.frozen_check(u, "a", "m1", 1500)
     assert not f and u["primary_marks"] == ["m1"]
-    # None mark adds nothing
     f, u = lg.frozen_check(u, "a", None, 1600)
     assert u["primary_marks"] == ["m1"]
 

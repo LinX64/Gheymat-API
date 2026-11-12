@@ -1,4 +1,3 @@
-"""Versioned site: registry, headers, assembler and site verification. No network, throwaway keys only."""
 import base64
 import copy
 import json
@@ -10,10 +9,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
-import assemble_site as asm  # noqa: E402
-import gheymat_seal as gs  # noqa: E402
-import site_versions as sv  # noqa: E402
-import verify_sealed as vs  # noqa: E402
+import assemble_site as asm
+import gheymat_seal as gs
+import site_versions as sv
+import verify_sealed as vs
 
 MASTER = bytes(range(7, 39))
 SIGNING = Ed25519PrivateKey.from_private_bytes(bytes(range(60, 92)))
@@ -99,7 +98,7 @@ def test_assemble_legacy_untouched_and_v1_identical(src, tmp_path):
     assert not any(k.startswith(".nojekyll") for k in site)
     for k, v in before.items():
         if k != ".nojekyll":
-            assert site[k] == v  # root d/ and pages stay
+            assert site[k] == v
     for logical in ("v1/latest", "v1/instruments", f"v1/history/{CODE}"):
         name = SEALER.opaque_path(logical)
         assert site[f"v1/{name}"] == before[name]
@@ -168,7 +167,10 @@ def test_no_source_names_anywhere(src, tmp_path):
     asm.assemble(src, out, SEALER, log=lambda *_: None)
     texts = [(out / "versions.json").read_text(), (out / "_headers").read_text()]
     texts += [(TOOLS / n).read_text() for n in ("site_versions.py", "assemble_site.py")]
-    texts += [pathlib.Path(__file__).read_text(), (TOOLS.parent / "CLAUDE.md").read_text()]
+    texts += [pathlib.Path(__file__).read_text()]
+    local_notes = TOOLS.parent / "CLAUDE.md"
+    if local_notes.is_file():
+        texts.append(local_notes.read_text())
     for text in texts:
         for name in vs.SOURCES:
             assert name not in text.lower()
@@ -250,7 +252,7 @@ def test_out_not_deleted_unless_earlier_site(src, tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
     asm.assemble(src, empty, SEALER, log=lambda *_: None)
-    asm.assemble(src, empty, SEALER, log=lambda *_: None)  # earlier site (has versions.json): replaced
+    asm.assemble(src, empty, SEALER, log=lambda *_: None)
 
 
 def test_deprecation_dates_validated():
@@ -272,7 +274,6 @@ def test_site_rejects_misplaced_and_stray_files(src, tmp_path):
     out = tmp_path / "site"
     asm.assemble(src, out, SEALER, log=lambda *_: None)
     assert vs.verify_site(out, MASTER, PUBLIC)
-    # a v2-sealed file under v1 with the v1 opaque name
     v1_name = SEALER.opaque_path("v1/ai/brief")
     v2_file = out / "v2" / SEALER.opaque_path("v2/ai/brief")
     (out / "v1" / v1_name).write_bytes(v2_file.read_bytes())

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-import gheymat_signals as s  # noqa: E402
+import gheymat_signals as s
 
 CSV = "observation_date,DCOILBRENTEU\n2026-10-01,80.0\n2026-10-02,.\n2026-10-05,\n2026-10-08,84.0\nbad,1\n2026-10-15,88.2\n"
 

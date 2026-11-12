@@ -1,4 +1,3 @@
-"""7-day quantile forecast (filtered historical simulation by default) with walk-forward backtest and the AC-F gates (Gheymat CONTRACT.md "AI feed")."""
 from __future__ import annotations
 
 import math

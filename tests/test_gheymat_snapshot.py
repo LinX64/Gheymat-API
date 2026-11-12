@@ -12,7 +12,6 @@ SPEC.loader.exec_module(mod)
 
 @pytest.fixture(autouse=True)
 def no_repairs(monkeypatch, tmp_path):
-    """Hermetic: the committed tools/intraday_repairs.json never reaches these tests."""
     monkeypatch.setattr(mod, "INTRADAY_REPAIRS", tmp_path / "no-repairs.json")
 
 
@@ -38,7 +37,6 @@ def test_build_snapshot_maps_currency_coin_gold_and_crypto():
     assert all(r["buyRaw"] is None and r["sellRaw"] is None for r in snap["rates"])
 
 
-
 def test_refuses_thin_payload():
     snap = mod.build_snapshot({"usd1": "1", "usd2": "1"}, mod.load_instruments())
     assert len(snap["rates"]) < 29
@@ -53,8 +51,6 @@ def test_build_snapshot_never_produces_computed_rows():
 
 
 def test_floor_check_count_is_unaffected_by_computed_instruments_being_in_the_table():
-    """main()'s `len(snapshot["rates"]) < 29` floor-check must stay scoped to direct rows, whether or not
-    the 8 computed instruments are present in instruments.json."""
     instruments = mod.load_instruments()
     direct_only = [i for i in instruments if not i.get("computed")]
     with_computed = mod.build_snapshot(RAW, instruments)["rates"]
@@ -107,8 +103,6 @@ def test_fetch_converter_sends_xhr_headers_with_no_token_and_no_content_type():
     assert url == f"{mod.BASE}/converter" and timeout == 20
     assert headers["x-requested-with"] == "XMLHttpRequest"
     assert "content-type" not in headers
-    # _FakeSession.post(url, headers=None, timeout=None) has no `data` parameter at all - a call that
-    # tried to send a form body (like fetch_raw's token POST) would TypeError before we ever get here.
     assert len(session.posts) == 1 and len(session.posts[0]) == 3
 
 
@@ -124,7 +118,7 @@ COMPUTED_INSTRUMENTS = [i for i in mod.load_instruments() if i.get("computed")]
 
 
 def test_compute_cross_rates_formula_and_per_key_skip():
-    table = {"EUR": 1.0, "PLN": 4.36856, "HUF": 0.0, "ZAR": -1.0}  # NZD/KRW/MXN/IDR/CZK absent entirely
+    table = {"EUR": 1.0, "PLN": 4.36856, "HUF": 0.0, "ZAR": -1.0}
     rates = mod.compute_cross_rates(table, 294600, 294800, COMPUTED_INSTRUMENTS)
     by = {r["code"]: r for r in rates}
     assert set(by) == {"pln"}
@@ -134,8 +128,6 @@ def test_compute_cross_rates_formula_and_per_key_skip():
 
 
 def test_compute_cross_rates_carries_unrounded_buy_raw_sell_raw():
-    # CONTRACT.md "Numeric accuracy": round once, at the point of display - buyRaw/sellRaw must be the
-    # unrounded per-unit value behind buy/sell, not just a duplicate of the rounded int.
     table = {"EUR": 1.0, "PLN": 4.36856}
     rates = mod.compute_cross_rates(table, 294600, 294800, COMPUTED_INSTRUMENTS)
     pln = next(r for r in rates if r["code"] == "pln")
@@ -144,13 +136,10 @@ def test_compute_cross_rates_carries_unrounded_buy_raw_sell_raw():
     assert pln["sellRaw"] == pytest.approx(294800 * k)
     assert round(pln["buyRaw"]) == pln["buy"]
     assert round(pln["sellRaw"]) == pln["sell"]
-    assert pln["buyRaw"] != pln["buy"]  # genuinely fractional, not coincidentally an integer
+    assert pln["buyRaw"] != pln["buy"]
 
 
 def test_compute_cross_rates_skips_non_finite_rate_without_crashing():
-    # A bad /converter value (nan/inf, or a string like "1e999" that parse_converter_table happily
-    # coerces to inf) must drop only that one row, never raise - round(nan)/round(inf) would otherwise
-    # kill the whole publish run (the github actions step runs under set -euo pipefail).
     table = {"EUR": 1.0, "PLN": float("nan"), "HUF": float("inf")}
     rates = mod.compute_cross_rates(table, 294600, 294800, COMPUTED_INSTRUMENTS)
     assert rates == []
@@ -160,7 +149,7 @@ def test_compute_cross_rates_drops_everything_without_a_eur_quote_or_a_good_pivo
     table = {"EUR": 1.0, "PLN": 4.36856}
     assert mod.compute_cross_rates(table, None, 294800, COMPUTED_INSTRUMENTS) == []
     assert mod.compute_cross_rates(table, 294600, None, COMPUTED_INSTRUMENTS) == []
-    rebased = {"EUR": 0.9, "PLN": 4.36856}  # bonbast re-based the feed
+    rebased = {"EUR": 0.9, "PLN": 4.36856}
     assert mod.compute_cross_rates(rebased, 294600, 294800, COMPUTED_INSTRUMENTS) == []
 
 
@@ -209,7 +198,7 @@ def test_intraday_skips_computed_rows(tmp_path):
 def test_intraday_appends_and_trims(tmp_path):
     snap = mod.build_snapshot(RAW, mod.load_instruments())
     now = mod.datetime.now(mod.timezone.utc)
-    stamp = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731 - relative, so the test never date-rots
+    stamp = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")
     recent = stamp(mod.timedelta(hours=1))
     old = {"code": "usd", "days": 7, "points": [
         {"ts": stamp(mod.timedelta(days=30)), "buy": 1, "sell": 2, "price": None},
@@ -418,12 +407,12 @@ def test_news_only_reports_refreshed_only_when_the_check_time_advances(tmp_path,
         prev = load_doc(mod.gheymat_news.LOGICAL)
         if mode["refresh"]:
             write_doc(mod.gheymat_news.LOGICAL, {"generatedAt": stamp["t"], "checkedAt": stamp["t"], "items": []})
-        else:  # a pure re-seal keeps the previous stamps
+        else:
             write_doc(mod.gheymat_news.LOGICAL, prev or {"generatedAt": stamp["t"], "checkedAt": stamp["t"], "items": []})
     monkeypatch.setattr(mod.gheymat_news, "publish", fake_publish)
     try:
         assert mod.news_only(tmp_path) == 0
-        assert capsys.readouterr().out.strip() == "news: refreshed"  # first document counts
+        assert capsys.readouterr().out.strip() == "news: refreshed"
         assert mod.news_only(tmp_path) == 0
         assert capsys.readouterr().out.strip() == "news: unchanged"
         mode["refresh"], stamp["t"] = True, "2026-11-09T03:00:00Z"

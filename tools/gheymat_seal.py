@@ -1,19 +1,3 @@
-"""Sealed static channel for the Gheymat app (see Gheymat/CONTRACT.md "Sealed static channel").
-
-Envelope v2. From the 32-byte master key (GHEYMAT_PAYLOAD_KEY) two subkeys are derived with HKDF-SHA256:
-`path_key` (info "gheymat/v2/path") keys the HMAC that turns a logical path into its opaque path, and
-`enc_key` (info "gheymat/v2/enc") is the ChaCha20-Poly1305 key. Every document is sealed with a canonical
-header as AAD:
-
-    header = "gheymat-seal" || v (1 byte) || kid (1 byte) || len(path) (2 bytes BE) || path || issued (8 bytes BE) || nonce (12)
-
-and signed with Ed25519 over `header || ciphertext`, so every field a client uses is under both the
-signature and the AEAD tag. The envelope body carries no logical path: the client rebuilds the header from
-the path it requested. `kid` selects the signing key, which lets a client hold [current, next] public keys.
-
-Keys come from the environment: GHEYMAT_PAYLOAD_KEY (32 bytes, base64) and GHEYMAT_SIGNING_KEY
-(Ed25519 private key, 32 raw bytes, base64). Nothing here prints or logs key material.
-"""
 from __future__ import annotations
 
 import base64
@@ -45,8 +29,6 @@ NONCE_LEN = 12
 TAG_LEN = 16
 SIG_LEN = 64
 DEFAULT_KID = 1
-# Random base64 now and then spells the start of a well-known credential format, and the host's push protection
-# rejects the whole publish. Re-drawing the nonce changes every byte, so such an envelope is simply sealed again.
 CREDENTIAL_LOOKALIKE = re.compile(r"AKID[A-Za-z0-9]{32}|(?:AKIA|ASIA)[A-Z2-7]{16}|AIza[A-Za-z0-9]{35}")
 MAX_AGE = 2 * 60 * 60
 MAX_FUTURE = 5 * 60
@@ -56,7 +38,7 @@ ENVELOPE_FIELDS = ("v", "kid", "issued", "nonce", "ciphertext", "sig")
 
 
 class EnvelopeError(ValueError):
-    """The envelope is malformed, not authentic, not fresh, or not for the requested path."""
+    pass
 
 
 def b64(data: bytes) -> str:
@@ -133,8 +115,6 @@ class Sealer:
                         "ciphertext": b64(ciphertext), "sig": b64(signature)}
             if not CREDENTIAL_LOOKALIKE.search(json.dumps(envelope)):
                 return envelope
-        # Out of draws (only possible for a very large payload): ship the last one. A blocked legacy push heals on
-        # the next iteration; failing the build would stop the app channel too.
         return envelope
 
 
@@ -156,14 +136,6 @@ def open_envelope(envelope: dict, payload_key: bytes,
                   public_key: Ed25519PublicKey | Mapping[int, Ed25519PublicKey], logical: str,
                   max_age: int | None = MAX_AGE, *, max_future: int | None = MAX_FUTURE,
                   last_accepted: int | None = None, now: float | None = None):
-    """Verify and decrypt one envelope for `logical`; return the decoded JSON object.
-
-    Check order: shape -> version -> key id -> field lengths -> Ed25519 over header || ciphertext ->
-    rollback (issued older than `last_accepted`) -> future bound -> age window -> AEAD -> JSON.
-    `max_age=None` is the cold-start policy (no absolute window, the signature and the future bound still
-    apply); `max_future=None` disables the future bound (state files read back by the publisher only).
-    `public_key` may be a single key (trusted for any kid) or a mapping kid -> key.
-    """
     if not isinstance(envelope, dict):
         raise EnvelopeError("envelope is not an object")
     if _int_field(envelope, "v") != VERSION:
@@ -207,13 +179,6 @@ def open_envelope(envelope: dict, payload_key: bytes,
 
 
 def load_published(out: Path, logical: str, sealer: Sealer | None):
-    """Read back a document the publisher wrote earlier: the plain file if present, else the sealed copy.
-
-    The sealed copy is the durable state store once plain files stop being published; it is verified with
-    the sealer's own public key and opened without time bounds (the previous run may be arbitrarily old).
-    The size bound is MAX_STATE_BYTES, not the client's MAX_ENVELOPE_BYTES: the daily archive since 2012
-    grows past 2 MB. Returns None when neither copy exists or neither can be read.
-    """
     plain = out / logical
     if plain.exists():
         try:
