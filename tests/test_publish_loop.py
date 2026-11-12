@@ -1223,7 +1223,6 @@ def test_a_deferred_slow_lane_runs_first_in_the_next_run():
     assert env.counts["slow"] == 1
 
 
-# Tiered cadence. Epochs are Tehran local time (UTC+03:30): 2024-01-06 is a Saturday.
 def tehran(day, hour):
     local = datetime.datetime(2024, 1, day, hour, 0, 0)
     return int((local - datetime.timedelta(hours=3, minutes=30)).replace(tzinfo=datetime.timezone.utc).timestamp())
@@ -1371,7 +1370,7 @@ def test_night_sleep_stops_at_the_gap_so_publish_is_not_late():
     assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 280) == 20
     assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 299) == 1
     assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 100) == 60
-    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 400) == 60  # gap passed but publish gated: no busy loop
+    assert loop.poll_gap(NIGHT_AT, NIGHT_AT + 500, 400) == 60
 
 
 def test_force_and_new_mark_still_fire_at_night():

@@ -27,7 +27,6 @@ RECENT_WEEKS = 52
 
 
 def recent_skill(weeks: list[dict]) -> tuple[float | None, int]:
-    """Skill over the last RECENT_WEEKS weeks only; (None, count) when too short or naive median is zero."""
     last = weeks[-RECENT_WEEKS:]
     if len(last) < RECENT_WEEKS:
         return None, len(last)
@@ -38,7 +37,6 @@ def recent_skill(weeks: list[dict]) -> tuple[float | None, int]:
 
 
 def tail_misses(weeks: list[dict]) -> tuple[float | None, float | None]:
-    """Fractions of all scored weeks whose actual fell below the band / above the band."""
     if not weeks:
         return None, None
     n = len(weeks)

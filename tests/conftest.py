@@ -1,4 +1,3 @@
-"""Fail the run if any test is skipped: a skip hides a check that should run everywhere."""
 import pytest
 
 _skipped = []
