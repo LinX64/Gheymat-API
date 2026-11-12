@@ -194,8 +194,8 @@ def test_on_five_store_failures_red_and_nonzero_exit():
 def test_on_nothing_counter_when_store_and_github_fail():
     loop, env, factory = build(120, script=lambda n: False, GHEYMAT_STORE="on", GHEYMAT_PAGES="off")
     env.script["push"] = 1
-    assert loop.serve() == 1
-    assert loop.nothing == 5
+    assert loop.serve() == 2
+    assert loop.nothing == 0
     assert any("Nothing could be published 5 times in a row" in line for line in env.lines)
 
 

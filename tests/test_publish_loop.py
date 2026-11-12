@@ -31,6 +31,7 @@ class FakeEnv:
         self.gh_commit_time = T0 - 100000
         self.jitter = 0
         self.rand_args = []
+        self.missing = set()
 
     def now(self):
         return self.t
@@ -62,7 +63,10 @@ class FakeEnv:
         pass
 
     def exists(self, path):
-        return True
+        return path not in self.missing
+
+    def write_text(self, path, text):
+        self.files[path] = text
 
     def remove(self, path):
         self.removed.append(path)
@@ -246,10 +250,21 @@ def test_live_state_removed_at_start():
     assert env.removed == [LIVE]
 
 
+def test_live_state_kept_on_warm_start_removed_on_cold_start():
+    env = FakeEnv()
+    run_loop(env, GHEYMAT_STATE_DIR=STATE).serve()
+    assert env.removed == [LIVE]
+    run_loop(env, GHEYMAT_STATE_DIR=STATE).serve()
+    assert env.removed == [LIVE]
+    env.t += pl.STATE_MAX_AGE + 1
+    run_loop(env, GHEYMAT_STATE_DIR=STATE).serve()
+    assert env.removed == [LIVE, LIVE]
+
+
 def test_throttle_keeps_pushes_apart():
     loop, env, code = serve(60)
     assert code == 0
-    gaps = env.gaps("push")[:-1]
+    gaps = env.gaps("push")
     assert gaps and all(gap >= 400 for gap in gaps)
     assert any("github push skipped (throttle)" in line for line in env.lines)
 
@@ -368,8 +383,8 @@ def test_exit_three_ends_after_five():
     env.script["prices"] = 3
     env.script["slow"] = 3
     code = loop.serve()
-    assert code == 1
-    assert loop.nothing == 5
+    assert code == 2
+    assert loop.nothing == 0
     assert any("Nothing could be published 5 times in a row" in line for line in env.lines)
     assert env.counts["slow"] + env.counts.get("prices", 0) == 6
 
@@ -422,7 +437,7 @@ def test_quick_retry_after_one_unpublished_iteration_and_limits():
     loop.serve()
     stamps = sorted(env.times("prices") + env.times("slow"))
     assert 45 <= stamps[1] - stamps[0] < 60
-    assert loop.nothing == 5
+    assert loop.nothing == 0
     assert len(stamps) == 6
 
 
@@ -450,17 +465,23 @@ def test_news_failure_warns():
     assert any("::warning::#1 news step exit 124" == line for line in env.lines)
 
 
+def ready_to_flush(last_gh):
+    loop, env = make(1)
+    loop.clean = True
+    loop.have_dist = True
+    loop.last_publish = env.t
+    loop.last_gh = last_gh
+    return loop, env
+
+
 def test_final_flush_verifies_first_and_pushes_once():
-    loop, env = make(8)
-    env.script["push"] = lambda n: 1 if n == 1 else 0
-    env.gh_commit_time = T0 - 1000
-    loop.serve()
+    loop, env = ready_to_flush(T0 - pl.GITHUB_PUSH_SPACING)
+    loop.flush()
     kinds = env.kinds()
     commits_final = [c for c in env.calls if c[0] == "git" and "Publish final" in c[1]]
     assert len(commits_final) == 1
-    last_verify = max(i for i, k in enumerate(kinds) if k == "verify")
-    last_push = max(i for i, k in enumerate(kinds) if k == "push")
-    assert last_verify < last_push
+    assert kinds.index("verify") < kinds.index("push")
+    assert loop.last_gh == T0
 
 
 def test_final_flush_skipped_when_level():
@@ -470,10 +491,20 @@ def test_final_flush_skipped_when_level():
 
 
 def test_final_flush_failure_warns():
-    loop, env = make(4)
-    env.script["push"] = lambda n: 1 if n >= 1 else 0
-    loop.serve()
+    loop, env = ready_to_flush(0)
+    env.script["push"] = 1
+    loop.flush()
     assert "::warning::Final GitHub push failed" in env.lines
+    assert loop.last_gh == 0
+
+
+def test_flush_respects_the_push_throttle():
+    loop, env = ready_to_flush(T0 - pl.GITHUB_PUSH_SPACING + 1)
+    loop.flush()
+    assert env.calls == []
+    env.t += 1
+    loop.flush()
+    assert env.counts["push"] == 1
 
 
 def test_knob_warnings():
@@ -570,8 +601,8 @@ def finish(ref, elapsed):
     return loop, env, loop.chain()
 
 
-def test_chain_on_master_after_an_hour():
-    loop, env, code = finish("refs/heads/master", 3600)
+def test_chain_on_master_after_the_threshold():
+    loop, env, code = finish("refs/heads/master", pl.CHAIN_AFTER)
     assert code == 0
     call = env.calls[0]
     assert call[1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
@@ -580,10 +611,10 @@ def test_chain_on_master_after_an_hour():
         assert key not in call[2]
 
 
-def test_no_chain_under_an_hour():
-    loop, env, code = finish("refs/heads/master", 3599)
+def test_no_chain_under_the_threshold():
+    loop, env, code = finish("refs/heads/master", pl.CHAIN_AFTER - 1)
     assert code == 0 and env.calls == []
-    assert "Run lasted under an hour, not chaining another" in env.lines
+    assert "Run ended early, not chaining another" in env.lines
 
 
 def test_no_chain_off_master():
@@ -591,15 +622,17 @@ def test_no_chain_off_master():
     assert code == 0 and env.calls == []
 
 
-def test_run_does_not_chain_when_red_or_nothing_published():
+def test_run_chains_but_returns_one_when_red():
+    loop, env = make(120)
+    env.script["slow"] = 5
+    assert loop.run() == 1
+    assert env.counts["gh"] == 1
+
+
+def test_run_does_not_chain_when_nothing_published():
     loop, env = make(120)
     env.script["prices"] = 3
     env.script["slow"] = 3
-    assert loop.run() == 1
-    assert "gh" not in env.kinds()
-    loop, env = make(60)
-    env.script["slow"] = 5
-    loop.environ["PUBLISH_LOOP_MINUTES"] = "120"
     assert loop.run() == 1
     assert "gh" not in env.kinds()
 
@@ -800,3 +833,307 @@ def test_a_failed_alert_warns_and_retries_later():
     assert env.counts["issue_create"] == 2
     assert any("alert issue could not be opened (code 1)" in line for line in env.lines)
     assert env.counts["deploy"] > 10
+
+
+STATE = "/state"
+
+
+def run_loop(env, minutes=3, **extra):
+    environ = base_environ(PUBLISH_LOOP_MINUTES=str(minutes), **extra)
+    return pl.Loop(env, environ, lambda: "m", python="python", mirror=True)
+
+
+def state_environ(**extra):
+    return dict(GHEYMAT_STATE_DIR=STATE, **extra)
+
+
+def saved(env):
+    return json.loads(env.files[f"{STATE}/{pl.STATE_FILE}"])
+
+
+def test_consecutive_runs_continue_one_loop():
+    env = FakeEnv()
+    first = run_loop(env, **state_environ())
+    assert first.serve() == 0
+    fetches = env.counts["fetch"]
+    slows = env.counts["slow"]
+    assert fetches == 1 and slows == 1
+    last = first.iteration
+    second = run_loop(env, **state_environ())
+    assert second.serve() == 0
+    assert env.counts["fetch"] == fetches
+    assert env.counts.get("checkout", 0) == 1
+    assert env.counts["slow"] == slows
+    assert env.removed == [LIVE]
+    assert second.iteration > last
+    assert f"#{last + 1} cloudflare" in " ".join(env.lines)
+
+
+def cold_start_cases():
+    stale = {"saved_at": T0 - pl.STATE_MAX_AGE - 1}
+    return {
+        "stale": json.dumps(stale),
+        "corrupt": "{not json",
+        "list": "[1, 2]",
+        "bad_saved_at": json.dumps({"saved_at": "now"}),
+        "future": json.dumps({"saved_at": T0 + 50}),
+    }
+
+
+@pytest.mark.parametrize("case", ["stale", "corrupt", "list", "bad_saved_at", "future", "no_dist"])
+def test_unusable_state_falls_back_to_cold_start(case):
+    env = FakeEnv()
+    if case == "no_dist":
+        env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(
+            {"saved_at": T0, "have_dist": True, "want_fetch": False, "iteration": 7}
+        )
+        env.missing = {"dist/v1"}
+    else:
+        env.files[f"{STATE}/{pl.STATE_FILE}"] = cold_start_cases()[case]
+    loop = run_loop(env, **state_environ())
+    loop.serve()
+    assert env.counts["fetch"] == 1
+    assert env.removed == [LIVE]
+    assert loop.iteration < 7 + 1
+
+
+def test_wrong_field_types_keep_defaults_but_state_is_used():
+    env = FakeEnv()
+    env.files[f"{STATE}/{pl.STATE_FILE}"] = json.dumps(
+        {"saved_at": T0, "have_dist": True, "want_fetch": False, "iteration": "x", "cf_failures": True, "last_gh": T0 + 500, "alerted": [1], "failures": 2}
+    )
+    loop = run_loop(env, **state_environ())
+    loop.apply_knobs()
+    assert loop.load_state() is True
+    assert loop.iteration == 0 and loop.cf_failures == 0 and loop.last_gh == 0
+    assert loop.alerted == set() and loop.failures == 2
+    assert loop.want_fetch is False and loop.have_dist is True
+
+
+def test_cloudflare_failing_across_runs_alarms_once():
+    env = FakeEnv()
+    env.script["deploy"] = 1
+    codes = []
+    for _ in range(6):
+        loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
+        codes.append(loop.run())
+    errors = [line for line in env.lines if "Cloudflare deploy failed 5 times in a row" in line]
+    assert len(errors) == 1
+    assert codes.count(1) == 1
+    assert env.counts["gh"] == 6
+
+
+def test_four_runs_push_pages_no_more_often_than_the_spacing():
+    env = FakeEnv()
+    for _ in range(4):
+        run_loop(env, **state_environ()).run()
+    stamps = env.times("push")
+    assert stamps
+    assert all(gap >= pl.GITHUB_PUSH_SPACING for gap in zip_gaps(stamps))
+
+
+def test_nothing_across_runs_ends_without_chaining_and_saves_zero():
+    env = FakeEnv()
+    first = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
+    first.nothing = 4
+    first.have_dist = True
+    first.want_fetch = False
+    first.save_state()
+    env.script["prices"] = 3
+    env.script["slow"] = 3
+    loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
+    assert loop.run() == 1
+    assert "gh" not in env.kinds()
+    assert saved(env)["nothing"] == 0
+
+
+def test_state_save_failure_warns_once_and_loop_continues():
+    class Broken(FakeEnv):
+        def write_text(self, path, text):
+            raise OSError("disk")
+
+    env = Broken()
+    loop = run_loop(env, 10, **state_environ())
+    assert loop.serve() == 0
+    assert env.counts["prices"] + env.counts["slow"] >= 3
+    assert env.lines.count("::warning::Loop state could not be saved") == 1
+
+
+def test_no_state_dir_loads_and_saves_nothing():
+    env = FakeEnv()
+    run_loop(env).serve()
+    assert env.files == {}
+
+
+def test_three_minute_run_publishes_at_default_cadence():
+    env = FakeEnv()
+    run_loop(env, 3).serve()
+    assert env.counts["deploy"] >= 1
+
+
+def test_three_minute_run_publishes_twice_live_first():
+    env = FakeEnv()
+    run_loop(env, 3, GHEYMAT_ORDER="live-first").serve()
+    assert env.counts["deploy"] >= 2
+
+
+class TimedEnv(FakeEnv):
+    def __init__(self):
+        super().__init__()
+        self.ends = []
+
+    def run(self, argv, env=None, timeout=None, cwd=None):
+        kind = self.kind(argv)
+        wanted = self.durations.get(kind, 2)
+        start = self.t
+        code, output = super().run(argv, env=env, timeout=timeout, cwd=cwd)
+        if timeout is not None and wanted > timeout:
+            wanted = timeout
+            code, output = 124, ""
+        self.t = start + wanted
+        self.ends.append(self.t)
+        return code, output
+
+
+HARD = {"PUBLISH_HARD_SECONDS": "230"}
+
+
+@pytest.mark.parametrize(
+    "durations",
+    [
+        {"deploy": 10},
+        {"deploy": 10_000},
+        {"slow": 60},
+        {"slow": 60, "deploy": 10_000, "prices": 40, "push": 3},
+        {"fetch": 10_000},
+        {"news": 10_000, "prices": 30},
+    ],
+)
+def test_hard_budget_bounds_the_run(durations):
+    env = TimedEnv()
+    env.durations = durations
+    loop = run_loop(env, 3, **HARD)
+    loop.serve()
+    hard = T0 + 230
+    assert max(env.ends) <= hard
+    for call in env.calls:
+        assert call[3] is not None
+        assert call[3] <= max(1, hard - call[5])
+
+
+def test_hanging_install_cannot_pass_the_hard_limit():
+    env = TimedEnv()
+    env.durations = {"npm": 10_000}
+    env.script["npm"] = 1
+    loop = run_loop(env, 3, **HARD)
+    assert loop.start() is True
+    assert loop.mirror is False
+    hard = env.times("npm")[0] + 230
+    assert max(env.ends) <= hard
+    for call in env.calls:
+        assert call[3] is not None and call[3] <= max(1, hard - call[5])
+
+
+def test_install_retries_stop_when_the_budget_is_short():
+    env = TimedEnv()
+    env.script["npm"] = 1
+    loop = run_loop(env, 3, PUBLISH_HARD_SECONDS="70")
+    loop.start()
+    assert env.counts["npm"] < 3
+    assert loop.mirror is False
+
+
+def test_chain_has_a_fixed_timeout_when_budgeted():
+    loop, env = make(3, **HARD)
+    loop.start()
+    loop.started = env.t - pl.CHAIN_AFTER
+    loop.chain()
+    assert [c for c in env.calls if c[0] == "gh"][0][3] == 30
+
+
+def test_news_and_slow_lane_respect_the_remaining_budget():
+    env = TimedEnv()
+    env.durations = {"prices": 110}
+    loop = run_loop(env, 3, PUBLISH_HARD_SECONDS="180")
+    loop.serve()
+    assert env.counts.get("slow", 0) == 0 and env.counts["prices"] >= 1
+    assert "news" not in env.kinds()
+    assert loop.last_slow == 0
+
+
+@pytest.mark.parametrize("hung", ["npm", "create", "slow", "prices", "deploy", "push", "news", "fetch", "verify"])
+@pytest.mark.parametrize("fails_first", [False, True])
+def test_run_ends_inside_the_hard_budget_whichever_command_hangs(hung, fails_first):
+    env = TimedEnv()
+    env.durations = {hung: 100_000}
+    if fails_first and hung == "prices":
+        env.script["slow"] = 1
+    if hung == "npm":
+        env.script["npm"] = 1
+    loop = run_loop(env, 3, GITHUB_REF="refs/heads/master", **HARD)
+    started = env.t
+    loop.run()
+    assert env.now() <= started + 230
+    for call in env.calls:
+        assert call[3] is not None
+        assert call[5] + call[3] <= started + 230 + 1
+
+
+def refetch_cases():
+    return {
+        "exit_three": lambda env: env.script.update(prices=3, slow=3),
+        "verify_failed": lambda env: env.script.update(verify=90),
+        "two_push_failures": lambda env: env.script.update(push=1, deploy=1),
+    }
+
+
+@pytest.mark.parametrize("case", ["exit_three", "verify_failed", "two_push_failures"])
+def test_warm_start_never_reuses_a_tree_marked_for_refetch(case):
+    env = FakeEnv()
+    run_loop(env, **state_environ()).serve()
+    fetches = env.counts["fetch"]
+    refetch_cases()[case](env)
+    key = f"{STATE}/{pl.STATE_FILE}"
+    env.files[key] = json.dumps({**json.loads(env.files[key]), "last_gh": 0})
+    run_loop(env, **state_environ()).serve()
+    state = saved(env)
+    assert state["want_fetch"] is True or state["have_dist"] is False
+    before = env.counts["fetch"]
+    env.script.clear()
+    run_loop(env, **state_environ()).serve()
+    assert env.counts["fetch"] == before + 1
+    assert fetches == 1
+
+
+def test_state_age_boundary():
+    for age, warm in ((199, True), (200, True), (201, False)):
+        env = FakeEnv()
+        run_loop(env, 1, **state_environ()).serve()
+        env.t += age - (env.t - saved(env)["saved_at"])
+        loop = run_loop(env, **state_environ())
+        loop.apply_knobs()
+        assert loop.load_state() is warm
+
+
+def test_a_lost_cache_save_cold_starts_the_next_run():
+    env = FakeEnv()
+    run_loop(env, **state_environ()).serve()
+    first = dict(env.files)
+    run_loop(env, **state_environ()).serve()
+    env.t += 30
+    env.files.update(first)
+    fetches = env.counts["fetch"]
+    run_loop(env, **state_environ()).serve()
+    assert env.counts["fetch"] == fetches + 1
+
+
+def test_a_push_timeout_keeps_the_throttle_clock():
+    loop, env = make(1)
+    loop.have_dist = True
+    loop.last_gh = T0 - 500
+    env.script["push"] = 124
+    assert loop.publish_github(T0) == "failed"
+    assert loop.last_gh == T0 - 500
+    env.script["push"] = 1
+    assert loop.publish_github(T0) == "failed"
+    assert loop.last_gh == 0
