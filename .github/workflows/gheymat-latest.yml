@@ -130,6 +130,8 @@ jobs:
           force=0
           last_slow=0
           slow_after=0
+          slow_ok_at=$(date +%s)
+          slow_alarm=0
           fresh_restore=1
           force_slow=0
           push_pages() {
@@ -217,6 +219,7 @@ jobs:
               clean=1
               if [ "$slow" = "1" ]; then
                 last_slow=$now
+                slow_ok_at=$now
                 fresh_restore=0
                 force_slow=0
               fi
@@ -306,6 +309,13 @@ jobs:
                 force_slow=1
                 echo "#$iteration news refreshed"
               fi
+            fi
+            # The history, forecast and brief documents expire on the clients after 2 h, so a slow lane that keeps
+            # failing while prices still ship must turn the run red well before that.
+            if [ "$slow_alarm" = "0" ] && [ $(( $(date +%s) - slow_ok_at )) -gt 5400 ]; then
+              echo "::error::The slow lane has not succeeded for 90 minutes"
+              red=1
+              slow_alarm=1
             fi
             if [ "$cf_failures" -eq 5 ]; then
               echo "::error::Cloudflare deploy failed 5 times in a row"
