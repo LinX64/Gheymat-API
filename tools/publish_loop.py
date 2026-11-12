@@ -26,7 +26,41 @@ GITHUB_PUSH_SPACING = 400
 SLOW_LANE_SPACING = 1800
 SLOW_LANE_BACKOFF = 600
 SLOW_LANE_ALARM = 5400
-CHAIN_AFTER = 3600
+CHAIN_AFTER = 120
+STATE_FILE = "loop-state.json"
+STATE_MAX_AGE = 200
+CHAIN_RESERVE = 35
+ITERATION_MIN = 60
+INSTALL_CAP = 60
+FLUSH_MIN = 20
+NEWS_MIN_SECONDS = 40
+SLOW_MIN_SECONDS = 110
+DEPLOY_CAP = 90
+STAMP_FIELDS = ("last_publish", "last_gh", "last_slow", "slow_ok_at")
+STATE_FIELDS = (
+    "last_mark",
+    "last_publish",
+    "last_gh",
+    "last_slow",
+    "slow_ok_at",
+    "slow_after",
+    "failures",
+    "cf_failures",
+    "gh_failures",
+    "store_failures",
+    "nothing",
+    "iteration",
+    "fast_ok",
+    "fast_retry",
+    "grace",
+    "force",
+    "force_slow",
+    "slow_alarm",
+    "pages_tried",
+    "want_fetch",
+    "have_dist",
+    "fresh_restore",
+)
 ALERT_PAGES = "Feed: Cloudflare deploy failing"
 ALERT_STORE = "Feed: store failing"
 STORE_SECRETS = ("FEED_STORE_KEY_ID", "FEED_STORE_SECRET", "FEED_STORE_BUCKET")
@@ -125,6 +159,12 @@ class Env:
     def read_text(self, path):
         return Path(path).read_text()
 
+    def write_text(self, path, text):
+        target = Path(path)
+        temp = target.with_name(target.name + ".tmp")
+        temp.write_text(text)
+        os.replace(temp, target)
+
 
 def make_poll():
     state = {}
@@ -214,6 +254,31 @@ class Loop:
         self.include_v2 = True
         self.store_failures = 0
         self.pages_tried = False
+        self.hard = None
+        self.push_timed_out = False
+        self.save_warned = False
+
+    def bounded(self, timeout):
+        if self.hard is None:
+            return timeout
+        left = max(1, self.usable_end() - self.env.now())
+        return left if timeout is None else min(timeout, left)
+
+    def usable_end(self):
+        return self.hard - CHAIN_RESERVE
+
+    def set_hard(self):
+        hard = self.environ.get("PUBLISH_HARD_SECONDS", "")
+        if self.hard is None and DIGITS.fullmatch(hard):
+            self.hard = (self.started or self.env.now()) + int(hard)
+
+    def time_left(self):
+        return None if self.hard is None else self.usable_end() - self.env.now()
+
+    def capped(self, timeout, cap=INSTALL_CAP):
+        if self.hard is None:
+            return timeout
+        return self.bounded(min(timeout, cap))
 
     def mask(self, line):
         for name in ("GH_TOKEN", "CLOUDFLARE_ACCOUNT_ID", *STORE_SECRETS):
@@ -266,14 +331,14 @@ class Loop:
         code, output = self.env.run(
             ["gh", "issue", "list", "--state", "open", "--search", f'"{title}" in:title', "--json", "title", "--jq", ".[].title"],
             env=env,
-            timeout=30,
+            timeout=self.bounded(30),
         )
         if code == 0 and title in output.splitlines():
             self.alerted.add(title)
             return
         owner = self.environ.get("GITHUB_REPOSITORY_OWNER", "")
         body = f"{detail} @{owner}" if owner else detail
-        code, _ = self.env.run(["gh", "issue", "create", "--title", title, "--body", body], env=env, timeout=30)
+        code, _ = self.env.run(["gh", "issue", "create", "--title", title, "--body", body], env=env, timeout=self.bounded(30))
         if code == 0:
             self.alerted.add(title)
         else:
@@ -287,7 +352,7 @@ class Loop:
         return child
 
     def run_visible(self, argv, timeout=None):
-        code, output = self.env.run(argv, env=self.child_env(), timeout=timeout)
+        code, output = self.env.run(argv, env=self.child_env(), timeout=self.bounded(timeout))
         for line in output.splitlines():
             self.say(line)
         return code
@@ -297,6 +362,7 @@ class Loop:
 
     def start(self):
         self.started = self.env.now()
+        self.set_hard()
         self.configure()
         payload = self.environ.get("GHEYMAT_PAYLOAD_KEY", "")
         signing = self.environ.get("GHEYMAT_SIGNING_KEY", "")
@@ -318,25 +384,30 @@ class Loop:
             return
         install = ["npm", "install", "--global", "--loglevel=error", f"wrangler@{WRANGLER_VERSION}"]
         installed = False
+        tried = 0
         for attempt in (1, 2, 3):
+            tried = attempt
             code, _ = self.env.run(
                 install,
                 env=self.child_env(*APP_SECRETS, *CLOUDFLARE_SECRETS),
-                timeout=300,
+                timeout=self.capped(300),
             )
             if code == 0:
                 installed = True
                 break
             if attempt < 3:
+                left = self.time_left()
+                if left is not None and left < INSTALL_CAP + attempt * 10 + ITERATION_MIN + 30:
+                    break
                 self.env.sleep(attempt * 10)
         if not installed:
             self.mirror = False
-            self.say("::error::Cloudflare deploy is off: Wrangler install failed 3 times")
+            self.say(f"::error::Cloudflare deploy is off: Wrangler install failed{' 3 times' if tried == 3 else ''}")
             return
         self.env.run(
             ["wrangler", "pages", "project", "create", CLOUDFLARE_PROJECT, "--production-branch", "master"],
             env=self.child_env(*APP_SECRETS, WRANGLER_SEND_METRICS="false"),
-            timeout=120,
+            timeout=self.capped(120),
         )
         self.mirror = True
 
@@ -405,6 +476,7 @@ class Loop:
         return due
 
     def push_pages(self, message):
+        self.push_timed_out = False
         identity = ["-c", f"user.name={BOT_NAME}", "-c", f"user.email={BOT_EMAIL}"]
         token = self.environ.get("GH_TOKEN", "")
         repository = self.environ.get("GITHUB_REPOSITORY", "")
@@ -417,7 +489,9 @@ class Loop:
             (["git", "push", "-q", "-f", url, "gh-pages"], 120),
         )
         for argv, timeout in steps:
-            code, _ = self.env.run(argv, env=self.child_env(), timeout=timeout, cwd="dist")
+            code, _ = self.env.run(argv, env=self.child_env(), timeout=self.bounded(timeout), cwd="dist")
+            if code == 124 and argv[1] == "push":
+                self.push_timed_out = True
             if code != 0:
                 return False
         return True
@@ -426,23 +500,23 @@ class Loop:
         self.env.rmtree("restore")
         self.env.mkdir("restore")
         env = self.child_env()
-        code, _ = self.env.run(["git", "fetch", "-q", "--depth", "1", "origin", "gh-pages"], env=env, timeout=120)
+        code, _ = self.env.run(["git", "fetch", "-q", "--depth", "1", "origin", "gh-pages"], env=env, timeout=self.bounded(120))
         if code == 0:
-            code, _ = self.env.run(["git", "--work-tree=restore", "checkout", "-q", "FETCH_HEAD", "--", "."], env=env)
+            code, _ = self.env.run(["git", "--work-tree=restore", "checkout", "-q", "FETCH_HEAD", "--", "."], env=env, timeout=self.bounded(None))
         if code == 0:
-            self.env.run(["git", "reset", "-q"], env=env)
+            self.env.run(["git", "reset", "-q"], env=env, timeout=self.bounded(None))
             self.env.rmtree("dist")
             self.env.move("restore", "dist")
             self.have_dist = True
             self.fresh_restore = True
             self.want_fetch = False
             if not self.seeded:
-                code, output = self.env.run(["git", "log", "-1", "--format=%ct", "FETCH_HEAD"], env=env)
+                code, output = self.env.run(["git", "log", "-1", "--format=%ct", "FETCH_HEAD"], env=env, timeout=self.bounded(None))
                 text = output.strip()
                 self.last_gh = int(text) if code == 0 and DIGITS.fullmatch(text) else 0
                 self.seeded = True
         else:
-            self.env.run(["git", "reset", "-q"], env=env)
+            self.env.run(["git", "reset", "-q"], env=env, timeout=self.bounded(None))
         self.env.rmtree("restore")
 
     def snapshot_argv(self, *arguments):
@@ -453,14 +527,18 @@ class Loop:
             return 91, False
         self.env.clear_top("dist", KEPT_IN_DIST)
         self.env.touch("dist/.nojekyll")
+        left = self.time_left()
         slow = now >= self.slow_after and (
             self.fresh_restore or self.force_slow or now - self.last_slow >= SLOW_LANE_SPACING
         )
+        if slow and left is not None and left < SLOW_MIN_SECONDS:
+            slow = False
         code = 0
         if slow:
             backfill = self.environ.get("BACKFILL") or "12"
             code = self.run_visible(
-                self.snapshot_argv("--history", "--ai", "--defer-news", "--backfill", backfill, "--pace", "3")
+                self.snapshot_argv("--history", "--ai", "--defer-news", "--backfill", backfill, "--pace", "3"),
+                timeout=None if left is None else max(1, left - ITERATION_MIN),
             )
             if code not in (0, 2, 3):
                 self.say(f"::warning::#{self.iteration} slow lane failed (code {code}), publishing prices only")
@@ -483,7 +561,7 @@ class Loop:
             ([self.python, VERIFY, "--site", "site"], self.child_env(*scrub_verify)),
         )
         for argv, env in steps:
-            code, output = self.env.run(argv, env=env, timeout=None)
+            code, output = self.env.run(argv, env=env, timeout=self.bounded(None))
             log.extend(output.splitlines())
             if code != 0:
                 return False, log
@@ -502,7 +580,7 @@ class Loop:
             code, output = self.env.run(
                 ["wrangler", "pages", "deploy", "site", "--project-name", CLOUDFLARE_PROJECT, "--branch", "master"],
                 env=self.child_env(*scrub_deploy, WRANGLER_SEND_METRICS="false"),
-                timeout=300,
+                timeout=self.capped(300, DEPLOY_CAP),
             )
             log.extend(output.splitlines())
             deployed = code == 0
@@ -567,15 +645,19 @@ class Loop:
             return "ok"
         self.failures += 1
         self.gh_failures += 1
-        self.last_gh = 0
+        if not self.push_timed_out:
+            self.last_gh = 0
         if self.gh_failures == 2:
             self.want_fetch = True
         self.say_err(f"#{self.iteration} GitHub push failed ({self.failures} in a row)")
         return "failed"
 
     def refresh_news(self):
+        left = self.time_left()
+        if left is not None and left < NEWS_MIN_SECONDS:
+            return
         code, output = self.env.run(
-            self.snapshot_argv("--news-only"), env=self.child_env(), timeout=150
+            self.snapshot_argv("--news-only"), env=self.child_env(), timeout=self.bounded(150)
         )
         if code != 0:
             self.say(f"::warning::#{self.iteration} news step exit {code}")
@@ -603,6 +685,7 @@ class Loop:
             if slow:
                 self.last_slow = now
                 self.slow_ok_at = now
+                self.slow_alarm = False
                 self.fresh_restore = False
                 self.force_slow = False
             pages_wanted = self.pages_mode == "every" or (self.pages_mode == "shell" and not self.pages_tried)
@@ -698,37 +781,118 @@ class Loop:
     def flush(self):
         if not (self.clean and self.have_dist and self.last_gh < self.last_publish):
             return
-        verified = self.env.run([self.python, VERIFY, "dist"], env=self.child_env())[0] == 0
-        if not (verified and self.push_pages("Publish final")):
+        if self.env.now() - self.last_gh < GITHUB_PUSH_SPACING:
+            return
+        left = self.time_left()
+        if left is not None and left < FLUSH_MIN:
+            return
+        verified = (
+            self.env.run([self.python, VERIFY, "dist"], env=self.child_env(), timeout=self.bounded(None))[0] == 0
+        )
+        if verified and self.push_pages("Publish final"):
+            self.last_gh = self.env.now()
+        else:
             self.say("::warning::Final GitHub push failed")
         self.env.rmtree("dist/.git")
 
+    def state_path(self):
+        directory = self.environ.get("GHEYMAT_STATE_DIR", "")
+        return f"{directory}/{STATE_FILE}" if directory else ""
+
+    def load_state(self):
+        path = self.state_path()
+        if not path:
+            return False
+        try:
+            state = json.loads(self.env.read_text(path))
+            if not isinstance(state, dict):
+                return False
+            saved_at = state.get("saved_at")
+            if isinstance(saved_at, bool) or not isinstance(saved_at, (int, float)):
+                return False
+            if not 0 <= (self.started or self.env.now()) - saved_at <= STATE_MAX_AGE:
+                return False
+            intact = (
+                state.get("want_fetch") is False
+                and state.get("have_dist") is True
+                and self.env.exists("dist/v1")
+            )
+        except Exception:
+            return False
+        now = self.env.now()
+        for name in STATE_FIELDS:
+            value = state.get(name)
+            if type(value) is not type(getattr(self, name)):
+                continue
+            if name in STAMP_FIELDS and value > now:
+                continue
+            setattr(self, name, value)
+        alerted = state.get("alerted")
+        if isinstance(alerted, list) and all(isinstance(item, str) for item in alerted):
+            self.alerted = set(alerted)
+        self.seeded = True
+        if intact:
+            self.have_dist = True
+            self.want_fetch = False
+        else:
+            self.have_dist = False
+            self.want_fetch = True
+            self.fresh_restore = True
+        return True
+
+    def save_state(self):
+        path = self.state_path()
+        if not path:
+            return
+        state = {name: getattr(self, name) for name in STATE_FIELDS}
+        state["alerted"] = sorted(self.alerted)
+        state["saved_at"] = self.env.now()
+        try:
+            self.env.mkdir(self.environ["GHEYMAT_STATE_DIR"])
+            self.env.write_text(path, json.dumps(state))
+        except Exception:
+            if not self.save_warned:
+                self.save_warned = True
+                self.say("::warning::Loop state could not be saved")
+
     def serve(self):
         self.apply_knobs()
-        self.env.remove(self.environ["GHEYMAT_LIVE_STATE"])
+        carried = self.load_state()
+        if not carried:
+            self.env.remove(self.environ["GHEYMAT_LIVE_STATE"])
         minutes = self.environ.get("PUBLISH_LOOP_MINUTES", "")
-        deadline = self.env.now() + (int(minutes) if DIGITS.fullmatch(minutes) else 330) * 60
-        self.slow_ok_at = self.env.now()
+        deadline = self.env.now() + (int(minutes) if DIGITS.fullmatch(minutes) else 3) * 60
+        self.set_hard()
+        if self.hard is not None:
+            deadline = min(deadline, self.usable_end() - ITERATION_MIN)
+        if not carried or not self.slow_ok_at:
+            self.slow_ok_at = self.env.now()
         while self.env.now() < deadline:
             mark = self.poll()
             now = self.env.now()
             if not self.is_due(now, now - self.last_publish, mark):
                 self.env.sleep(POLL_SECONDS)
                 continue
-            if not self.run_iteration(now, mark):
-                return 1
+            ok = self.run_iteration(now, mark)
+            if not ok:
+                self.nothing = 0
+            self.save_state()
+            if not ok:
+                return 2
         self.flush()
+        self.save_state()
         return 1 if self.red else 0
 
     def chain(self):
         if self.environ.get("GITHUB_REF") != "refs/heads/master":
             return 0
         if self.env.now() - self.started < CHAIN_AFTER:
-            self.say("Run lasted under an hour, not chaining another")
+            self.say("Run ended early, not chaining another")
             return 0
         code, _ = self.env.run(
             ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"],
             env=self.child_env(*APP_SECRETS[1:], *CLOUDFLARE_SECRETS),
+            timeout=None if self.hard is None else min(30, max(5, self.hard - self.env.now())),
         )
         return 0 if code == 0 else 1
 
@@ -736,9 +900,10 @@ class Loop:
         if not self.start():
             return 1
         code = self.serve()
-        if code != 0:
-            return code
-        return self.chain()
+        if code == 2:
+            return 1
+        chained = self.chain()
+        return 1 if code or chained else 0
 
 
 def main():
