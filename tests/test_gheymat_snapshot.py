@@ -71,6 +71,9 @@ def test_parse_converter_table_coerces_and_rejects_non_dict():
 
 
 class _FakeResponse:
+    text = ""
+    headers: dict = {}
+
     def __init__(self, status=200, body=None, json_error=False):
         self.status_code = status
         self._body = body

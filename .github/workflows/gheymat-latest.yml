@@ -109,6 +109,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           MIRROR: ${{ steps.wrangler.outputs.enabled }}
           EXTRA: ${{ github.event.inputs.history == 'true' && '--backfill 40' || '--backfill 12' }}
+          GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
+          GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
+          FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
+          GHEYMAT_LIVE_STATE: ${{ runner.temp }}/live-guard.json
         run: |
           set -euo pipefail
           deadline=$(( $(date +%s) + 330*60 ))
@@ -128,6 +132,17 @@ jobs:
           fast_retry=1
           grace=0
           force=0
+          fast_ok=1
+          date_warned=0
+          cadence=180
+          # The fast cadence only applies while the live source drives the prices; otherwise a faster refresh would
+          # only republish the same numbers. A bad knob falls back to its default instead of stopping the loop.
+          case "$FLOOR_SECONDS" in ''|*[!0-9]*) echo "::warning::FLOOR_SECONDS is not a number, using 90"; FLOOR_SECONDS=90;; esac
+          if [ "$FLOOR_SECONDS" -lt 90 ]; then FLOOR_SECONDS=90; fi
+          if [ "$FLOOR_SECONDS" -gt 900 ]; then FLOOR_SECONDS=900; fi
+          case "$GHEYMAT_ORDER" in default|live-first|primary-only) ;; *) echo "::warning::unknown order, using default"; GHEYMAT_ORDER=default;; esac
+          export GHEYMAT_ORDER GHEYMAT_LIVE_FIRST_FROM GHEYMAT_LIVE_STATE
+          rm -f "$GHEYMAT_LIVE_STATE"
           last_slow=0
           slow_after=0
           slow_ok_at=$(date +%s)
@@ -146,10 +161,34 @@ jobs:
             mark=$(python tools/gheymat_snapshot.py --mark 2>/dev/null) || mark=""
             now=$(date +%s)
             since=$(( now - last_publish ))
+            # Cadence: the live-source rhythm (with jitter) while it drives the prices and is not paused, else 180 s.
+            live_first=0
+            if [ "$GHEYMAT_ORDER" = "live-first" ]; then
+              live_first=1
+            elif [ "$GHEYMAT_ORDER" = "default" ] && [ -n "$GHEYMAT_LIVE_FIRST_FROM" ]; then
+              from=0
+              if printf '%s' "$GHEYMAT_LIVE_FIRST_FROM" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+                from=$(date -u -d "$GHEYMAT_LIVE_FIRST_FROM" +%s 2>/dev/null) || from=0
+              elif [ "$date_warned" = "0" ]; then
+                echo "::warning::GHEYMAT_LIVE_FIRST_FROM is not YYYY-MM-DDTHH:MM:SSZ, ignored"
+                date_warned=1
+              fi
+              case "$from" in ''|*[!0-9]*) from=0;; esac
+              if [ "$from" -gt 0 ] && [ "$now" -ge "$from" ]; then live_first=1; fi
+            fi
+            quiet_until=$(jq -r '.quiet_until // 0 | floor' "$GHEYMAT_LIVE_STATE" 2>/dev/null) || quiet_until=0
+            case "$quiet_until" in ''|*[!0-9]*) quiet_until=0;; esac
+            cadence=180
+            gate=45
+            if [ "$live_first" = "1" ] && [ "$now" -ge "$quiet_until" ] && [ "$fast_ok" = "1" ]; then
+              cadence=$(( FLOOR_SECONDS + RANDOM % 31 - 15 ))
+            fi
             due=0
-            if [ "$since" -ge 180 ]; then
+            if [ "$since" -ge "$cadence" ]; then
               due=1
-            elif [ "$since" -ge 45 ] && { [ "$force" = "1" ] || { [ -n "$mark" ] && [ "$mark" != "$last_mark" ]; }; }; then
+            elif [ "$force" = "1" ] && [ "$since" -ge 45 ]; then
+              due=1
+            elif [ "$since" -ge "$gate" ] && [ -n "$mark" ] && [ "$mark" != "$last_mark" ]; then
               due=1
             fi
             # Without the Cloudflare channel a build can only go to GitHub Pages, so wait until that push is allowed.
@@ -273,6 +312,11 @@ jobs:
             fi
             published=0
             if [ "$cf_ok" = "1" ] || [ "$gh_ok" = "1" ]; then published=1; fi
+            if [ "$published" = "1" ]; then
+              fast_ok=1
+            else
+              fast_ok=0
+            fi
             if [ "$published" = "1" ]; then
               nothing=0
             elif [ "$rc" != "0" ] || [ "$gh_skip" = "0" ]; then
