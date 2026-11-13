@@ -23,23 +23,21 @@ jobs:
   gate:
     name: Window
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 1
+    timeout-minutes: 2
+    permissions:
+      contents: read
     outputs:
       open: ${{ steps.window.outputs.open }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
       - id: window
         env:
-          HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
-        run: |
-          day=$(TZ=Asia/Tehran date +%u)
-          hour=$(TZ=Asia/Tehran date +%H)
-          hour=$((10#$hour))
-          if [ "$HOURS" = "off" ] || { [ "$day" != "4" ] && [ "$day" != "5" ] && [ "$hour" -ge 8 ] && [ "$hour" -lt 17 ]; }; then
-            echo "open=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "open=false" >> "$GITHUB_OUTPUT"
-            echo "Outside publishing hours"
-          fi
+          GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
+        run: python3 tools/window.py
 
   publish:
     name: Publish

@@ -18,7 +18,7 @@ FRIDAY, THURSDAY = 4, 3
 
 WINDOW_START = 8
 WINDOW_END = 17
-WINDOW_DAYS = (5, 6, 0, 1, 2)
+WINDOW_DAYS = (5, 6, 0, 1, 2, 3)
 
 
 def local_time(epoch):
@@ -52,4 +52,8 @@ def poll_seconds(name):
 
 def in_window(epoch):
     local = local_time(epoch)
-    return local.weekday() in WINDOW_DAYS and WINDOW_START <= local.hour < WINDOW_END
+    day = local.weekday()
+    if day not in WINDOW_DAYS:
+        return False
+    end = THURSDAY_END if day == THURSDAY else WINDOW_END
+    return WINDOW_START <= local.hour < end
