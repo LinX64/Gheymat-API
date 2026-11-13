@@ -20,8 +20,31 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
+  gate:
+    name: Window
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 1
+    outputs:
+      open: ${{ steps.window.outputs.open }}
+    steps:
+      - id: window
+        env:
+          HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
+        run: |
+          day=$(TZ=Asia/Tehran date +%u)
+          hour=$(TZ=Asia/Tehran date +%H)
+          hour=$((10#$hour))
+          if [ "$HOURS" = "off" ] || { [ "$day" != "4" ] && [ "$day" != "5" ] && [ "$hour" -ge 8 ] && [ "$hour" -lt 17 ]; }; then
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "open=false" >> "$GITHUB_OUTPUT"
+            echo "Outside publishing hours"
+          fi
+
   publish:
     name: Publish
+    needs: gate
+    if: needs.gate.outputs.open == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     permissions:
@@ -79,6 +102,7 @@ jobs:
           GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
           GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
           FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
+          GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
           GHEYMAT_CADENCE_TIERS: ${{ vars.GHEYMAT_CADENCE_TIERS || 'on' }}
           GHEYMAT_SIGNAL_SHADOW: ${{ vars.GHEYMAT_SIGNAL_SHADOW }}
           GHEYMAT_LIVE_STATE: .feed-state/live-guard.json

@@ -116,3 +116,23 @@ def test_local_time_offset_is_plus_three_thirty():
 def test_tier_same_for_int_and_float_epochs(name, hhmm):
     epoch = at(name, hhmm)
     assert c.tier(epoch) == c.tier(float(epoch))
+
+
+def epoch(day, clock):
+    hour, minute = (int(part) for part in clock.split(":"))
+    local = datetime.datetime.combine(DATES[day], datetime.time(hour, minute), TEHRAN)
+    return int(local.timestamp())
+
+
+@pytest.mark.parametrize("day", SAT_TO_WED)
+@pytest.mark.parametrize("clock,expected", [
+    ("07:59", False), ("08:00", True), ("12:30", True), ("16:59", True), ("17:00", False), ("23:00", False),
+])
+def test_window_open_saturday_to_wednesday(day, clock, expected):
+    assert c.in_window(epoch(day, clock)) is expected
+
+
+@pytest.mark.parametrize("day", ["thursday", "friday"])
+@pytest.mark.parametrize("clock", ["08:00", "10:00", "16:59"])
+def test_window_closed_thursday_and_friday(day, clock):
+    assert c.in_window(epoch(day, clock)) is False

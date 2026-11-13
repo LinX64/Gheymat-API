@@ -1406,3 +1406,45 @@ def test_unknown_tiers_value_warns_and_stays_off():
     loop, env = tier_loop(tiers="maybe")
     assert loop.tiers is False
     assert "::warning::GHEYMAT_CADENCE_TIERS has an unknown value, using off" in env.lines
+
+
+WINDOW_OPEN = int(datetime.datetime(2026, 11, 14, 10, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=3, minutes=30))).timestamp())
+WINDOW_SHUT = int(datetime.datetime(2026, 11, 13, 19, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=3, minutes=30))).timestamp())
+
+
+def hours_loop(at, hours="on"):
+    env = FakeEnv()
+    env.t = at
+    loop = pl.Loop(env, base_environ(GITHUB_REF="refs/heads/master", GHEYMAT_HOURS=hours), lambda: "", python="python")
+    loop.configure()
+    return loop, env
+
+
+def test_run_does_nothing_outside_hours():
+    loop, env = hours_loop(WINDOW_SHUT)
+    assert loop.run() == 0
+    assert env.calls == []
+    assert "Outside publishing hours, nothing to do" in env.lines
+
+
+def test_chain_stops_outside_hours():
+    loop, env = hours_loop(WINDOW_SHUT)
+    loop.started = env.t - 999
+    assert loop.chain() == 0
+    assert env.calls == []
+    assert "Outside publishing hours, not chaining another" in env.lines
+
+
+def test_chain_continues_inside_hours():
+    loop, env = hours_loop(WINDOW_OPEN)
+    loop.started = env.t - 999
+    assert loop.chain() == 0
+    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
+
+
+def test_hours_off_by_default_ignores_the_clock():
+    loop, env = hours_loop(WINDOW_SHUT, hours="")
+    loop.started = env.t - 999
+    assert loop.hours is False
+    assert loop.chain() == 0
+    assert env.calls and env.calls[0][1][0] == "gh"
