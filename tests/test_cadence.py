@@ -132,7 +132,13 @@ def test_window_open_saturday_to_wednesday(day, clock, expected):
     assert c.in_window(epoch(day, clock)) is expected
 
 
-@pytest.mark.parametrize("day", ["thursday", "friday"])
+@pytest.mark.parametrize("clock,expected", [
+    ("07:59", False), ("08:00", True), ("12:59", True), ("13:00", False), ("16:59", False),
+])
+def test_window_thursday_closes_at_13(clock, expected):
+    assert c.in_window(epoch("thursday", clock)) is expected
+
+
 @pytest.mark.parametrize("clock", ["08:00", "10:00", "16:59"])
-def test_window_closed_thursday_and_friday(day, clock):
-    assert c.in_window(epoch(day, clock)) is False
+def test_window_closed_friday(clock):
+    assert c.in_window(epoch("friday", clock)) is False
