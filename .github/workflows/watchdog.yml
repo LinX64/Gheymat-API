@@ -2,7 +2,7 @@ name: Publish watchdog
 
 on:
   schedule:
-    - cron: '3-58/5 * * * *'
+    - cron: '3-58/5 4-13 * * 6,0,1,2,3'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
         run: |
+          day=$(TZ=Asia/Tehran date +%u)
+          hour=$((10#$(TZ=Asia/Tehran date +%H)))
+          if [ "$HOURS" != "off" ] && { [ "$day" = "4" ] || [ "$day" = "5" ] || [ "$hour" -lt 8 ] || [ "$hour" -ge 17 ]; }; then
+            echo "Outside publishing hours"
+            exit 0
+          fi
           active=$(gh run list --workflow gheymat-latest.yml --limit 20 --json status,createdAt --jq '[.[] | select(.status != "completed" and (now - (.createdAt | fromdateiso8601)) < 600)] | length')
           if [ "$active" = "0" ]; then
             echo "No publish run is active, starting one"

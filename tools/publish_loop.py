@@ -230,6 +230,7 @@ class Loop:
         self.last_mark = ""
         self.hot_until = 0
         self.tiers = False
+        self.hours = False
         self.tier_logged = ""
         self.last_publish = 0
         self.last_gh = 0
@@ -316,6 +317,7 @@ class Loop:
         self.pages_mode = self.choice("GHEYMAT_PAGES", ("every", "shell", "off"), "every")
         self.include_v2 = self.choice("FEED_STORE_V2", ("1", "0"), "1") == "1"
         self.tiers = self.choice("GHEYMAT_CADENCE_TIERS", ("on", "off"), "off") == "on"
+        self.hours = self.choice("GHEYMAT_HOURS", ("on", "off"), "off") == "on"
         if self.store_mode != "off":
             needed = (*STORE_SECRETS, "CLOUDFLARE_ACCOUNT_ID")
             if not all(self.environ.get(name) for name in needed):
@@ -913,6 +915,9 @@ class Loop:
     def chain(self):
         if self.environ.get("GITHUB_REF") != "refs/heads/master":
             return 0
+        if self.hours and not cadence.in_window(self.env.now()):
+            self.say("Outside publishing hours, not chaining another")
+            return 0
         if self.env.now() - self.started < CHAIN_AFTER:
             self.say("Run ended early, not chaining another")
             return 0
@@ -924,6 +929,10 @@ class Loop:
         return 0 if code == 0 else 1
 
     def run(self):
+        self.configure()
+        if self.hours and not cadence.in_window(self.env.now()):
+            self.say("Outside publishing hours, nothing to do")
+            return 0
         if not self.start():
             return 1
         code = self.serve()

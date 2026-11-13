@@ -16,6 +16,10 @@ POLL = {PEAK: 15, MID: 30, NIGHT: 60}
 
 FRIDAY, THURSDAY = 4, 3
 
+WINDOW_START = 8
+WINDOW_END = 17
+WINDOW_DAYS = (5, 6, 0, 1, 2)
+
 
 def local_time(epoch):
     return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc) + TEHRAN_OFFSET
@@ -44,3 +48,8 @@ def tier_seconds(name, floor):
 
 def poll_seconds(name):
     return POLL.get(name, POLL[PEAK])
+
+
+def in_window(epoch):
+    local = local_time(epoch)
+    return local.weekday() in WINDOW_DAYS and WINDOW_START <= local.hour < WINDOW_END
