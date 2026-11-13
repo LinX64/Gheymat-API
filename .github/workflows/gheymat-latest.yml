@@ -20,8 +20,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
+  gate:
+    name: Window
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      open: ${{ steps.window.outputs.open }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - id: window
+        env:
+          GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
+        run: python3 tools/window.py
+
   publish:
     name: Publish
+    needs: gate
+    if: needs.gate.outputs.open == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     permissions:
@@ -79,6 +100,7 @@ jobs:
           GHEYMAT_ORDER: ${{ vars.GHEYMAT_ORDER || 'default' }}
           GHEYMAT_LIVE_FIRST_FROM: ${{ vars.GHEYMAT_LIVE_FIRST_FROM || '' }}
           FLOOR_SECONDS: ${{ vars.GHEYMAT_FLOOR_SECONDS || '90' }}
+          GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
           GHEYMAT_CADENCE_TIERS: ${{ vars.GHEYMAT_CADENCE_TIERS || 'on' }}
           GHEYMAT_SIGNAL_SHADOW: ${{ vars.GHEYMAT_SIGNAL_SHADOW }}
           GHEYMAT_LIVE_STATE: .feed-state/live-guard.json
