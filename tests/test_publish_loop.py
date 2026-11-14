@@ -631,12 +631,12 @@ def test_run_chains_but_returns_one_when_red():
     assert env.counts["gh"] == 1
 
 
-def test_run_does_not_chain_when_nothing_published():
+def test_run_goes_red_but_still_chains_when_nothing_published():
     loop, env = make(120)
     env.script["prices"] = 3
     env.script["slow"] = 3
     assert loop.run() == 1
-    assert "gh" not in env.kinds()
+    assert env.counts["gh"] == 1
 
 
 def test_run_chains_after_full_clean_run():
@@ -934,7 +934,7 @@ def test_four_runs_push_pages_no_more_often_than_the_spacing():
     assert all(gap >= pl.GITHUB_PUSH_SPACING for gap in zip_gaps(stamps))
 
 
-def test_nothing_across_runs_ends_without_chaining_and_saves_zero():
+def test_nothing_across_runs_goes_red_still_chains_and_saves_zero():
     env = FakeEnv()
     first = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
     first.nothing = 4
@@ -945,7 +945,7 @@ def test_nothing_across_runs_ends_without_chaining_and_saves_zero():
     env.script["slow"] = 3
     loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
     assert loop.run() == 1
-    assert "gh" not in env.kinds()
+    assert env.counts["gh"] == 1
     assert saved(env)["nothing"] == 0
 
 
@@ -1156,7 +1156,7 @@ def test_state_age_is_measured_at_process_start(age, warm):
     assert env.counts.get("fetch", 0) == (0 if warm else 1)
 
 
-def test_broken_build_across_runs_alarms_once_then_exits_without_chaining():
+def test_broken_build_across_runs_alarms_once_then_goes_red_and_chains():
     env = FakeEnv()
     env.script["prices"] = 3
     env.script["slow"] = 3
@@ -1171,7 +1171,7 @@ def test_broken_build_across_runs_alarms_once_then_exits_without_chaining():
     errors = [line for line in env.lines if "failed 5 times in a row" in line]
     assert len(errors) == 1
     assert codes[-1] == 1 and set(codes[:-1]) == {0}
-    assert env.counts["gh"] == len(codes) - 1
+    assert env.counts["gh"] == len(codes)
     assert saved(env)["nothing"] == 0
 
 
@@ -1423,8 +1423,8 @@ def hours_loop(at, hours="on"):
 def test_run_does_nothing_outside_hours():
     loop, env = hours_loop(WINDOW_SHUT)
     assert loop.run() == 0
-    assert env.calls == []
-    assert "Outside publishing hours, nothing to do" in env.lines
+    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
+    assert "Outside publishing hours, handing over to the idle run" in env.lines
 
 
 def test_chain_continues_outside_hours_into_the_idle_run():
