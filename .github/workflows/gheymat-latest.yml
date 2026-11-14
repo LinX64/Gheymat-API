@@ -44,7 +44,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.open == 'false'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 350
+    timeout-minutes: 5
     permissions:
       contents: read
       actions: write

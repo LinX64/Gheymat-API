@@ -78,9 +78,9 @@ def test_watchdog_also_starts_a_run_outside_hours():
     assert calls[-1][0] == "workflow"
 
 
-def test_watchdog_leaves_a_sleeping_idle_run_alone():
+def test_watchdog_leaves_a_running_idle_run_alone():
     calls = []
-    runs = [{"status": "in_progress", "createdAt": stamp(SHUT - 7200)}]
+    runs = [{"status": "in_progress", "createdAt": stamp(SHUT - 100)}]
     watchdog.main({}, SHUT, runner(runs, calls))
     assert all(call[0] != "workflow" for call in calls)
 

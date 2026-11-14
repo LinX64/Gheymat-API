@@ -7,7 +7,7 @@ import cadence
 import window
 
 WORKFLOW = "gheymat-latest.yml"
-MAX_SLEEP = 20400
+MAX_SLEEP = 230
 EARLY = 0
 LATE = 20
 

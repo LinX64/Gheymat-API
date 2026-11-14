@@ -6,7 +6,7 @@ import sys
 import time
 
 WORKFLOW = "gheymat-latest.yml"
-ACTIVE_WITHIN = 24000
+ACTIVE_WITHIN = 600
 
 
 def gh(argv):
