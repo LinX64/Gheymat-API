@@ -212,12 +212,16 @@ def test_rates_fingerprint_ignores_timestamps_and_tracks_values():
 
 def test_intraday_adds_no_point_for_an_unchanged_or_older_observation(tmp_path):
     rates = [{"code": "usd", "buy": 1, "sell": 2, "price": None, "computed": False}]
-    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T12:11:07Z", "rates": rates}) == 1
-    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T12:11:07Z", "rates": rates}) == 0
-    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T12:05:00Z", "rates": rates}) == 0
-    assert mod.append_intraday(tmp_path, {"fetchedAt": "2026-11-07T12:17:30Z", "rates": rates}) == 1
+    base = (datetime.now(timezone.utc) - timedelta(days=1)).replace(microsecond=0)
+    first = base.strftime("%Y-%m-%dT%H:%M:%SZ")
+    older = (base - timedelta(minutes=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    later = (base + timedelta(minutes=6, seconds=23)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert mod.append_intraday(tmp_path, {"fetchedAt": first, "rates": rates}) == 1
+    assert mod.append_intraday(tmp_path, {"fetchedAt": first, "rates": rates}) == 0
+    assert mod.append_intraday(tmp_path, {"fetchedAt": older, "rates": rates}) == 0
+    assert mod.append_intraday(tmp_path, {"fetchedAt": later, "rates": rates}) == 1
     usd = json.loads((tmp_path / "v1" / "intraday" / "usd").read_text(encoding="utf-8"))
-    assert [p["ts"] for p in usd["points"]] == ["2026-11-07T12:11:07Z", "2026-11-07T12:17:30Z"]
+    assert [p["ts"] for p in usd["points"]] == [first, later]
 
 
 def _stamps(tmp_path, code) -> list[str]:

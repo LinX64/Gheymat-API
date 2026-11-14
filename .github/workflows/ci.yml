@@ -26,3 +26,6 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+      - name: Scheduler tests
+        run: node --test scheduler/test/*.test.js
