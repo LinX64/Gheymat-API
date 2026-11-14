@@ -2,7 +2,7 @@ name: Publish watchdog
 
 on:
   schedule:
-    - cron: '3-58/5 4-13 * * 6,0,1,2,3,4'
+    - cron: '3-58/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -27,5 +27,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
         run: python3 tools/watchdog.py

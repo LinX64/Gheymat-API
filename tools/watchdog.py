@@ -5,8 +5,6 @@ import subprocess
 import sys
 import time
 
-import window
-
 WORKFLOW = "gheymat-latest.yml"
 ACTIVE_WITHIN = 600
 
@@ -30,9 +28,6 @@ def active_runs(runs, now):
 def main(environ=None, now=None, run=gh):
     environ = os.environ if environ is None else environ
     now = time.time() if now is None else now
-    if not window.is_open(environ, now):
-        print("Outside publishing hours")
-        return 0
     code, output = run(["run", "list", "--workflow", WORKFLOW, "--limit", "20", "--json", "status,createdAt"])
     if code != 0:
         print("Could not list runs")
