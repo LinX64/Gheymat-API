@@ -1,0 +1,17 @@
+name = "gheymat-scheduler"
+main = "index.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+REPO = "LinX64/Gheymat-API"
+WORKFLOW = "gheymat-latest.yml"
+REF = "master"
+HOURS = "on"
+
+[observability]
+enabled = true
