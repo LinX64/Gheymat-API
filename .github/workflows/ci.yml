@@ -24,6 +24,9 @@ jobs:
       - name: Python and dependencies
         uses: ./.github/actions/setup-python-deps
 
+      - name: Source libraries
+        run: pip install -q -r requirements-sources.txt
+
       - name: Tests
         run: pytest -q
 
