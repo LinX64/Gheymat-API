@@ -915,12 +915,12 @@ class Loop:
     def chain(self):
         if self.environ.get("GITHUB_REF") != "refs/heads/master":
             return 0
-        if self.hours and not cadence.in_window(self.env.now()):
-            self.say("Outside publishing hours, not chaining another")
-            return 0
         if self.env.now() - self.started < CHAIN_AFTER:
             self.say("Run ended early, not chaining another")
             return 0
+        return self.dispatch_next()
+
+    def dispatch_next(self):
         code, _ = self.env.run(
             ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"],
             env=self.child_env(*APP_SECRETS[1:], *CLOUDFLARE_SECRETS),
@@ -931,12 +931,16 @@ class Loop:
     def run(self):
         self.configure()
         if self.hours and not cadence.in_window(self.env.now()):
-            self.say("Outside publishing hours, nothing to do")
-            return 0
+            self.say("Outside publishing hours, handing over to the idle run")
+            if self.environ.get("GITHUB_REF") != "refs/heads/master":
+                return 0
+            return 1 if self.dispatch_next() else 0
         if not self.start():
             return 1
         code = self.serve()
         if code == 2:
+            if self.environ.get("GITHUB_REF") == "refs/heads/master":
+                self.dispatch_next()
             return 1
         chained = self.chain()
         return 1 if code or chained else 0
