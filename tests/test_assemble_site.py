@@ -86,6 +86,8 @@ def test_headers_cover_root_and_versions():
     for path in ("/*", "/d/*", "/v1/d/*", "/v2/d/*", "/versions.json"):
         assert f"\n{path}\n" in "\n" + text
     assert "X-Content-Type-Options: nosniff" in text and "Referrer-Policy: no-referrer" in text
+    assert "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n" in text
+    assert text.count("Strict-Transport-Security") == 1
     assert text.count("Access-Control-Allow-Origin: *") == 4
 
 
