@@ -6,6 +6,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 
+import cadence
+import idle
 import watchdog
 import window
 
@@ -63,18 +65,73 @@ def test_watchdog_leaves_an_active_run_alone():
 def test_watchdog_ignores_old_and_completed_runs():
     calls = []
     runs = [
-        {"status": "in_progress", "createdAt": stamp(OPEN - 700)},
+        {"status": "in_progress", "createdAt": stamp(OPEN - watchdog.ACTIVE_WITHIN - 100)},
         {"status": "completed", "createdAt": stamp(OPEN - 10)},
     ]
     watchdog.main({}, OPEN, runner(runs, calls))
     assert calls[-1][0] == "workflow"
 
 
-def test_watchdog_does_nothing_outside_hours():
+def test_watchdog_also_starts_a_run_outside_hours():
     calls = []
     assert watchdog.main({}, SHUT, runner([], calls)) == 0
-    assert calls == []
+    assert calls[-1][0] == "workflow"
+
+
+def test_watchdog_leaves_a_sleeping_idle_run_alone():
+    calls = []
+    runs = [{"status": "in_progress", "createdAt": stamp(SHUT - 7200)}]
+    watchdog.main({}, SHUT, runner(runs, calls))
+    assert all(call[0] != "workflow" for call in calls)
 
 
 def test_watchdog_fails_when_listing_fails():
     assert watchdog.main({}, OPEN, lambda argv: (1, "")) == 1
+
+
+MASTER = {"GITHUB_REF": "refs/heads/master"}
+
+
+def idle_run(environ, now):
+    slept, calls = [], []
+    code = idle.main(environ, now, sleep=slept.append, run=lambda argv: calls.append(argv) or 0)
+    return code, slept, calls
+
+
+def test_idle_sleeps_until_the_window_then_starts_the_next_run():
+    code, slept, calls = idle_run(MASTER, SHUT)
+    assert code == 0
+    assert len(slept) == 1 and 0 < slept[0] <= idle.MAX_SLEEP
+    assert calls == [["workflow", "run", "gheymat-latest.yml", "--ref", "master"]]
+
+
+def test_idle_wakes_just_after_the_window_opens():
+    opens = int(datetime.datetime(2026, 11, 14, 8, 0, tzinfo=TEHRAN).timestamp())
+    code, slept, calls = idle_run(MASTER, opens - 90)
+    assert slept == [90 + idle.LATE]
+
+
+def test_idle_does_not_sleep_inside_the_window():
+    code, slept, calls = idle_run(MASTER, OPEN)
+    assert slept == [] and len(calls) == 1
+
+
+def test_idle_off_master_does_nothing():
+    code, slept, calls = idle_run({"GITHUB_REF": "refs/heads/develop"}, SHUT)
+    assert code == 0 and slept == [] and calls == []
+
+
+def test_idle_fails_when_dispatch_fails():
+    assert idle.main(MASTER, OPEN, sleep=lambda s: None, run=lambda argv: 1) == 1
+
+
+def test_next_open_after_thursday_noon_is_saturday_eight():
+    thursday = int(datetime.datetime(2026, 11, 19, 14, 0, tzinfo=TEHRAN).timestamp())
+    saturday = int(datetime.datetime(2026, 11, 21, 8, 0, tzinfo=TEHRAN).timestamp())
+    assert cadence.next_open(thursday) == saturday
+
+
+def test_next_open_after_hours_is_next_morning():
+    evening = int(datetime.datetime(2026, 11, 14, 18, 0, tzinfo=TEHRAN).timestamp())
+    morning = int(datetime.datetime(2026, 11, 15, 8, 0, tzinfo=TEHRAN).timestamp())
+    assert cadence.next_open(evening) == morning

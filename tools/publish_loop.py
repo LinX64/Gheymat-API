@@ -915,9 +915,6 @@ class Loop:
     def chain(self):
         if self.environ.get("GITHUB_REF") != "refs/heads/master":
             return 0
-        if self.hours and not cadence.in_window(self.env.now()):
-            self.say("Outside publishing hours, not chaining another")
-            return 0
         if self.env.now() - self.started < CHAIN_AFTER:
             self.say("Run ended early, not chaining another")
             return 0

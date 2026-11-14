@@ -39,6 +39,27 @@ jobs:
           GHEYMAT_HOURS: ${{ vars.GHEYMAT_HOURS || 'on' }}
         run: python3 tools/window.py
 
+  idle:
+    name: Idle
+    needs: gate
+    if: needs.gate.outputs.open == 'false'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Wait for the window and start the next run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 tools/idle.py
+
   publish:
     name: Publish
     needs: gate

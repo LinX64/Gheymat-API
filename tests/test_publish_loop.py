@@ -1427,12 +1427,11 @@ def test_run_does_nothing_outside_hours():
     assert "Outside publishing hours, nothing to do" in env.lines
 
 
-def test_chain_stops_outside_hours():
+def test_chain_continues_outside_hours_into_the_idle_run():
     loop, env = hours_loop(WINDOW_SHUT)
     loop.started = env.t - 999
     assert loop.chain() == 0
-    assert env.calls == []
-    assert "Outside publishing hours, not chaining another" in env.lines
+    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
 
 
 def test_chain_continues_inside_hours():

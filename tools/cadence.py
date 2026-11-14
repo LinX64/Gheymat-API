@@ -57,3 +57,13 @@ def in_window(epoch):
         return False
     end = THURSDAY_END if day == THURSDAY else WINDOW_END
     return WINDOW_START <= local.hour < end
+
+
+def next_open(epoch, horizon_hours=24 * 8):
+    offset = int(TEHRAN_OFFSET.total_seconds())
+    t = epoch - (epoch + offset) % 3600 + 3600
+    for _ in range(horizon_hours):
+        if in_window(t):
+            return t
+        t += 3600
+    return t
