@@ -81,7 +81,8 @@ def headers_text(registry: list[dict] | None = None) -> str:
     registry = VERSIONS if registry is None else registry
     validate(registry)
     doc_headers = ["Content-Type: application/json", "X-Robots-Tag: noindex, nofollow", "Access-Control-Allow-Origin: *"]
-    blocks = [_block("/*", ["X-Content-Type-Options: nosniff", "Referrer-Policy: no-referrer"]),
+    blocks = [_block("/*", ["X-Content-Type-Options: nosniff", "Referrer-Policy: no-referrer",
+                             "Strict-Transport-Security: max-age=31536000; includeSubDomains"]),
               _block("/d/*", doc_headers)]
     for v in registry:
         blocks.append(_block(f"/{v['id']}/d/*", doc_headers))
