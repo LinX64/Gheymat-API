@@ -30,6 +30,8 @@ HERE = Path(__file__).resolve().parent
 HANSHA = "https://hansha.online"
 SOURCES_ENV = "GHEYMAT_SOURCES"
 DEFAULT_SOURCES = ("hansha", "bonbast")
+LIBS_ENV = "GHEYMAT_SOURCE_LIBS"
+THIRD_ENV = "GHEYMAT_THIRD"
 MIN_DIRECT = 29
 STALE_SOURCE_SECONDS = 30 * 60
 FUTURE_SLACK_SECONDS = 5 * 60
@@ -302,7 +304,10 @@ def plan_sources(now: float, state: dict, primary_short: bool = False) -> list[s
             order = [PRIMARY_NAME]
     if not live_first_active(now):
         state = live_guard.new_state()
-    return live_guard.effective_order(order, LIVE_NAME, state, now, primary_short)
+    planned = live_guard.effective_order(order, LIVE_NAME, state, now, primary_short)
+    if os.environ.get(THIRD_ENV, "").strip().lower() == "on" and "third" not in planned:
+        planned.append("third")
+    return planned
 
 
 _LIVE_STATE: dict = live_guard.new_state()
@@ -330,7 +335,15 @@ def fetch_source(name: str, session: requests.Session, instruments: list[dict]) 
             raise SourceError(f"hansha: newest point is {int(age // 60)} min old")
         return snap
     if name == "bonbast":
+        if os.environ.get(LIBS_ENV, "").strip().lower() == "on":
+            import source_libs
+            prices = source_libs.fetch_bonbast_prices(
+                UA, COOKIES, source_error=SourceError, blocked_error=SourceBlocked)
+            return source_libs.snapshot_from_prices(prices, instruments, utc_now_iso(), int(time.time()))
         return build_snapshot(fetch_raw(session), instruments)
+    if name == "third":
+        import source_libs
+        return source_libs.third_snapshot(instruments, utc_now_iso(), int(time.time()), SourceError)
     raise SourceError(f"unknown source {name}")
 
 
@@ -338,8 +351,16 @@ def collect_sources(session: requests.Session, instruments: list[dict], order: l
                     fetch=fetch_source) -> list[dict]:
     results = []
     for index, name in enumerate(order, start=1):
+        wanted = instruments
+        if name == "third":
+            import source_libs
+            covered = {r["code"] for s in results for r in s["rates"]}
+            wanted = [i for i in instruments if i["code"] not in covered]
+            if not any(i["code"] in source_libs.THIRD_CODES for i in wanted):
+                print(f"source {index}: not needed", file=sys.stderr)
+                continue
         try:
-            snap = fetch(name, session, instruments)
+            snap = fetch(name, session, wanted)
         except (SourceError, requests.RequestException, ValueError) as e:
             if name == LIVE_NAME:
                 if isinstance(e, SourceBlocked):
@@ -374,7 +395,8 @@ def combine_sources(results: list[dict], instruments: list[dict],
     if not used:
         return {"seq": int(time.time()), "fetchedAt": utc_now_iso(), "sourceModified": None,
                 "source": "none", "flags": ["static"], "rates": []}, {}, {}
-    primary = max(used, key=lambda s: counts[s["source"]])
+    named = [s for s in used if s["source"] != "third"] or used
+    primary = max(named, key=lambda s: counts[s["source"]])
     fetched_at = min(s["fetchedAt"] for s in used)
     if live_first:
         core = {i["code"] for i in instruments if i.get("bonbast_key") and not i.get("computed")}
