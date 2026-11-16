@@ -31,6 +31,8 @@ def build_confidence(doc: dict, live, previous=None) -> dict:
             found.add("band-broken")
         elif "band-broken" not in found and abs(math.log(live / basis_price)) > MOVE_FRACTION * math.log(high / low):
             found.add("moved-since-basis")
+    if "band-broken" in found:
+        found.discard("moved-since-basis")
     reasons = [r for r in REASONS if r in found]
     return {"level": "low" if reasons else "normal", "reasons": reasons}
 

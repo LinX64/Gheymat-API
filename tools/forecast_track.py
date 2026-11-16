@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import json
+import os
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -7,20 +11,107 @@ import archive_store
 import gheymat_forecast as fc
 
 NAME = "forecast-log"
+FILE_NAME = "forecast-log.bin"
+INFO = b"forecast-log"
+NONCE_LEN = 12
+KEY_LEN = 32
 TRACK_LIMIT = 12
 TRACK_KEYS = ("basisDate", "target", "likely", "low", "high", "actual", "hit")
 
+_warned = False
 
-def open_state(root, log=print) -> dict | None:
+
+def _derive(master: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    return HKDF(algorithm=hashes.SHA256(), length=KEY_LEN, salt=None, info=INFO).derive(master)
+
+
+def _encrypt(key: bytes, records: list[dict]) -> bytes:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = os.urandom(NONCE_LEN)
+    plain = json.dumps(records, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return base64.b64encode(nonce + AESGCM(key).encrypt(nonce, plain, None))
+
+
+def _decrypt(key: bytes, raw: bytes) -> list[dict]:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    blob = base64.b64decode(raw.strip(), validate=True)
+    if len(blob) <= NONCE_LEN:
+        raise ValueError("short")
+    data = json.loads(AESGCM(key).decrypt(blob[:NONCE_LEN], blob[NONCE_LEN:], None))
+    if not isinstance(data, list) or not all(isinstance(r, dict) and isinstance(r.get("date"), str) for r in data):
+        raise ValueError("shape")
+    return data
+
+
+def _plain_paths(root) -> tuple[Path, Path]:
+    plain = Path(root) / archive_store.ARCHIVE_DIR / f"{NAME}.json"
+    return plain, plain.with_name(plain.name + ".corrupt")
+
+
+def _remove_plain(root, log) -> None:
+    for path in _plain_paths(root):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            log("ai: track cleanup incomplete")
+
+
+def _read_encrypted(path: Path, key: bytes, log) -> list[dict] | None:
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        log("ai: track log unreadable, skipped")
+        return None
+    try:
+        return _decrypt(key, raw)
+    except Exception:
+        try:
+            path.with_name(path.name + ".corrupt").write_bytes(raw)
+        except OSError:
+            log("ai: track log unreadable, skipped")
+            return None
+        log("ai: track log unreadable, starting empty")
+        return []
+
+
+def open_state(root, log=print, env=None) -> dict | None:
+    global _warned
     if root is None:
         return None
     try:
-        records = archive_store.load(root, NAME, log)
+        import headline_log
+        master = headline_log.master_key(env)
+        if master is None:
+            if not _warned:
+                _warned = True
+                log("ai: track off (no key)")
+            return None
+        key = _derive(master)
+        path = Path(root) / FILE_NAME
+        records: list[dict] = []
+        changed = False
+        drop_plain = False
+        plain, _ = _plain_paths(root)
+        has_plain = plain.is_file()
+        if path.exists():
+            found = _read_encrypted(path, key, log)
+            if found is None:
+                return None
+            records = found
+            _remove_plain(root, log)
+        elif has_plain:
+            records = archive_store.load(root, NAME, lambda *_: None)
+            changed = True
+            drop_plain = True
+        else:
+            _remove_plain(root, log)
     except Exception as e:
         log(f"ai: track skipped: {type(e).__name__}")
         return None
-    return {"root": root, "records": {r["date"]: r for r in records}, "loaded": len(records),
-            "changed": False, "dead": False}
+    return {"root": root, "key": key, "records": {r["date"]: r for r in records}, "loaded": len(records),
+            "changed": changed, "dead": False, "drop_plain": drop_plain}
 
 
 def _number(value) -> bool:
@@ -145,28 +236,38 @@ def record_forecast(state: dict | None, doc: dict, log=print) -> None:
         _skip_code(e, log)
 
 
-def _backup_unreadable(root) -> None:
-    path = Path(root) / archive_store.ARCHIVE_DIR / f"{NAME}.json"
-    if not path.is_file():
-        return
+def _write_atomic(root, key: bytes, records: list[dict]) -> None:
+    folder = Path(root)
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=".bin")
     try:
-        raw = path.read_bytes()
-        if raw.strip() not in (b"", b"[]"):
-            path.with_name(path.name + ".corrupt").write_bytes(raw)
-    except OSError:
-        pass
+        with os.fdopen(fd, "wb") as f:
+            f.write(_encrypt(key, records))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, folder / FILE_NAME)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def flush(state: dict | None, log=print) -> bool:
     if state is None or state["dead"] or not state["changed"]:
         return False
     try:
-        if state["loaded"] == 0:
-            _backup_unreadable(state["root"])
         records = [state["records"][d] for d in sorted(state["records"])]
-        written = archive_store.write(state["root"], NAME, records, state["loaded"], log)
+        if len(records) < state["loaded"]:
+            log("ai: track log kept (refusing to shrink)")
+            return False
+        _write_atomic(state["root"], state["key"], records)
     except Exception as e:
         _skip(state, e, log)
         return False
     state["changed"] = False
-    return written
+    if state.get("drop_plain"):
+        state["drop_plain"] = False
+        _remove_plain(state["root"], log)
+    return True

@@ -677,11 +677,14 @@ def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
 
 def live_prices_for(rates: list[dict], daily: dict) -> dict:
     prices = {}
-    for r in rates:
-        if r.get("code") in daily["codes"] and r.get("kind") in ("currency", "coin"):
-            price = r.get("sell") if r.get("sell") is not None else r.get("buy")
-            if isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0:
-                prices[r["code"]] = float(price)
+    try:
+        for r in rates:
+            if r.get("code") in daily["codes"] and r.get("kind") in ("currency", "coin"):
+                price = r.get("sell") if r.get("sell") is not None else r.get("buy")
+                if isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0:
+                    prices[r["code"]] = float(price)
+    except Exception:
+        return {}
     return prices
 
 
