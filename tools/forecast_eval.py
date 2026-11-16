@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 import sys
+from bisect import bisect_left
 from datetime import timedelta
 from statistics import median
 from pathlib import Path
@@ -158,16 +159,202 @@ def report(daily: dict, codes=None) -> list[str]:
     return lines
 
 
+MIN_GAP = 0.10
+MIN_CODE_SHARE = 2 / 3
+HOLDOUT_WEEKS = 52
+PRIMARY_CODE = "usd"
+BINS = ("low", "mid", "high")
+TERCILE_LOW = 1 / 3
+TERCILE_HIGH = 2 / 3
+
+
+def sigma_percentile(series, basis_date) -> float | None:
+    hi = bisect_left(series.dates, basis_date)
+    lo = bisect_left(series.dates, basis_date - timedelta(days=fc.LOOKBACK_DAYS))
+    trailing = series.sigma[lo:hi]
+    now = series.sigma_at(basis_date)
+    if now is None or len(trailing) < fc.MIN_RETURNS_FOR_BAND:
+        return None
+    less = sum(1 for x in trailing if x < now)
+    equal = sum(1 for x in trailing if x == now)
+    return (less + 0.5 * equal) / len(trailing)
+
+
+def regime_bin(pct: float) -> str:
+    if pct < TERCILE_LOW:
+        return "low"
+    if pct >= TERCILE_HIGH:
+        return "high"
+    return "mid"
+
+
+def _features(series, returns, basis_date, basis_price) -> tuple[float | None, bool]:
+    pct = sigma_percentile(series, basis_date)
+    week = timedelta(days=fc.HORIZON_DAYS)
+    past_abs = sorted(abs(r) for d, _, r, _ in returns if d < basis_date - week)
+    latest = series.close_on_or_before(basis_date - week, basis_date - week - timedelta(days=fc.TARGET_SLACK_DAYS))
+    unusual = False
+    if latest is not None and past_abs:
+        unusual = abs(math.log(basis_price / latest[1])) > fc.quantile(past_abs, fc.UNUSUAL_PERCENTILE)
+    return pct, unusual
+
+
+def _annotated(points: list[dict], method: str) -> list[dict] | None:
+    closes = fc.clean_series(points)
+    if not closes:
+        return None
+    series = fc.Series(closes)
+    returns = series.horizon_returns()
+    weeks = fc.backtest(series, returns, method)
+    if len(weeks) < fc.MIN_BACKTEST_WEEKS:
+        return None
+    out = []
+    for w in weeks:
+        pct, unusual = _features(series, returns, w["basisDate"], w["basis"])
+        out.append({"basisDate": w["basisDate"], "inside": w["inside"], "pct": pct, "unusual": unusual})
+    return out
+
+
+def check_regime_no_lookahead(points: list[dict], method: str, cut) -> bool:
+    closes = fc.clean_series(points)
+    if not closes:
+        return True
+    full = fc.Series(closes)
+    full_returns = full.horizon_returns()
+    weeks = fc.backtest(full, full_returns, method)
+    head = fc.Series([c for c in closes if c[0] <= cut])
+    head_returns = head.horizon_returns()
+    for w in weeks:
+        if w["basisDate"] > cut:
+            continue
+        if _features(full, full_returns, w["basisDate"], w["basis"]) != _features(head, head_returns, w["basisDate"], w["basis"]):
+            return False
+    return True
+
+
+def _cell(rows: list[dict]) -> dict:
+    return {"n": len(rows), "coverage": sum(1 for r in rows if r["inside"]) / len(rows) if rows else None}
+
+
+def _table(rows: list[dict]) -> dict:
+    kept = [r for r in rows if r["pct"] is not None]
+    return {b: _cell([r for r in kept if regime_bin(r["pct"]) == b]) for b in BINS}
+
+
+def _extremes(table: dict) -> tuple[str | None, str | None, float | None]:
+    populated = [(b, table[b]["coverage"]) for b in BINS if table[b]["n"]]
+    if len(populated) < 2:
+        return None, None, None
+    worst = min(populated, key=lambda x: x[1])
+    best = max(populated, key=lambda x: x[1])
+    tied = sum(1 for _, c in populated if c == worst[1]) > 1
+    return (None if tied else worst[0]), best[0], best[1] - worst[1]
+
+
+def analyze_code(annotated: list[dict]) -> dict:
+    weeks = len(annotated)
+    skipped = sum(1 for r in annotated if r["pct"] is None)
+    table = _table(annotated)
+    worst, best, gap = _extremes(table)
+    half = weeks // 2
+    return {
+        "weeks": weeks,
+        "skipped": skipped,
+        "bins": table,
+        "early": _table(annotated[:half]),
+        "late": _table(annotated[half:]),
+        "holdout": _table(annotated[-HOLDOUT_WEEKS:]),
+        "beforeHoldout": _table(annotated[:-HOLDOUT_WEEKS]),
+        "unusual": {"unusual": _cell([r for r in annotated if r["unusual"]]),
+                    "usual": _cell([r for r in annotated if not r["unusual"]])},
+        "worst": worst,
+        "best": best,
+        "gap": gap,
+    }
+
+
+def _gap_ok(gap) -> bool:
+    return gap is not None and round(gap, 9) >= MIN_GAP
+
+
+def verdict(codes: dict) -> dict:
+    live = {c: a for c, a in codes.items() if a is not None}
+    primary = live.get(PRIMARY_CODE)
+
+    def out(passed, reason, worst, matching):
+        return {"verdict": "PASS" if passed else "FAIL", "reason": reason, "worst": worst,
+                "codesWithData": len(live), "codesMatching": matching}
+
+    if primary is None or primary["gap"] is None:
+        return out(False, "primary-no-data", None, 0)
+    worst, best = primary["worst"], primary["best"]
+    matching = sum(1 for a in live.values() if worst is not None and a["worst"] == worst and _gap_ok(a["gap"]))
+    if not _gap_ok(primary["gap"]):
+        return out(False, "primary-gap", worst, matching)
+    if worst is None:
+        return out(False, "primary-tie", None, 0)
+    if not (_extremes(primary["early"])[0] == worst and _extremes(primary["late"])[0] == worst):
+        return out(False, "primary-halves", worst, matching)
+    hold = primary["holdout"]
+    if _extremes(primary["beforeHoldout"])[0] != worst:
+        return out(False, "primary-holdout", worst, matching)
+    hc, hb = hold[worst]["coverage"], hold[best]["coverage"]
+    if not (_extremes(hold)[0] == worst and hc is not None and hb is not None and hc < hb):
+        return out(False, "primary-holdout", worst, matching)
+    if matching / len(live) < MIN_CODE_SHARE:
+        return out(False, "code-share", worst, matching)
+    return out(True, "all-conditions-met", worst, matching)
+
+
+def regimes(daily: dict, codes=None, method: str = fc.DEFAULT_METHOD) -> dict:
+    wanted = sorted(daily.get("codes", {}))
+    if codes:
+        wanted = [c for c in wanted if c in set(codes)]
+    analyses = {}
+    for c in wanted:
+        annotated = _annotated(points_from_daily(daily["codes"][c]), method)
+        analyses[c] = analyze_code(annotated) if annotated else None
+    return {"codes": analyses, "verdict": verdict(analyses)}
+
+
+def _table_line(code: str, label: str, table: dict) -> str:
+    cells = " ".join(f"{b}[n={table[b]['n']} cov={_fmt(table[b]['coverage'], '.3f')}]" for b in BINS)
+    return f"{code} {label} {cells}"
+
+
+def regimes_report(result: dict) -> list[str]:
+    lines = []
+    for code, a in result["codes"].items():
+        if a is None:
+            lines.append(f"{code} regimes insufficient-history")
+            continue
+        lines.append(f"{code} regimes weeks={a['weeks']} skipped={a['skipped']} worst={a['worst'] or '-'} "
+                     f"gap={_fmt(a['gap'], '.3f')}")
+        for label in ("bins", "early", "late", "holdout", "beforeHoldout"):
+            lines.append(_table_line(code, "all" if label == "bins" else label, a[label]))
+        u, n = a["unusual"]["unusual"], a["unusual"]["usual"]
+        lines.append(f"{code} unusual n={u['n']} cov={_fmt(u['coverage'], '.3f')} "
+                     f"usual n={n['n']} cov={_fmt(n['coverage'], '.3f')}")
+    v = result["verdict"]
+    lines.append(f"verdict {v['verdict']} worst={v['worst'] or '-'} reason={v['reason']} "
+                 f"codes={v['codesMatching']}/{v['codesWithData']}")
+    return lines
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Compare the forecast methods walk-forward on a local daily history file.")
     ap.add_argument("--daily", required=True, help="a local daily history JSON file")
     ap.add_argument("--codes", help="comma separated codes to evaluate; default: all")
     ap.add_argument("--json", action="store_true", help="print one JSON object instead of lines")
+    ap.add_argument("--regimes", action="store_true", help="report range coverage by volatility regime")
     args = ap.parse_args(argv)
     try:
         daily = json.loads(Path(args.daily).read_text(encoding="utf-8"))
         codes = [c for c in args.codes.split(",") if c] if args.codes else None
-        if args.json:
+        if args.regimes:
+            result = regimes(daily, codes)
+            print(json.dumps(result) if args.json else "\n".join(regimes_report(result)))
+        elif args.json:
             outcomes = _evaluate_all(daily, codes)
             print(json.dumps({"codes": outcomes, "totals": _wins(outcomes)}))
         else:
