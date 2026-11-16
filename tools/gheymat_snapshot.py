@@ -17,6 +17,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gheymat_seal import Sealer, load_published
+import crypto_history
 import gheymat_ai
 import gheymat_news
 import live_guard
@@ -1102,8 +1103,11 @@ def _publish(args) -> int:
         files = write_history_files(out, daily)
         long_files = write_long_history(out, HERE.parent / "archive" / "all.json",
                                         {i["code"]: i["unit"] for i in instruments})
+        crypto_files = 0 if quiet else crypto_history.run(
+            requests.Session(), instruments, daily,
+            lambda logical: load_published(out, logical, SEALER), lambda logical, obj: write(out / logical, obj))
         have = known_dates(daily)
-        print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
+        print(f"history: {crypto_files} crypto files; fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     if args.ai:
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
