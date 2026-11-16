@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import archive_store
+import forecast_confidence
 import forecast_track
 import gheymat_blend
 import gheymat_forecast as fc
@@ -49,7 +50,7 @@ def brief_text(count: int) -> tuple[str, str]:
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
             budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=(), signal_ctx=None,
-            archive_root=None, log=print) -> dict:
+            archive_root=None, log=print, live_prices=None) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
     today = default_today(now)
@@ -70,8 +71,13 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         fresh = fc.basis_is_fresh(fc.date.fromisoformat(last["date"]), today)
         if (fresh and isinstance(previous, dict) and previous.get("method") in accepted
                 and previous.get("basis") == {"date": last["date"], "price": last["price"]}):
-            write_doc(logical, previous)
-            forecast_track.record_forecast(track_state, previous, log)
+            live = (live_prices or {}).get(code)
+            confidence = forecast_confidence.safe_confidence(previous, live, previous, log)
+            reused = previous
+            if confidence is not None and confidence != previous.get("confidence"):
+                reused = {**previous, "confidence": confidence}
+            write_doc(logical, reused)
+            forecast_track.record_forecast(track_state, reused, log)
             published.append(code)
             resealed += 1
             continue
@@ -80,6 +86,8 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
             withheld[code] = reason
             continue
         doc["track"] = forecast_track.build_track(track_state, code, points, previous, log)
+        confidence = forecast_confidence.safe_confidence(doc, (live_prices or {}).get(code), previous, log)
+        doc["confidence"] = confidence if confidence is not None else {"level": "normal", "reasons": []}
         write_doc(logical, doc)
         forecast_track.record_forecast(track_state, doc, log)
         published.append(code)
@@ -145,13 +153,13 @@ def shadow_signals(daily, signals_http, archive_root, now, log, env) -> None:
 
 
 def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None,
-             signals_http=None, archive_root=None, refresh_news: bool = True) -> dict | None:
+             signals_http=None, archive_root=None, refresh_news: bool = True, live_prices=None) -> dict | None:
     news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root, refresh_news)
     signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
     state_dir = (os.environ if env is None else env).get("GHEYMAT_STATE_DIR") or None
     try:
         summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx,
-                          archive_root=state_dir, log=log)
+                          archive_root=state_dir, log=log, live_prices=live_prices)
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}")
         return None

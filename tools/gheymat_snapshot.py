@@ -675,6 +675,16 @@ def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
     return (before, now) if now < before // 2 else None
 
 
+def live_prices_for(rates: list[dict], daily: dict) -> dict:
+    prices = {}
+    for r in rates:
+        if r.get("code") in daily["codes"] and r.get("kind") in ("currency", "coin"):
+            price = r.get("sell") if r.get("sell") is not None else r.get("buy")
+            if isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0:
+                prices[r["code"]] = float(price)
+    return prices
+
+
 def save_daily(out: Path, daily: dict) -> None:
     write(out / "v1" / "daily.json", daily)
 
@@ -1139,7 +1149,8 @@ def _publish(args) -> int:
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
                             lambda logical: load_published(out, logical, SEALER),
                             signals_http=requests.Session(), archive_root=out,
-                            refresh_news=not args.defer_news)
+                            refresh_news=not args.defer_news,
+                            live_prices=live_prices_for(snapshot["rates"], daily))
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
