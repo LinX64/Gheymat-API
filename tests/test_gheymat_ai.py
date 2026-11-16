@@ -345,3 +345,114 @@ def test_run_step_threads_the_archive_root_and_log_into_the_track(tmp_path, monk
     ai.run_step(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW, log=logs.append,
                 env={"GHEYMAT_STATE_DIR": str(tmp_path)}, archive_root=tmp_path / "out")
     assert archive_records(tmp_path)[0]["codes"]["usd"]["target"] == "2026-11-15"
+
+
+def seed_forecast(store, monkeypatch, basis_end=date(2026, 11, 8), **build_kwargs):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build(**build_kwargs))
+    monkeypatch.setattr(ai.gheymat_blend, "expected_methods", lambda ctx: {"stub-method"})
+    daily = daily_from({"usd": stub_points(basis_end)})
+    ai.publish(daily, store.write, store.load, NOW, log=lambda *_: None)
+    return daily
+
+
+def test_rebuild_publishes_confidence_from_live_price(monkeypatch):
+    store = Store()
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
+               live_prices={"usd": 150.0}, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"] == {"level": "low", "reasons": ["band-broken"]}
+
+
+def test_rebuild_without_live_prices_is_normal(monkeypatch):
+    store = Store()
+    seed_forecast(store, monkeypatch)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"] == {"level": "normal", "reasons": []}
+
+
+def test_reuse_changes_only_confidence(monkeypatch):
+    store = Store()
+    daily = seed_forecast(store, monkeypatch)
+    before = store.docs["v1/ai/forecast/usd"]
+    summary = ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6),
+                         live_prices={"usd": 150.0}, log=lambda *_: None)
+    after = store.docs["v1/ai/forecast/usd"]
+    assert summary["resealed"] == 1 and summary["rebuilt"] == 0
+    assert after["generatedAt"] == before["generatedAt"]
+    assert after["confidence"] == {"level": "low", "reasons": ["band-broken"]}
+    assert {k: v for k, v in after.items() if k != "confidence"} == {k: v for k, v in before.items() if k != "confidence"}
+
+
+def test_reuse_with_unchanged_confidence_republishes_identical_doc(monkeypatch):
+    store = Store()
+    daily = seed_forecast(store, monkeypatch)
+    before = store.docs["v1/ai/forecast/usd"]
+    ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), live_prices={"usd": 107.0}, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"] == before
+
+
+def test_reuse_keeps_sticky_reason_after_price_returns(monkeypatch):
+    store = Store()
+    daily = seed_forecast(store, monkeypatch)
+    ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), live_prices={"usd": 150.0}, log=lambda *_: None)
+    ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=12), live_prices={"usd": 107.0}, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"]["reasons"] == ["band-broken"]
+    ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=18), log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"]["reasons"] == ["band-broken"]
+
+
+def test_new_basis_starts_clean(monkeypatch):
+    store = Store()
+    seed_forecast(store, monkeypatch)
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW + timedelta(minutes=6),
+               live_prices={"usd": 150.0}, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"]["reasons"] == ["band-broken"]
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 9))}), store.write, store.load, NOW + timedelta(days=1),
+               live_prices={"usd": 110.0}, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"] == {"level": "normal", "reasons": []}
+
+
+def test_previous_document_without_confidence_gains_it_without_a_rebuild(monkeypatch):
+    store = Store()
+    daily = seed_forecast(store, monkeypatch)
+    legacy = dict(store.docs["v1/ai/forecast/usd"])
+    del legacy["confidence"]
+    store.docs["v1/ai/forecast/usd"] = legacy
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build(0.5, 2.0))
+    summary = ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), log=lambda *_: None)
+    after = store.docs["v1/ai/forecast/usd"]
+    assert summary["resealed"] == 1 and summary["rebuilt"] == 0
+    assert after["confidence"] == {"level": "normal", "reasons": []}
+    assert after["low"] == legacy["low"] and after["generatedAt"] == legacy["generatedAt"]
+
+
+def test_confidence_failure_still_publishes(monkeypatch):
+    store = Store()
+    logs = []
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    monkeypatch.setattr(ai.gheymat_blend, "expected_methods", lambda ctx: {"stub-method"})
+    monkeypatch.setattr(ai.forecast_confidence, "build_confidence", lambda *a, **k: 1 / 0)
+    daily = daily_from({"usd": stub_points(date(2026, 11, 8))})
+    ai.publish(daily, store.write, store.load, NOW, live_prices={"usd": 150.0}, log=logs.append)
+    assert store.docs["v1/ai/forecast/usd"]["confidence"] == {"level": "normal", "reasons": []}
+    assert "ai: confidence skipped: ZeroDivisionError" in logs
+    before = dict(store.docs["v1/ai/forecast/usd"])
+    summary = ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), live_prices={"usd": 150.0}, log=logs.append)
+    assert summary["resealed"] == 1 and store.docs["v1/ai/forecast/usd"] == before
+
+
+def test_brief_and_summary_are_unchanged_by_confidence(monkeypatch):
+    store = Store()
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    summary = ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
+                         live_prices={"usd": 150.0}, log=lambda *_: None)
+    assert set(summary) == {"published", "rebuilt", "resealed", "withheld"}
+    assert set(store.docs["v1/ai/brief"]) == {"generatedAt", "en", "fa", "cards", "forecastCodes"}
+
+
+def test_run_step_passes_live_prices_through(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ai, "publish", lambda *a, **k: seen.append(k.get("live_prices")) or
+                        {"published": [], "rebuilt": 0, "resealed": 0, "withheld": {}})
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: None)
+    ai.run_step({"codes": {}}, lambda *_: None, lambda *_: None, NOW, log=lambda *_: None, live_prices={"usd": 1.0})
+    assert seen == [{"usd": 1.0}]
