@@ -423,3 +423,45 @@ def test_news_only_reports_refreshed_only_when_the_check_time_advances(tmp_path,
         assert "ZeroDivisionError" in capsys.readouterr().err
     finally:
         mod._DIST_ROOT, mod.SEALER, mod.PLAIN_ALSO = None, None, True
+
+
+def _eur(buy, sell):
+    return {"code": "eur", "buy": buy, "sell": sell}
+
+
+def test_bonbast_eur_row_ignores_other_sources():
+    results = [
+        {"source": "hansha", "rates": [_eur(300000, 300200)]},
+        {"source": "bonbast", "rates": [_eur(294600, 294800)]},
+    ]
+    row = mod.bonbast_eur_row(results)
+    assert row["buy"] == 294600 and row["sell"] == 294800
+
+
+def test_bonbast_eur_row_missing_without_that_source_or_a_usable_row():
+    assert mod.bonbast_eur_row([{"source": "hansha", "rates": [_eur(300000, 300200)]}]) is None
+    assert mod.bonbast_eur_row([{"source": "bonbast", "rates": [_eur(None, None)]}]) is None
+
+
+def test_cross_rate_pivot_prefers_the_run_own_bonbast_eur():
+    results = [{"source": "hansha", "rates": [_eur(300000, 300200)]},
+               {"source": "bonbast", "rates": [_eur(294600, 294800)]}]
+    row = mod.cross_rate_pivot(None, results, [], 0.0, fetch=lambda *a, **k: pytest.fail("no extra fetch"))
+    assert row["sell"] == 294800
+
+
+def test_cross_rate_pivot_fetches_bonbast_when_the_run_had_only_the_other_source(monkeypatch):
+    monkeypatch.setattr(mod.live_guard, "effective_order", lambda order, *a, **k: list(order))
+    fetched = []
+
+    def fake(name, session, instruments):
+        fetched.append(name)
+        return {"source": "bonbast", "fetchedAt": "x", "rates": [_eur(294600, 294800)]}
+
+    row = mod.cross_rate_pivot(None, [{"source": "hansha", "rates": [_eur(300000, 300200)]}], [], 0.0, fetch=fake)
+    assert fetched == ["bonbast"] and row["sell"] == 294800
+
+
+def test_cross_rate_pivot_is_none_when_bonbast_is_blocked(monkeypatch):
+    monkeypatch.setattr(mod.live_guard, "effective_order", lambda order, *a, **k: [])
+    assert mod.cross_rate_pivot(None, [{"source": "hansha", "rates": [_eur(300000, 300200)]}], [], 0.0) is None
