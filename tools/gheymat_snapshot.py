@@ -17,6 +17,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gheymat_seal import Sealer, load_published
+import crypto_history
 import gheymat_ai
 import gheymat_news
 import live_guard
@@ -576,6 +577,27 @@ def compute_cross_rates(table: dict, eur_buy, eur_sell, instruments: list[dict])
     return rates
 
 
+def bonbast_eur_row(results: list[dict]) -> dict | None:
+    for snap in results:
+        if snap.get("source") != LIVE_NAME:
+            continue
+        row = next((r for r in snap.get("rates", []) if r.get("code") == "eur"), None)
+        if _shared_usable(row):
+            return row
+    return None
+
+
+def cross_rate_pivot(session: requests.Session, results: list[dict], instruments: list[dict],
+                     now: float, fetch=fetch_source) -> dict | None:
+    row = bonbast_eur_row(results)
+    if row is not None:
+        return row
+    allowed = live_guard.effective_order([LIVE_NAME], LIVE_NAME, _LIVE_STATE, now, False)
+    if LIVE_NAME not in allowed:
+        return None
+    return bonbast_eur_row(collect_sources(session, instruments, [LIVE_NAME], fetch=fetch))
+
+
 def fetch_computed_rates(session: requests.Session, direct_rates: list[dict], instruments: list[dict],
                           fetcher=None) -> list[dict]:
     eur = next((r for r in direct_rates if r["code"] == "eur"), None)
@@ -1075,7 +1097,12 @@ def _publish(args) -> int:
         print(f"archive state shrank from {shrank[0]} to {shrank[1]} days; refusing to publish", file=sys.stderr)
         return 3
     try:
-        computed_rates = [] if quiet else fetch_computed_rates(session, snapshot["rates"], instruments)
+        pivot_row = None
+        if not quiet:
+            pivot_row = cross_rate_pivot(session, results, instruments, time.time())
+            if pivot_row is None:
+                pivot_row = next((r for r in snapshot["rates"] if r["code"] == "eur"), None)
+        computed_rates = [] if pivot_row is None else fetch_computed_rates(session, [pivot_row], instruments)
     except (ValueError, OverflowError, ArithmeticError) as e:
         print(f"converter: unexpected error computing cross-rates: {e}", file=sys.stderr)
         computed_rates = []
@@ -1102,8 +1129,11 @@ def _publish(args) -> int:
         files = write_history_files(out, daily)
         long_files = write_long_history(out, HERE.parent / "archive" / "all.json",
                                         {i["code"]: i["unit"] for i in instruments})
+        crypto_files = 0 if quiet else crypto_history.run(
+            requests.Session(), instruments, daily,
+            lambda logical: load_published(out, logical, SEALER), lambda logical, obj: write(out / logical, obj))
         have = known_dates(daily)
-        print(f"history: fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
+        print(f"history: {crypto_files} crypto files; fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     if args.ai:
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
