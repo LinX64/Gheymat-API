@@ -2,7 +2,7 @@ import importlib.util
 import json
 import pathlib
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -165,3 +165,183 @@ def test_shadow_failure_logs_skip_and_keeps_summary(monkeypatch):
     assert "ai: signal shadow skipped: ValueError" in logs
     assert not any("secret detail" in m for m in logs)
     assert any(m.startswith("ai: 1 forecasts") for m in logs)
+
+
+ARCHIVE_FILE = pathlib.Path("archive") / "forecast-log.json"
+
+
+def stub_points(end, start=date(2026, 11, 1)):
+    out = []
+    for i in range((end - start).days + 1):
+        out.append({"date": (start + timedelta(days=i)).isoformat(), "price": float(100 + i)})
+    return out
+
+
+def stub_build(low_factor=0.95, high_factor=1.05, withhold=()):
+    def build(code, points, today, generated_at, history_close=None, signal_ctx=None):
+        if code in withhold:
+            return None, "history"
+        last = points[-1]
+        basis = date.fromisoformat(last["date"])
+        price = last["price"]
+        return {"code": code, "generatedAt": generated_at, "basis": {"date": last["date"], "price": price},
+                "horizonDays": 7, "target": (basis + timedelta(days=7)).isoformat(),
+                "likely": round(price, 2), "low": round(price * low_factor, 2), "high": round(price * high_factor, 2),
+                "method": "stub-method", "track": [], "signals": []}, None
+    return build
+
+
+def archive_records(root):
+    return json.loads((root / ARCHIVE_FILE).read_text(encoding="utf-8"))
+
+
+def published_entry(day):
+    target = (date.fromisoformat(day) + timedelta(days=7)).isoformat()
+    return {"basisDate": day, "target": target, "likely": 100.0, "low": 90.0, "high": 110.0,
+            "actual": 101.0, "hit": True}
+
+
+def test_a_target_close_resolves_into_the_published_track(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    store = Store()
+    first = daily_from({"usd": stub_points(date(2026, 11, 8))})
+    ai.publish(first, store.write, store.load, NOW, archive_root=tmp_path, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["track"] == []
+    assert archive_records(tmp_path)[0]["codes"]["usd"]["actual"] is None
+    second = daily_from({"usd": stub_points(date(2026, 11, 16))})
+    ai.publish(second, store.write, store.load, NOW + timedelta(days=7), archive_root=tmp_path, log=lambda *_: None)
+    doc = store.docs["v1/ai/forecast/usd"]
+    assert doc["basis"]["date"] == "2026-11-16"
+    assert doc["track"] == [{"basisDate": "2026-11-08", "target": "2026-11-15", "likely": 107.0, "low": 101.65,
+                             "high": 112.35, "actual": 114.0, "hit": False}]
+    saved = {r["date"]: r for r in archive_records(tmp_path)}
+    assert saved["2026-11-08"]["codes"]["usd"]["actualDate"] == "2026-11-15"
+    assert saved["2026-11-16"]["codes"]["usd"]["actual"] is None
+
+
+def test_restated_history_leaves_the_entry_and_the_published_track_identical(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    store = Store()
+    quiet = lambda *_: None
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
+               archive_root=tmp_path, log=quiet)
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 16))}), store.write, store.load,
+               NOW + timedelta(days=7), archive_root=tmp_path, log=quiet)
+    track = store.docs["v1/ai/forecast/usd"]["track"]
+    entry_before = archive_records(tmp_path)[0]
+    restated = stub_points(date(2026, 11, 17))
+    for p in restated:
+        if p["date"] == "2026-11-15":
+            p["price"] = 108.0
+    ai.publish(daily_from({"usd": restated}), store.write, store.load, NOW + timedelta(days=8),
+               archive_root=tmp_path, log=quiet)
+    assert store.docs["v1/ai/forecast/usd"]["basis"]["date"] == "2026-11-17"
+    assert store.docs["v1/ai/forecast/usd"]["track"] == track
+    assert archive_records(tmp_path)[0] == entry_before
+
+
+def test_same_basis_rebuild_keeps_the_first_published_values_and_skips_the_write(tmp_path, monkeypatch):
+    store = Store()
+    daily = daily_from({"usd": stub_points(date(2026, 11, 8))})
+    quiet = lambda *_: None
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    ai.publish(daily, store.write, store.load, NOW, archive_root=tmp_path, log=quiet)
+    first = archive_records(tmp_path)
+    calls = []
+    real = ai.forecast_track.archive_store.write
+    monkeypatch.setattr(ai.forecast_track.archive_store, "write", lambda *a, **k: calls.append(1) or real(*a, **k))
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build(0.5, 2.0))
+    summary = ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), archive_root=tmp_path, log=quiet)
+    assert summary["rebuilt"] == 1
+    assert store.docs["v1/ai/forecast/usd"]["low"] == 53.5
+    assert calls == [] and archive_records(tmp_path) == first
+
+
+def test_archive_is_written_once_per_publish(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    calls = []
+    real = ai.forecast_track.archive_store.write
+    monkeypatch.setattr(ai.forecast_track.archive_store, "write", lambda *a, **k: calls.append(1) or real(*a, **k))
+    store = Store()
+    pts = stub_points(date(2026, 11, 8))
+    ai.publish(daily_from({"aaa": pts, "bbb": pts, "ccc": pts}), store.write, store.load, NOW,
+               archive_root=tmp_path, log=lambda *_: None)
+    assert len(calls) == 1
+    assert sorted(archive_records(tmp_path)[0]["codes"]) == ["aaa", "bbb", "ccc"]
+
+
+def test_withheld_code_logs_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build(withhold=("bad",)))
+    store = Store()
+    pts = stub_points(date(2026, 11, 8))
+    summary = ai.publish(daily_from({"bad": pts}), store.write, store.load, NOW, archive_root=tmp_path,
+                         log=lambda *_: None)
+    assert summary["withheld"] == {"bad": "history"}
+    assert not (tmp_path / ARCHIVE_FILE).exists()
+    ai.publish(daily_from({"bad": pts, "good": pts}), store.write, store.load, NOW, archive_root=tmp_path,
+               log=lambda *_: None)
+    assert list(archive_records(tmp_path)[0]["codes"]) == ["good"]
+
+
+def test_without_an_archive_root_the_previous_track_is_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    store = Store()
+    store.docs["v1/ai/forecast/usd"] = {"method": "old", "basis": {"date": "2026-11-01", "price": 100.0},
+                                        "track": [published_entry("2026-10-25")]}
+    logs = []
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW, log=logs.append)
+    assert store.docs["v1/ai/forecast/usd"]["track"] == [published_entry("2026-10-25")]
+    assert logs == []
+    assert not (tmp_path / "archive").exists()
+
+
+def test_corrupt_archive_never_shrinks_the_published_track(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    (tmp_path / "archive").mkdir()
+    (tmp_path / ARCHIVE_FILE).write_text("garbage", encoding="utf-8")
+    store = Store()
+    previous = [published_entry("2026-11-01"), published_entry("2026-10-25")]
+    store.docs["v1/ai/forecast/usd"] = {"method": "old", "basis": {"date": "2026-11-01", "price": 100.0},
+                                        "track": previous}
+    ai.publish(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
+               archive_root=tmp_path, log=lambda *_: None)
+    assert store.docs["v1/ai/forecast/usd"]["track"] == previous
+
+
+def test_a_track_failure_still_publishes_the_forecast(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+
+    def boom(*_args):
+        raise RuntimeError("secret detail")
+    monkeypatch.setattr(ai.forecast_track, "resolve_pending", boom)
+    store = Store()
+    logs = []
+    pts = stub_points(date(2026, 11, 8))
+    summary = ai.publish(daily_from({"aaa": pts, "bbb": pts}), store.write, store.load, NOW, archive_root=tmp_path,
+                         log=logs.append)
+    assert summary["published"] == ["aaa", "bbb"] and summary["rebuilt"] == 2
+    assert store.docs["v1/ai/forecast/aaa"]["likely"] == 107.0 and store.docs["v1/ai/forecast/aaa"]["track"] == []
+    assert logs == ["ai: track skipped: RuntimeError"] * 2
+    assert set(archive_records(tmp_path)[0]["codes"]) == {"aaa", "bbb"}
+
+
+def test_run_step_keeps_the_log_out_of_the_published_archive(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: None)
+    store = Store()
+    state = tmp_path / "state"
+    out = tmp_path / "out"
+    ai.run_step(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
+                log=lambda *_: None, env={"GHEYMAT_STATE_DIR": str(state)}, archive_root=out)
+    assert (state / ARCHIVE_FILE).exists()
+    assert not (out / ARCHIVE_FILE).exists()
+
+
+def test_run_step_threads_the_archive_root_and_log_into_the_track(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: None)
+    store = Store()
+    logs = []
+    ai.run_step(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW, log=logs.append,
+                env={"GHEYMAT_STATE_DIR": str(tmp_path)}, archive_root=tmp_path / "out")
+    assert archive_records(tmp_path)[0]["codes"]["usd"]["target"] == "2026-11-15"

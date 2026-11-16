@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import archive_store
+import forecast_track
 import gheymat_blend
 import gheymat_forecast as fc
 import gheymat_news
@@ -47,13 +48,15 @@ def brief_text(count: int) -> tuple[str, str]:
 
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
-            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=(), signal_ctx=None) -> dict:
+            budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=(), signal_ctx=None,
+            archive_root=None, log=print) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
     today = default_today(now)
     generated_at = iso(now)
     published, rebuilt, resealed, withheld = [], 0, 0, {}
     accepted = gheymat_blend.expected_methods(signal_ctx)
+    track_state = forecast_track.open_state(archive_root, log)
     for code in sorted(daily.get("codes", {})):
         if clock() - started > budget_seconds:
             withheld[code] = "budget"
@@ -68,6 +71,7 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         if (fresh and isinstance(previous, dict) and previous.get("method") in accepted
                 and previous.get("basis") == {"date": last["date"], "price": last["price"]}):
             write_doc(logical, previous)
+            forecast_track.record_forecast(track_state, previous, log)
             published.append(code)
             resealed += 1
             continue
@@ -75,9 +79,12 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         if doc is None:
             withheld[code] = reason
             continue
+        doc["track"] = forecast_track.build_track(track_state, code, points, previous, log)
         write_doc(logical, doc)
+        forecast_track.record_forecast(track_state, doc, log)
         published.append(code)
         rebuilt += 1
+    forecast_track.flush(track_state, log)
     en, fa = brief_text(len(published))
     previous_brief = load_doc("v1/ai/brief")
     cards = [{"kind": "forecast", "code": c} for c in published] + [{"kind": "news", "id": i} for i in list(news_ids)[:BRIEF_NEWS_CARDS]]
@@ -141,8 +148,10 @@ def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=
              signals_http=None, archive_root=None, refresh_news: bool = True) -> dict | None:
     news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root, refresh_news)
     signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
+    state_dir = (os.environ if env is None else env).get("GHEYMAT_STATE_DIR") or None
     try:
-        summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx)
+        summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx,
+                          archive_root=state_dir, log=log)
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}")
         return None
