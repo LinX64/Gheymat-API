@@ -89,6 +89,24 @@ jobs:
           REPORT_KEYED: ${{ secrets.GHEYMAT_OWNER_PUBKEY != '' && 'true' || 'false' }}
         run: python3 tools/accuracy_report.py --check
 
+      - name: Mark the day
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        run: |
+          mkdir -p .report-out
+          echo none > .report-out/report.bin
+
+      - name: Claim the day
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.check.outputs.name }}
+          path: .report-out/report.bin
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+
       - name: Python and dependencies
         if: steps.check.outputs.skip == 'false'
         uses: ./.github/actions/setup-python-deps
@@ -116,24 +134,20 @@ jobs:
           REPORT_FEED_DIR: .feed-state
         run: python tools/accuracy_report.py
 
-      - name: Claim the day
-        if: always() && steps.check.outputs.skip == 'false'
+      - name: Warn when nothing was produced
+        if: always() && steps.check.outputs.skip == 'false' && steps.run.outputs.report != 'true'
         continue-on-error: true
-        run: |
-          mkdir -p .report-out
-          if [ "${{ steps.run.outputs.report }}" != "true" ]; then
-            echo "::warning::report not produced"
-            echo none > .report-out/report.bin
-          fi
+        run: echo "::warning::report not produced"
 
       - name: Upload report
-        if: always() && steps.check.outputs.skip == 'false'
+        if: steps.run.outputs.report == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.check.outputs.name }}
           path: .report-out/report.bin
           retention-days: 14
+          overwrite: true
           if-no-files-found: ignore
           include-hidden-files: true
 

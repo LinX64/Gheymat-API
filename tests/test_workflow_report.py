@@ -63,10 +63,17 @@ def test_all_actions_pinned_to_full_sha():
         assert re.search(r"@[0-9a-f]{40}$", line), line
 
 
-def test_failed_run_still_claims_the_day_and_nothing_gets_a_token_it_does_not_need():
+def test_the_day_is_claimed_before_any_long_work():
     body = job("report")
-    claim = body.split("- name: Claim the day")[1].split("- name: Upload report")[0]
-    assert "always()" in claim and "none > .report-out/report.bin" in claim
-    assert "always() && steps.check.outputs.skip == 'false'" in body.split("- name: Upload report")[1]
-    build = body.split("- name: Build report")[1].split("- name: Claim the day")[0]
+    order = [body.index(f"- name: {n}") for n in ("Check today", "Mark the day", "Claim the day",
+                                                    "Python and dependencies", "Restore feed state", "Build report")]
+    assert order == sorted(order)
+    claim = body.split("- name: Claim the day")[1].split("- name: Python and dependencies")[0]
+    assert "steps.check.outputs.skip == 'false'" in claim and "steps.check.outputs.name" in claim
+    final = body.split("- name: Upload report")[1]
+    assert "steps.run.outputs.report == 'true'" in final and "overwrite: true" in final
+
+
+def test_nothing_gets_a_token_it_does_not_need_and_the_build_step_is_capped():
+    build = job("report").split("- name: Build report")[1].split("- name: Warn when nothing was produced")[0]
     assert "GH_TOKEN" not in build and "timeout-minutes: 3" in build
