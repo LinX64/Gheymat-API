@@ -65,27 +65,32 @@ def _decrypt(key: bytes, raw: bytes) -> dict:
     return data
 
 
-def _keep_backup(path: Path, raw: bytes) -> None:
+def _load(path: Path, key: bytes, log) -> tuple[dict | None, bool]:
+    if not path.exists():
+        return {}, False
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None, False
+    try:
+        return _decrypt(key, raw), False
+    except Exception:
+        pass
     backup = path.with_name(path.name + ".corrupt")
+    if backup.exists():
+        try:
+            return _decrypt(key, backup.read_bytes()), True
+        except Exception:
+            log("live-close: unreadable, skipped")
+            return None, False
     try:
         with open(backup, "xb") as fh:
             fh.write(raw)
     except OSError:
-        pass
-
-
-def _load(path: Path, key: bytes) -> dict | None:
-    if not path.exists():
-        return {}
-    try:
-        raw = path.read_bytes()
-    except OSError:
-        return None
-    try:
-        return _decrypt(key, raw)
-    except Exception:
-        _keep_backup(path, raw)
-        return None
+        log("live-close: unreadable, skipped")
+        return None, False
+    log("live-close: unreadable, starting empty")
+    return {}, False
 
 
 def _write_atomic(path: Path, key: bytes, data: dict) -> None:
@@ -105,21 +110,21 @@ def _write_atomic(path: Path, key: bytes, data: dict) -> None:
         raise
 
 
-def record(directory, day, prices, key) -> bool:
+def record(directory, day, prices, key, log=print) -> bool:
     if key is None or not isinstance(day, str) or not day or not isinstance(prices, dict):
         return False
     fresh = {c: float(v) for c, v in prices.items() if isinstance(c, str) and c and _price(v)}
     if not fresh:
         return False
     path = Path(directory) / FILE_NAME
-    data = _load(path, key)
+    data, restored = _load(path, key, log)
     if data is None:
         return False
     loaded = len(data)
     current = data.get(day, {})
     merged = dict(current)
     merged.update(fresh)
-    if day in data and merged == current:
+    if day in data and merged == current and not restored:
         return False
     data[day] = merged
     if len(data) > MAX_DAYS:
@@ -131,6 +136,11 @@ def record(directory, day, prices, key) -> bool:
     if len(data) < loaded:
         return False
     _write_atomic(path, key, data)
+    if restored:
+        try:
+            path.with_name(path.name + ".corrupt").unlink(missing_ok=True)
+        except OSError:
+            pass
     return True
 
 
@@ -157,6 +167,6 @@ def day_hook(env, now, live_prices, log=print) -> bool:
             return False
         import gheymat_ai
         day = gheymat_ai.default_today(now).isoformat()
-        return record(state_dir, day, dict(live_prices or {}), key)
+        return record(state_dir, day, dict(live_prices or {}), key, log)
     except Exception:
         return False

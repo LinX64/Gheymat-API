@@ -66,25 +66,37 @@ def test_fresh_nonce_each_write(tmp_path):
     assert (tmp_path / lc.FILE_NAME).read_bytes()[:16] != first[:16]
 
 
-def test_wrong_key_backup_once_and_skip(tmp_path):
+def test_wrong_key_run_never_costs_the_real_log(tmp_path):
     lc.record(tmp_path, "2026-11-09", {"alpha": 1.5}, KEY)
     original = (tmp_path / lc.FILE_NAME).read_bytes()
-    assert lc.record(tmp_path, "2026-11-10", {"alpha": 2.5}, OTHER) is False
+    logs = []
+    assert lc.record(tmp_path, "2026-11-10", {"alpha": 2.5}, OTHER, logs.append) is True
     backup = tmp_path / (lc.FILE_NAME + ".corrupt")
     assert backup.read_bytes() == original
-    assert (tmp_path / lc.FILE_NAME).read_bytes() == original
+    assert logs == ["live-close: unreadable, starting empty"]
+    assert lc.read(tmp_path, OTHER) == {"2026-11-10": {"alpha": 2.5}}
+    assert lc.record(tmp_path, "2026-11-11", {"alpha": 3.5}, KEY) is True
+    assert not backup.exists()
+    assert lc.read(tmp_path, KEY) == {"2026-11-09": {"alpha": 1.5}, "2026-11-11": {"alpha": 3.5}}
+
+
+def test_existing_undecryptable_backup_is_never_overwritten_and_run_skips(tmp_path):
+    lc.record(tmp_path, "2026-11-09", {"alpha": 1.5}, KEY)
+    original = (tmp_path / lc.FILE_NAME).read_bytes()
+    backup = tmp_path / (lc.FILE_NAME + ".corrupt")
     backup.write_bytes(b"sentinel")
-    assert lc.record(tmp_path, "2026-11-11", {"alpha": 3.5}, OTHER) is False
+    logs = []
+    assert lc.record(tmp_path, "2026-11-11", {"alpha": 3.5}, OTHER, logs.append) is False
     assert backup.read_bytes() == b"sentinel"
-    assert lc.read(tmp_path, OTHER) == {}
-    assert lc.read(tmp_path, KEY) == {"2026-11-09": {"alpha": 1.5}}
+    assert (tmp_path / lc.FILE_NAME).read_bytes() == original
+    assert logs == ["live-close: unreadable, skipped"]
 
 
 def test_corrupt_file_kept(tmp_path):
     (tmp_path / lc.FILE_NAME).write_bytes(b"\xff\xfe garbage")
-    assert lc.record(tmp_path, "2026-11-09", {"alpha": 1.5}, KEY) is False
+    assert lc.record(tmp_path, "2026-11-09", {"alpha": 1.5}, KEY, lambda *_: None) is True
     assert (tmp_path / (lc.FILE_NAME + ".corrupt")).read_bytes() == b"\xff\xfe garbage"
-    assert (tmp_path / lc.FILE_NAME).read_bytes() == b"\xff\xfe garbage"
+    assert lc.read(tmp_path, KEY) == {"2026-11-09": {"alpha": 1.5}}
 
 
 def test_refuses_to_shrink(tmp_path, monkeypatch):
