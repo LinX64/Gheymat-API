@@ -380,13 +380,13 @@ def test_unreadable_log_file_skips_the_track_for_this_run(tmp_path, monkeypatch)
 
 def test_failed_backup_skips_the_track_for_this_run(tmp_path, monkeypatch):
     (tmp_path / LOG_FILE).write_bytes(b"not a valid log")
-    real = ft.Path.write_bytes
+    real = ft.Path.open
 
-    def boom(self, data):
+    def boom(self, *args, **kwargs):
         if self.name.endswith(".corrupt"):
             raise OSError("io")
-        return real(self, data)
-    monkeypatch.setattr(ft.Path, "write_bytes", boom)
+        return real(self, *args, **kwargs)
+    monkeypatch.setattr(ft.Path, "open", boom)
     assert ft.open_state(tmp_path, lambda *_: None) is None
     assert (tmp_path / LOG_FILE).read_bytes() == b"not a valid log"
 
@@ -398,3 +398,56 @@ def test_stray_plain_corrupt_file_is_removed_when_the_encrypted_log_exists(tmp_p
     (folder / "forecast-log.json.corrupt").write_text("old", encoding="utf-8")
     fresh_state(tmp_path)
     assert not (folder / "forecast-log.json.corrupt").exists()
+
+
+def test_a_run_with_the_wrong_key_never_costs_the_real_log(tmp_path, monkeypatch):
+    real_records = [{"date": "2026-10-01", "codes": {"usd": {"target": "2026-10-08", "likely": 1.0}}}]
+    write_log(tmp_path, real_records)
+    original = (tmp_path / LOG_FILE).read_bytes()
+    monkeypatch.setenv("GHEYMAT_PAYLOAD_KEY", OTHER_B64)
+    state = ft.open_state(tmp_path, lambda *_: None)
+    ft.record_forecast(state, make_doc())
+    assert ft.flush(state) is True
+    assert (tmp_path / (LOG_FILE + ".corrupt")).read_bytes() == original
+    monkeypatch.setenv("GHEYMAT_PAYLOAD_KEY", KEY_B64)
+    logs = []
+    state = ft.open_state(tmp_path, logs.append)
+    assert [r["date"] for r in state["records"].values()] == ["2026-10-01"] and state["loaded"] == 1
+    assert logs == ["ai: track log restored from backup"]
+    assert (tmp_path / (LOG_FILE + ".corrupt")).read_bytes() == original
+
+
+def test_an_existing_backup_is_never_overwritten(tmp_path):
+    (tmp_path / LOG_FILE).write_bytes(b"second bad file")
+    (tmp_path / (LOG_FILE + ".corrupt")).write_bytes(b"first bad file")
+    logs = []
+    assert ft.open_state(tmp_path, logs.append) is None
+    assert (tmp_path / (LOG_FILE + ".corrupt")).read_bytes() == b"first bad file"
+    assert (tmp_path / LOG_FILE).read_bytes() == b"second bad file"
+    assert logs == ["ai: track log unreadable, skipped"]
+
+
+def test_an_unreadable_plain_leftover_is_kept_and_the_run_skipped(tmp_path, monkeypatch):
+    folder = tmp_path / "archive"
+    folder.mkdir()
+    plain = folder / "forecast-log.json"
+    plain.write_text(json.dumps([{"date": "2026-10-01", "codes": {}}]), encoding="utf-8")
+    real = ft.Path.read_bytes
+
+    def boom(self):
+        if self.name == "forecast-log.json":
+            raise OSError("io")
+        return real(self)
+    monkeypatch.setattr(ft.Path, "read_bytes", boom)
+    assert ft.open_state(tmp_path, lambda *_: None) is None
+    assert plain.exists() and not (tmp_path / LOG_FILE).exists()
+
+
+def test_a_plain_leftover_that_is_not_json_is_dropped(tmp_path):
+    folder = tmp_path / "archive"
+    folder.mkdir()
+    (folder / "forecast-log.json").write_text("{broken", encoding="utf-8")
+    state = ft.open_state(tmp_path, lambda *_: None)
+    assert state["records"] == {} and state["changed"] is True
+    assert ft.flush(state) is True
+    assert not (folder / "forecast-log.json").exists() and read_log(tmp_path) == []

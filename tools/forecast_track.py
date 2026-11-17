@@ -67,13 +67,38 @@ def _read_encrypted(path: Path, key: bytes, log) -> list[dict] | None:
     try:
         return _decrypt(key, raw)
     except Exception:
+        pass
+    backup = path.with_name(path.name + ".corrupt")
+    if backup.exists():
         try:
-            path.with_name(path.name + ".corrupt").write_bytes(raw)
-        except OSError:
+            kept = _decrypt(key, backup.read_bytes())
+        except Exception:
             log("ai: track log unreadable, skipped")
             return None
-        log("ai: track log unreadable, starting empty")
+        log("ai: track log restored from backup")
+        return kept
+    try:
+        with backup.open("xb") as f:
+            f.write(raw)
+    except OSError:
+        log("ai: track log unreadable, skipped")
+        return None
+    log("ai: track log unreadable, starting empty")
+    return []
+
+
+def _read_plain(plain: Path) -> list[dict] | None:
+    try:
+        raw = plain.read_bytes()
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
         return []
+    if not isinstance(data, list):
+        return []
+    return [r for r in data if isinstance(r, dict) and isinstance(r.get("date"), str)]
 
 
 def open_state(root, log=print, env=None) -> dict | None:
@@ -102,7 +127,11 @@ def open_state(root, log=print, env=None) -> dict | None:
             records = found
             _remove_plain(root, log)
         elif has_plain:
-            records = archive_store.load(root, NAME, lambda *_: None)
+            imported = _read_plain(plain)
+            if imported is None:
+                log("ai: track log unreadable, skipped")
+                return None
+            records = imported
             changed = True
             drop_plain = True
         else:
