@@ -1,8 +1,11 @@
+import base64
 import importlib.util
 import json
 import pathlib
 import sys
 from datetime import date, datetime, timedelta, timezone
+
+import pytest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -167,7 +170,15 @@ def test_shadow_failure_logs_skip_and_keeps_summary(monkeypatch):
     assert any(m.startswith("ai: 1 forecasts") for m in logs)
 
 
-ARCHIVE_FILE = pathlib.Path("archive") / "forecast-log.json"
+ARCHIVE_FILE = pathlib.Path("forecast-log.bin")
+MASTER = bytes(range(32))
+KEY_B64 = base64.b64encode(MASTER).decode()
+
+
+@pytest.fixture(autouse=True)
+def key_env(monkeypatch):
+    monkeypatch.setenv("GHEYMAT_PAYLOAD_KEY", base64.b64encode(MASTER).decode())
+    monkeypatch.setattr(ai.forecast_track, "_warned", False)
 
 
 def stub_points(end, start=date(2026, 11, 1)):
@@ -192,7 +203,8 @@ def stub_build(low_factor=0.95, high_factor=1.05, withhold=()):
 
 
 def archive_records(root):
-    return json.loads((root / ARCHIVE_FILE).read_text(encoding="utf-8"))
+    ft = ai.forecast_track
+    return ft._decrypt(ft._derive(MASTER), (root / ARCHIVE_FILE).read_bytes())
 
 
 def published_entry(day):
@@ -248,8 +260,8 @@ def test_same_basis_rebuild_keeps_the_first_published_values_and_skips_the_write
     ai.publish(daily, store.write, store.load, NOW, archive_root=tmp_path, log=quiet)
     first = archive_records(tmp_path)
     calls = []
-    real = ai.forecast_track.archive_store.write
-    monkeypatch.setattr(ai.forecast_track.archive_store, "write", lambda *a, **k: calls.append(1) or real(*a, **k))
+    real = ai.forecast_track._write_atomic
+    monkeypatch.setattr(ai.forecast_track, "_write_atomic", lambda *a, **k: calls.append(1) or real(*a, **k))
     monkeypatch.setattr(ai.fc, "build_forecast", stub_build(0.5, 2.0))
     summary = ai.publish(daily, store.write, store.load, NOW + timedelta(minutes=6), archive_root=tmp_path, log=quiet)
     assert summary["rebuilt"] == 1
@@ -260,8 +272,8 @@ def test_same_basis_rebuild_keeps_the_first_published_values_and_skips_the_write
 def test_archive_is_written_once_per_publish(tmp_path, monkeypatch):
     monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
     calls = []
-    real = ai.forecast_track.archive_store.write
-    monkeypatch.setattr(ai.forecast_track.archive_store, "write", lambda *a, **k: calls.append(1) or real(*a, **k))
+    real = ai.forecast_track._write_atomic
+    monkeypatch.setattr(ai.forecast_track, "_write_atomic", lambda *a, **k: calls.append(1) or real(*a, **k))
     store = Store()
     pts = stub_points(date(2026, 11, 8))
     ai.publish(daily_from({"aaa": pts, "bbb": pts, "ccc": pts}), store.write, store.load, NOW,
@@ -297,8 +309,7 @@ def test_without_an_archive_root_the_previous_track_is_kept(tmp_path, monkeypatc
 
 def test_corrupt_archive_never_shrinks_the_published_track(tmp_path, monkeypatch):
     monkeypatch.setattr(ai.fc, "build_forecast", stub_build())
-    (tmp_path / "archive").mkdir()
-    (tmp_path / ARCHIVE_FILE).write_text("garbage", encoding="utf-8")
+    (tmp_path / ARCHIVE_FILE).write_bytes(b"garbage")
     store = Store()
     previous = [published_entry("2026-11-01"), published_entry("2026-10-25")]
     store.docs["v1/ai/forecast/usd"] = {"method": "old", "basis": {"date": "2026-11-01", "price": 100.0},
@@ -332,7 +343,7 @@ def test_run_step_keeps_the_log_out_of_the_published_archive(tmp_path, monkeypat
     state = tmp_path / "state"
     out = tmp_path / "out"
     ai.run_step(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW,
-                log=lambda *_: None, env={"GHEYMAT_STATE_DIR": str(state)}, archive_root=out)
+                log=lambda *_: None, env={"GHEYMAT_STATE_DIR": str(state), "GHEYMAT_PAYLOAD_KEY": KEY_B64}, archive_root=out)
     assert (state / ARCHIVE_FILE).exists()
     assert not (out / ARCHIVE_FILE).exists()
 
@@ -343,7 +354,7 @@ def test_run_step_threads_the_archive_root_and_log_into_the_track(tmp_path, monk
     store = Store()
     logs = []
     ai.run_step(daily_from({"usd": stub_points(date(2026, 11, 8))}), store.write, store.load, NOW, log=logs.append,
-                env={"GHEYMAT_STATE_DIR": str(tmp_path)}, archive_root=tmp_path / "out")
+                env={"GHEYMAT_STATE_DIR": str(tmp_path), "GHEYMAT_PAYLOAD_KEY": KEY_B64}, archive_root=tmp_path / "out")
     assert archive_records(tmp_path)[0]["codes"]["usd"]["target"] == "2026-11-15"
 
 

@@ -50,14 +50,14 @@ def brief_text(count: int) -> tuple[str, str]:
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
             budget_seconds: float = BUDGET_SECONDS, clock=time.monotonic, news_ids=(), signal_ctx=None,
-            archive_root=None, log=print, live_prices=None) -> dict:
+            archive_root=None, log=print, live_prices=None, env=None) -> dict:
     now = now or datetime.now(timezone.utc)
     started = clock()
     today = default_today(now)
     generated_at = iso(now)
     published, rebuilt, resealed, withheld = [], 0, 0, {}
     accepted = gheymat_blend.expected_methods(signal_ctx)
-    track_state = forecast_track.open_state(archive_root, log)
+    track_state = forecast_track.open_state(archive_root, log, env)
     for code in sorted(daily.get("codes", {})):
         if clock() - started > budget_seconds:
             withheld[code] = "budget"
@@ -159,7 +159,7 @@ def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=
     state_dir = (os.environ if env is None else env).get("GHEYMAT_STATE_DIR") or None
     try:
         summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx,
-                          archive_root=state_dir, log=log, live_prices=live_prices)
+                          archive_root=state_dir, log=log, live_prices=live_prices, env=env)
     except Exception as e:
         log(f"ai: step failed, prices unaffected: {type(e).__name__}")
         return None

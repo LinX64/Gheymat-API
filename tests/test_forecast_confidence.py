@@ -113,3 +113,13 @@ def test_live_price_far_off_the_basis_is_ignored():
     assert conf(doc(), 1000.0) == {"level": "normal", "reasons": []}
     assert conf(doc(), 10.0) == {"level": "normal", "reasons": []}
     assert conf(doc(), 199.0) == {"level": "low", "reasons": ["band-broken"]}
+
+
+def test_band_broken_replaces_an_earlier_moved_reason():
+    earlier = {"level": "low", "reasons": ["moved-since-basis"]}
+    assert conf(doc(), 120.0, earlier) == {"level": "low", "reasons": ["band-broken"]}
+
+
+def test_live_prices_for_never_raises_on_bad_input():
+    assert snap.live_prices_for([None, 5], {"codes": {"a": {}}}) == {}
+    assert snap.live_prices_for([{"code": "a", "kind": "currency", "sell": 3}], {}) == {}
