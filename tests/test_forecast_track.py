@@ -415,6 +415,9 @@ def test_a_run_with_the_wrong_key_never_costs_the_real_log(tmp_path, monkeypatch
     assert [r["date"] for r in state["records"].values()] == ["2026-10-01"] and state["loaded"] == 1
     assert logs == ["ai: track log restored from backup"]
     assert (tmp_path / (LOG_FILE + ".corrupt")).read_bytes() == original
+    assert ft.flush(state) is True
+    assert not (tmp_path / (LOG_FILE + ".corrupt")).exists()
+    assert [r["date"] for r in read_log(tmp_path)] == ["2026-10-01"]
 
 
 def test_an_existing_backup_is_never_overwritten(tmp_path):

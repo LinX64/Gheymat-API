@@ -58,14 +58,14 @@ def _remove_plain(root, log) -> None:
             log("ai: track cleanup incomplete")
 
 
-def _read_encrypted(path: Path, key: bytes, log) -> list[dict] | None:
+def _read_encrypted(path: Path, key: bytes, log) -> tuple[list[dict], bool] | None:
     try:
         raw = path.read_bytes()
     except OSError:
         log("ai: track log unreadable, skipped")
         return None
     try:
-        return _decrypt(key, raw)
+        return _decrypt(key, raw), False
     except Exception:
         pass
     backup = path.with_name(path.name + ".corrupt")
@@ -76,7 +76,7 @@ def _read_encrypted(path: Path, key: bytes, log) -> list[dict] | None:
             log("ai: track log unreadable, skipped")
             return None
         log("ai: track log restored from backup")
-        return kept
+        return kept, True
     try:
         with backup.open("xb") as f:
             f.write(raw)
@@ -84,7 +84,7 @@ def _read_encrypted(path: Path, key: bytes, log) -> list[dict] | None:
         log("ai: track log unreadable, skipped")
         return None
     log("ai: track log unreadable, starting empty")
-    return []
+    return [], False
 
 
 def _read_plain(plain: Path) -> list[dict] | None:
@@ -118,13 +118,15 @@ def open_state(root, log=print, env=None) -> dict | None:
         records: list[dict] = []
         changed = False
         drop_plain = False
+        drop_backup = False
         plain, _ = _plain_paths(root)
         has_plain = plain.is_file()
         if path.exists():
             found = _read_encrypted(path, key, log)
             if found is None:
                 return None
-            records = found
+            records, drop_backup = found
+            changed = drop_backup
             _remove_plain(root, log)
         elif has_plain:
             imported = _read_plain(plain)
@@ -140,7 +142,7 @@ def open_state(root, log=print, env=None) -> dict | None:
         log(f"ai: track skipped: {type(e).__name__}")
         return None
     return {"root": root, "key": key, "records": {r["date"]: r for r in records}, "loaded": len(records),
-            "changed": changed, "dead": False, "drop_plain": drop_plain}
+            "changed": changed, "dead": False, "drop_plain": drop_plain, "drop_backup": drop_backup}
 
 
 def _number(value) -> bool:
@@ -299,4 +301,10 @@ def flush(state: dict | None, log=print) -> bool:
     if state.get("drop_plain"):
         state["drop_plain"] = False
         _remove_plain(state["root"], log)
+    if state.get("drop_backup"):
+        state["drop_backup"] = False
+        try:
+            (Path(state["root"]) / (FILE_NAME + ".corrupt")).unlink(missing_ok=True)
+        except OSError:
+            log("ai: track cleanup incomplete")
     return True
