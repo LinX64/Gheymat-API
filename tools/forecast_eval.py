@@ -73,7 +73,10 @@ def evaluate(points: list[dict], method: str) -> dict | None:
     return _metrics(weeks, method) if weeks else None
 
 
-def compare(points: list[dict], methods=tuple(fc.METHODS)) -> dict:
+PUBLISHED_METHODS = tuple(m for m in fc.METHODS if m not in fc.BLEND_METHODS)
+
+
+def compare(points: list[dict], methods=PUBLISHED_METHODS) -> dict:
     by_method = {m: _weeks(points, m) for m in methods}
     results = {m: (_metrics(w, m) if w else None) for m, w in by_method.items()}
     live = [m for m in methods if by_method[m]]
@@ -143,7 +146,7 @@ def _evaluate_all(daily: dict, codes=None) -> dict:
 
 
 def _wins(outcomes: dict) -> dict:
-    wins = {m: 0 for m in fc.METHODS}
+    wins = {m: 0 for m in PUBLISHED_METHODS}
     for o in outcomes.values():
         if o["best"]:
             wins[o["best"]] += 1

@@ -83,7 +83,7 @@ def test_compare_none_when_no_method_in_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_ALL", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
@@ -91,7 +91,7 @@ def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_RECENT", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_report_lines():
@@ -106,7 +106,7 @@ def test_main_json_and_missing_file(tmp_path, capsys):
     f.write_text(json.dumps(make_daily()))
     assert fe.main(["--daily", str(f), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fc.METHODS)
+    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fe.PUBLISHED_METHODS)
     assert fe.main(["--daily", str(f)]) == 0
     assert fe.main(["--daily", str(tmp_path / "nope.json")]) == 2
     assert capsys.readouterr().err.strip() == "FileNotFoundError"
@@ -565,3 +565,20 @@ def test_switch_two_thirds_of_codes_is_enough():
     c = {k: _rows(300, 0.8, _cand_inside) for k in "xy"}
     c["z"] = _rows(300, 1.1, _cand_inside)
     assert fe.switch_decision(d, c)["switch"] is True
+
+
+def test_compare_defaults_to_the_published_methods_only():
+    result = fe.compare(make_points(n=2600, seed=5))
+    assert set(result["results"]) == set(fe.PUBLISHED_METHODS)
+    assert "fhs2" not in result["results"] and result["best"] != "fhs2"
+    assert set(fe._wins({"x": result})) == set(fe.PUBLISHED_METHODS)
+
+
+def test_switch_rows_feed_switch_decision_end_to_end():
+    pts = make_points(n=3000, seed=9)
+    base = fe.switch_rows(pts, "fhs")
+    cand = fe.switch_rows(pts, "fhs2")
+    assert base and cand
+    assert {r["basisDate"] for r in base} & {r["basisDate"] for r in cand}
+    decision = fe.switch_decision({"a": base}, {"a": cand})
+    assert set(decision) == {"switch", "reason"} and isinstance(decision["switch"], bool)
