@@ -83,7 +83,7 @@ def test_compare_none_when_no_method_in_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_ALL", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
@@ -91,7 +91,7 @@ def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_RECENT", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_report_lines():
@@ -106,7 +106,7 @@ def test_main_json_and_missing_file(tmp_path, capsys):
     f.write_text(json.dumps(make_daily()))
     assert fe.main(["--daily", str(f), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fc.METHODS)
+    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fe.PUBLISHED_METHODS)
     assert fe.main(["--daily", str(f)]) == 0
     assert fe.main(["--daily", str(tmp_path / "nope.json")]) == 2
     assert capsys.readouterr().err.strip() == "FileNotFoundError"
@@ -408,3 +408,177 @@ def test_cli_without_regimes_unchanged(tmp_path, capsys):
     assert fe.main(["--daily", str(f)]) == 0
     out = capsys.readouterr().out
     assert "verdict" not in out and "regimes" not in out and out.strip().splitlines()[-1].startswith("totals ")
+
+
+def test_variant_lookahead_check_passes():
+    pts = make_points()
+    cut = date.fromisoformat(pts[800]["date"])
+    assert fe.check_no_lookahead(pts, "fhs2", cut)
+
+
+def test_permutation_is_deterministic_and_bounded():
+    pts = make_points()
+    a = fe.permutation_pvalue(pts, "fhs", 6, 3)
+    b = fe.permutation_pvalue(pts, "fhs", 6, 3)
+    assert a == b
+    assert a["n_perm"] == 6 and a["observed"] is not None
+    assert 1 / 7 <= a["p"] <= 1.0 and 0 < a["p"]
+
+
+def test_permutation_keeps_start_and_dates():
+    pts = make_points(n=300)
+    closes = fc.clean_series(pts)
+    rets = [math.log(b / a) for (_, a), (_, b) in zip(closes, closes[1:])]
+    blocks = [rets[i:i + fe.PERM_BLOCK_DAYS] for i in range(0, len(rets), fe.PERM_BLOCK_DAYS)]
+    out = fe._shuffled_points(closes, list(reversed(range(len(blocks)))), blocks)
+    assert out[0]["price"] == closes[0][1] and [p["date"] for p in out] == [p["date"] for p in pts]
+    assert math.isclose(sum(math.log(b["price"] / a["price"]) for a, b in zip(out, out[1:])), sum(rets), rel_tol=1e-9)
+
+
+def test_permutation_none_without_history():
+    r = fe.permutation_pvalue(make_points(n=100), "fhs", 5)
+    assert r["observed"] is None and r["p"] is None
+
+
+def test_regimes_zero_perm_unchanged(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    daily = make_daily(("usd", "a", "b"))
+    codes = {c: fe.analyze_code(_crafted()) for c in ("a", "b", "usd")}
+    assert fe.regimes(daily, n_perm=0) == {"codes": codes, "verdict": fe.verdict(codes)}
+    assert fe.regimes(daily) == fe.regimes(daily, n_perm=0)
+
+
+def test_perm_condition_gates_verdict(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    daily = make_daily(("usd", "a", "b"))
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.04})
+    ok = fe.regimes(daily, n_perm=9)
+    assert ok["verdict"]["verdict"] == "PASS" and ok["permutation"]["p"] == 0.04
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.06})
+    bad = fe.regimes(daily, n_perm=9)
+    assert bad["verdict"]["verdict"] == "FAIL" and bad["verdict"]["reason"] == "primary-permutation"
+    assert any(l.startswith("permutation ") and "p=0.0600" in l for l in fe.regimes_report(bad))
+
+
+def test_cli_perm_flag(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.02})
+    f = tmp_path / "d.json"
+    f.write_text(json.dumps({"codes": {"usd": {"2020-01-01": [None, 1.0]}}}))
+    assert fe.main(["--daily", str(f), "--regimes", "--perm", "7", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["permutation"]["n_perm"] == 7 and out["verdict"]["verdict"] == "PASS"
+
+
+def _rows(n, score, inside, tail_score=None, tail_inside=None):
+    out = []
+    for i in range(n):
+        tail = i >= n - fe.SWITCH_HOLDOUT_WEEKS
+        sc = tail_score if tail_score is not None and tail else score
+        ins = tail_inside(i) if tail_inside is not None and tail else inside(i)
+        out.append({"basisDate": i, "inside": ins, "intervalScore": sc, "pct": (0.1, 0.5, 0.8)[i % 3]})
+    return out
+
+
+def _default_inside(i):
+    return i % 4 != 0
+
+
+def _cand_inside(i):
+    return True if i % 3 == 0 else _default_inside(i)
+
+
+def _small_inside(i):
+    return True if i % 144 == 0 else _default_inside(i)
+
+
+def _outcomes(n=300, cand=None):
+    default = {c: _rows(n, 1.0, _default_inside) for c in "wxyz"}
+    cand_out = {c: _rows(n, 0.8, _cand_inside) for c in "wxyz"}
+    for c, rows in (cand or {}).items():
+        cand_out[c] = rows
+    return default, cand_out
+
+
+def test_switch_constants_are_preregistered():
+    assert fe.SWITCH_MIN_SCORE_GAIN == 0.03 and fe.SWITCH_LOW_BIN_MIN_GAIN == 0.03
+    assert fe.SWITCH_COVERAGE_BAND == fc.COVERAGE_ALL
+    assert fe.SWITCH_MIN_CODE_SHARE == 2 / 3 and fe.SWITCH_HOLDOUT_WEEKS == 52
+
+
+def test_switch_all_conditions_pass():
+    d, c = _outcomes()
+    assert fe.switch_decision(d, c) == {"switch": True, "reason": "all-conditions-met"}
+
+
+def test_switch_no_data():
+    assert fe.switch_decision({}, {}) == {"switch": False, "reason": "no-data"}
+    assert fe.switch_decision({"a": None}, {"a": None})["reason"] == "no-data"
+    short = {"a": _rows(fe.SWITCH_HOLDOUT_WEEKS, 1.0, _default_inside)}
+    assert fe.switch_decision(short, short)["reason"] == "no-data"
+
+
+def test_switch_fails_on_coverage_band_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, lambda i: True) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "coverage-band"}
+
+
+def test_switch_fails_on_score_gain_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.99, _cand_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "score-gain"}
+
+
+def test_switch_fails_on_low_bin_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _small_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "low-bin"}
+
+
+def test_switch_fails_on_holdout_score_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _cand_inside, tail_score=1.2) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "holdout"}
+
+
+def test_switch_fails_on_holdout_low_bin_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _cand_inside, tail_inside=_default_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "holdout"}
+
+
+def test_switch_holdout_is_not_counted_in_main_gains():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 1.0, _default_inside, tail_score=0.1, tail_inside=_cand_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "score-gain"}
+
+
+def test_switch_fails_on_code_share_alone():
+    worse = {k: _rows(300, 1.1, _cand_inside, tail_score=0.8) for k in "yz"}
+    d, c = _outcomes(cand=worse)
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "code-share"}
+
+
+def test_switch_two_thirds_of_codes_is_enough():
+    d = {k: _rows(300, 1.0, _default_inside) for k in "xyz"}
+    c = {k: _rows(300, 0.8, _cand_inside) for k in "xy"}
+    c["z"] = _rows(300, 1.1, _cand_inside)
+    assert fe.switch_decision(d, c)["switch"] is True
+
+
+def test_compare_defaults_to_the_published_methods_only():
+    result = fe.compare(make_points(n=2600, seed=5))
+    assert set(result["results"]) == set(fe.PUBLISHED_METHODS)
+    assert "fhs2" not in result["results"] and result["best"] != "fhs2"
+    assert set(fe._wins({"x": result})) == set(fe.PUBLISHED_METHODS)
+
+
+def test_switch_rows_feed_switch_decision_end_to_end():
+    pts = make_points(n=3000, seed=9)
+    base = fe.switch_rows(pts, "fhs")
+    cand = fe.switch_rows(pts, "fhs2")
+    assert base and cand
+    assert {r["basisDate"] for r in base} & {r["basisDate"] for r in cand}
+    decision = fe.switch_decision({"a": base}, {"a": cand})
+    assert set(decision) == {"switch", "reason"} and isinstance(decision["switch"], bool)
