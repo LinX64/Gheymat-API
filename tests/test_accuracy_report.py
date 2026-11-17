@@ -213,6 +213,10 @@ def test_live_closes_uses_frozen_interface(monkeypatch):
     assert ar.live_closes("x", {}) == {}
 
 
+SWITCH_LINE = re.compile(r"report: switch=(PASS reason=all-conditions-met|PARTIAL|NA|FAIL reason="
+                         r"(no-data|coverage-band|score-gain|low-bin|holdout|code-share))")
+
+
 def daily_of(codes):
     return {"codes": {c: series([100000 + (i % 7) * 1111 for i in range(60)]) for c in codes}}
 
@@ -220,6 +224,8 @@ def daily_of(codes):
 def stub_eval(monkeypatch, passing=True):
     monkeypatch.setattr(ar, "evaluate_code", lambda code, s, t, g: {
         "diag": {"coverage": 0.8, "weeks": 10}, "pass": passing, "reason": None, "compare": {}, "regime": None})
+    import forecast_eval
+    monkeypatch.setattr(forecast_eval, "switch_rows", lambda points, method: None)
 
 
 def test_report_round_trip_and_clean_logs(monkeypatch, tmp_path):
@@ -245,7 +251,7 @@ def test_report_round_trip_and_clean_logs(monkeypatch, tmp_path):
     assert not re.search(r"\d{4,}", text)
     allowed = re.compile(r"report: codes=\d+ passing=\d+ quality_issues=\d+ live_scored=\d+ "
                          r"seconds=\d+ partial=(yes|no)|report: skipped \([a-z ]+\)|report not exported \(no key\)|"
-                         r"report: [a-z ]+ failed \(\w+\)")
+                         r"report: [a-z ]+ failed \(\w+\)|" + SWITCH_LINE.pattern)
     assert all(allowed.fullmatch(line) for line in logs), logs
     assert "codes=2 passing=2 quality_issues=0 live_scored=0" in text
     assert "partial=no" in text
@@ -318,3 +324,184 @@ def test_invalid_owner_key_skips_before_any_work(monkeypatch, tmp_path):
 
 def test_log_summary_carries_no_rate():
     assert "coverage=" not in pathlib.Path(ar.__file__).read_text(encoding="utf-8")
+
+
+def switch_env(tmp_path):
+    private = tmp_path / "k"
+    return private, {"GHEYMAT_OWNER_PUBKEY": night_export.keygen(private), "REPORT_OUT_DIR": str(tmp_path / "out"),
+                     "GITHUB_OUTPUT": str(tmp_path / "o")}
+
+
+def read_body(private, tmp_path):
+    return json.loads(night_export.decrypt_report(private.read_bytes(), (tmp_path / "out" / "report.bin").read_bytes()))
+
+
+def stub_switch(monkeypatch, decision):
+    import forecast_eval
+    calls = []
+    monkeypatch.setattr(forecast_eval, "switch_rows", lambda points, method: [{"m": method}])
+
+    def decide(default, candidate):
+        calls.append((default, candidate))
+        if isinstance(decision, Exception):
+            raise decision
+        return decision
+    monkeypatch.setattr(forecast_eval, "switch_decision", decide)
+    return calls
+
+
+@pytest.mark.parametrize("switch,reason,line", [
+    (True, "all-conditions-met", "report: switch=PASS reason=all-conditions-met"),
+    (False, "no-data", "report: switch=FAIL reason=no-data"),
+    (False, "coverage-band", "report: switch=FAIL reason=coverage-band"),
+    (False, "score-gain", "report: switch=FAIL reason=score-gain"),
+    (False, "low-bin", "report: switch=FAIL reason=low-bin"),
+    (False, "holdout", "report: switch=FAIL reason=holdout"),
+    (False, "code-share", "report: switch=FAIL reason=code-share"),
+])
+def test_switch_verdict_reaches_log_and_body(monkeypatch, tmp_path, switch, reason, line):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": switch, "reason": reason})
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha", "beta", "gamma"]))
+    private, env = switch_env(tmp_path)
+    logs = []
+    assert ar.run(env, CLOSED, logs.append, lambda: 0.0) == 0
+    assert [x for x in logs if x.startswith("report: switch")] == [line]
+    assert SWITCH_LINE.fullmatch(line) and not re.search(r"\d", line)
+    assert len(calls) == 1
+    assert set(calls[0][0]) == {"alpha", "beta", "gamma"} and set(calls[0][1]) == {"alpha", "beta", "gamma"}
+    assert calls[0][0]["alpha"] == [{"m": "fhs"}] and calls[0][1]["alpha"] == [{"m": "fhs2"}]
+    body = read_body(private, tmp_path)
+    assert body["switch"] == {"verdict": "PASS" if switch else "FAIL", "reason": reason, "pooled": 3}
+
+
+def test_switch_unknown_reason_is_not_printed(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    stub_switch(monkeypatch, {"switch": False, "reason": "alpha 123456"})
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha"]))
+    logs = []
+    ar.run({"GITHUB_OUTPUT": str(tmp_path / "o")}, CLOSED, logs.append, lambda: 0.0)
+    assert "report: switch=NA" in logs
+    assert all("123456" not in line and "alpha" not in line for line in logs)
+
+
+def test_switch_partial_when_budget_runs_out(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": True, "reason": "all-conditions-met"})
+    import forecast_eval
+    now = {"v": 0.0}
+
+    def slow(points, method):
+        now["v"] += 200
+        return [{"m": method}]
+    monkeypatch.setattr(forecast_eval, "switch_rows", slow)
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["a", "b", "c"]))
+    private, env = switch_env(tmp_path)
+    logs = []
+    assert ar.run(env, CLOSED, logs.append, lambda: now["v"]) == 0
+    assert calls == []
+    assert "report: switch=PARTIAL" in logs
+    body = read_body(private, tmp_path)
+    assert body["switch"]["verdict"] == "PARTIAL" and body["partial"] is False
+
+
+def test_switch_partial_when_evaluation_partial(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": True, "reason": "all-conditions-met"})
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["a", "b", "c", "d"]))
+    ticks = iter(range(0, 10000, 75))
+    private, env = switch_env(tmp_path)
+    logs = []
+    ar.run(env, CLOSED, logs.append, lambda: float(next(ticks)))
+    assert calls == [] and "report: switch=PARTIAL" in logs
+
+
+def test_switch_failure_gives_na_and_report_still_written(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    stub_switch(monkeypatch, ValueError("alpha 987654"))
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha", "beta"]))
+    private, env = switch_env(tmp_path)
+    logs = []
+    assert ar.run(env, CLOSED, logs.append, lambda: 0.0) == 0
+    assert "report: switch=NA" in logs
+    assert read_out(tmp_path / "o") == {"report": "true"}
+    body = read_body(private, tmp_path)
+    assert set(body["codes"]) == {"alpha", "beta"} and body["switch"]["verdict"] == "NA"
+    assert any(line.startswith("report: codes=2 passing=2 quality_issues=0 live_scored=0") for line in logs)
+    assert all("987654" not in line for line in logs)
+
+
+def test_switch_row_failure_gives_na(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    import forecast_eval
+    monkeypatch.setattr(forecast_eval, "switch_rows", lambda p, m: 1 / 0)
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha"]))
+    logs = []
+    assert ar.run({"GITHUB_OUTPUT": str(tmp_path / "o")}, CLOSED, logs.append, lambda: 0.0) == 0
+    assert "report: switch=NA" in logs
+
+
+def test_switch_skips_codes_without_rows(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": False, "reason": "no-data"})
+    import forecast_eval
+    monkeypatch.setattr(forecast_eval, "switch_rows", lambda p, m: None)
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha", "beta"]))
+    logs = []
+    ar.run({"GITHUB_OUTPUT": str(tmp_path / "o")}, CLOSED, logs.append, lambda: 0.0)
+    assert calls == [({}, {})]
+    assert "report: switch=FAIL reason=no-data" in logs
+
+
+def test_switch_inconsistent_pairing_is_na(monkeypatch, tmp_path):
+    base = tmp_path
+    for n, decision in enumerate(({"switch": True, "reason": "no-data"}, {"switch": False, "reason": "all-conditions-met"})):
+        tmp_path = base / str(n)
+        tmp_path.mkdir()
+        stub_eval(monkeypatch)
+        stub_switch(monkeypatch, decision)
+        monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha"]))
+        private, env = switch_env(tmp_path)
+        logs = []
+        ar.run(env, CLOSED, logs.append, lambda: 0.0)
+        assert "report: switch=NA" in logs
+        assert not any(x.startswith("report: switch=PASS") for x in logs)
+        assert read_body(private, tmp_path)["switch"]["verdict"] == "NA"
+    assert ar.switch_line({"verdict": "PASS", "reason": "no-data"}) == "report: switch=NA"
+
+
+def test_switch_pools_only_codes_with_both_methods(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": False, "reason": "no-data"})
+    import forecast_eval
+    seen = []
+
+    def rows(points, method):
+        seen.append(method)
+        if len(seen) <= 2:
+            return [{"m": method}] if method == "fhs" else None
+        return [{"m": method}]
+    monkeypatch.setattr(forecast_eval, "switch_rows", rows)
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["alpha", "beta"]))
+    private, env = switch_env(tmp_path)
+    ar.run(env, CLOSED, lambda line: None, lambda: 0.0)
+    assert len(calls) == 1
+    assert len(calls[0][0]) == 1 and set(calls[0][0]) == set(calls[0][1])
+    assert read_body(private, tmp_path)["switch"]["pooled"] == 1
+
+
+def test_switch_partial_between_method_calls(monkeypatch, tmp_path):
+    stub_eval(monkeypatch)
+    calls = stub_switch(monkeypatch, {"switch": True, "reason": "all-conditions-met"})
+    import forecast_eval
+    now = {"v": 0.0}
+
+    def rows(points, method):
+        if method == "fhs":
+            now["v"] += 200
+        return [{"m": method}]
+    monkeypatch.setattr(forecast_eval, "switch_rows", rows)
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: daily_of(["a"]))
+    logs = []
+    ar.run({"GITHUB_OUTPUT": str(tmp_path / "o")}, CLOSED, logs.append, lambda: now["v"])
+    assert calls == [] and "report: switch=PARTIAL" in logs
