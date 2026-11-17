@@ -21,8 +21,8 @@ REPORT_FILE = "report.bin"
 REPORT_INFO = b"night-report"
 KEY_LEN = 32
 NONCE_LEN = 12
-MIN_OPEN_GAP = 480
-TOTAL_SECONDS = 300
+MIN_OPEN_GAP = 300
+TOTAL_SECONDS = 150
 CLONE_SECONDS = 60
 GAP_DAYS = 7
 JUMP = 0.25
@@ -35,6 +35,13 @@ def _hkdf(secret: bytes, info: bytes) -> bytes:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     return HKDF(algorithm=hashes.SHA256(), length=KEY_LEN, salt=None, info=info).derive(secret)
+
+
+def valid_public_key(owner_public_b64: str) -> bool:
+    try:
+        return len(base64.b64decode(owner_public_b64, validate=True)) == KEY_LEN
+    except (ValueError, TypeError):
+        return False
 
 
 def encrypt_report(owner_public_b64: str, payload: bytes) -> bytes:
@@ -336,6 +343,11 @@ def run(env, now: float, log, clock) -> int:
         _emit(env, report=False)
         return 0
     feed_dir = env.get("REPORT_FEED_DIR", FEED_DIR)
+    pub = (env.get("GHEYMAT_OWNER_PUBKEY") or "").strip()
+    if pub and not valid_public_key(pub):
+        log("report: skipped (invalid key)")
+        _emit(env, report=False)
+        return 0
     try:
         with tempfile.TemporaryDirectory() as work:
             daily = fetch_daily(env, work)
@@ -347,7 +359,6 @@ def run(env, now: float, log, clock) -> int:
         _emit(env, report=False)
         return 0
     body, summary = build(env, daily, now, log, clock, started, feed_dir)
-    pub = (env.get("GHEYMAT_OWNER_PUBKEY") or "").strip()
     exported = False
     if pub:
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
@@ -355,7 +366,7 @@ def run(env, now: float, log, clock) -> int:
         exported = True
     else:
         log("report not exported (no key)")
-    log(f"report: codes={summary['codes']} passing={summary['passing']} coverage={_round(summary['pooled'])} "
+    log(f"report: codes={summary['codes']} passing={summary['passing']} "
         f"quality_issues={summary['issues']} live_scored={summary['scored']} "
         f"seconds={int(clock() - started)} partial={'yes' if summary['partial'] else 'no'}")
     _emit(env, report=exported)

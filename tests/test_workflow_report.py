@@ -15,7 +15,7 @@ def test_report_job_conditions():
     assert "needs: gate" in body
     assert "needs.gate.outputs.open == 'false' && github.ref == 'refs/heads/master'" in body
     assert "continue-on-error: true" in body
-    assert "timeout-minutes: 8" in body
+    assert "timeout-minutes: 4" in body
     assert "contents: read" in body and "actions: read" in body and "write" not in body.split("steps:")[0]
 
 
@@ -61,3 +61,12 @@ def test_all_actions_pinned_to_full_sha():
         if line.startswith("./"):
             continue
         assert re.search(r"@[0-9a-f]{40}$", line), line
+
+
+def test_failed_run_still_claims_the_day_and_nothing_gets_a_token_it_does_not_need():
+    body = job("report")
+    claim = body.split("- name: Claim the day")[1].split("- name: Upload report")[0]
+    assert "always()" in claim and "none > .report-out/report.bin" in claim
+    assert "always() && steps.check.outputs.skip == 'false'" in body.split("- name: Upload report")[1]
+    build = body.split("- name: Build report")[1].split("- name: Claim the day")[0]
+    assert "GH_TOKEN" not in build and "timeout-minutes: 3" in build

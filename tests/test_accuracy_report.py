@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -16,7 +17,7 @@ import forecast_track
 import night_export
 
 CLOSED = datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc).timestamp()
-NEAR_OPEN = datetime(2026, 11, 21, 4, 25, tzinfo=timezone.utc).timestamp()
+NEAR_OPEN = datetime(2026, 11, 21, 4, 26, tzinfo=timezone.utc).timestamp()
 KEY = base64.b64encode(bytes(range(32))).decode()
 
 
@@ -92,8 +93,8 @@ OPEN_AT = datetime(2026, 11, 21, 4, 30, tzinfo=timezone.utc).timestamp()
 
 def test_check_gap_boundary(tmp_path):
     env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": str(tmp_path / "o")}
-    assert ar.check(env, OPEN_AT - 479, lambda *_: None, runner("0")) is True
-    assert ar.check(env, OPEN_AT - 481, lambda *_: None, runner("0")) is False
+    assert ar.check(env, OPEN_AT - 299, lambda *_: None, runner("0")) is True
+    assert ar.check(env, OPEN_AT - 301, lambda *_: None, runner("0")) is False
 
 
 def test_run_gap_boundary(monkeypatch, tmp_path):
@@ -101,10 +102,10 @@ def test_run_gap_boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(ar, "fetch_daily", lambda env, work, seconds=60: daily_of(["alpha"]))
     env = {"GITHUB_OUTPUT": str(tmp_path / "o"), "REPORT_OUT_DIR": str(tmp_path / "out")}
     logs = []
-    assert ar.run(env, OPEN_AT - 479, logs.append, lambda: 0.0) == 0
+    assert ar.run(env, OPEN_AT - 299, logs.append, lambda: 0.0) == 0
     assert logs == ["report: skipped (window close)"]
     logs.clear()
-    assert ar.run(env, OPEN_AT - 481, logs.append, lambda: 0.0) == 0
+    assert ar.run(env, OPEN_AT - 301, logs.append, lambda: 0.0) == 0
     assert any(line.startswith("report: codes=1") for line in logs)
 
 
@@ -242,11 +243,11 @@ def test_report_round_trip_and_clean_logs(monkeypatch, tmp_path):
     assert "alpha" not in text and "beta" not in text
     assert "http" not in text and "github.com" not in text
     assert not re.search(r"\d{4,}", text)
-    allowed = re.compile(r"report: codes=\d+ passing=\d+ coverage=\d\.\d\d quality_issues=\d+ live_scored=\d+ "
+    allowed = re.compile(r"report: codes=\d+ passing=\d+ quality_issues=\d+ live_scored=\d+ "
                          r"seconds=\d+ partial=(yes|no)|report: skipped \([a-z ]+\)|report not exported \(no key\)|"
                          r"report: [a-z ]+ failed \(\w+\)")
     assert all(allowed.fullmatch(line) for line in logs), logs
-    assert "codes=2 passing=2 coverage=0.80 quality_issues=0 live_scored=0" in text
+    assert "codes=2 passing=2 quality_issues=0 live_scored=0" in text
     assert "partial=no" in text
 
 
@@ -264,7 +265,7 @@ def test_no_owner_key_computes_but_does_not_export(monkeypatch, tmp_path):
 def test_time_budget_marks_partial(monkeypatch, tmp_path):
     stub_eval(monkeypatch)
     monkeypatch.setattr(ar, "fetch_daily", lambda env, work, seconds=60: daily_of(["a", "b", "c", "d"]))
-    ticks = iter(range(0, 10000, 150))
+    ticks = iter(range(0, 10000, 75))
     private = tmp_path / "k"
     env = {"GHEYMAT_OWNER_PUBKEY": night_export.keygen(private), "REPORT_OUT_DIR": str(tmp_path / "out"),
            "GITHUB_OUTPUT": str(tmp_path / "o")}
@@ -305,3 +306,15 @@ def test_evaluate_code_real_small_series():
     out = ar.evaluate_code("alpha", s, today, "2027-02-25T00:00:00Z")
     assert set(out) == {"diag", "pass", "reason", "compare", "regime"}
     json.dumps(out, default=str)
+
+
+def test_invalid_owner_key_skips_before_any_work(monkeypatch, tmp_path):
+    monkeypatch.setattr(ar, "fetch_daily", lambda *a, **k: pytest.fail("fetched"))
+    logs = []
+    env = {"GHEYMAT_OWNER_PUBKEY": "not-a-key", "GITHUB_OUTPUT": str(tmp_path / "o")}
+    assert ar.run(env, CLOSED, logs.append, lambda: 0.0) == 0
+    assert logs == ["report: skipped (invalid key)"]
+
+
+def test_log_summary_carries_no_rate():
+    assert "coverage=" not in pathlib.Path(ar.__file__).read_text(encoding="utf-8")

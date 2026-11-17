@@ -70,7 +70,7 @@ jobs:
     if: needs.gate.outputs.open == 'false' && github.ref == 'refs/heads/master'
     continue-on-error: true
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 8
+    timeout-minutes: 4
     permissions:
       contents: read
       actions: read
@@ -108,17 +108,26 @@ jobs:
         id: run
         if: steps.check.outputs.skip == 'false'
         continue-on-error: true
-        timeout-minutes: 7
+        timeout-minutes: 3
         env:
           GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
           GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
           GHEYMAT_OWNER_PUBKEY: ${{ secrets.GHEYMAT_OWNER_PUBKEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPORT_FEED_DIR: .feed-state
         run: python tools/accuracy_report.py
 
+      - name: Claim the day
+        if: always() && steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        run: |
+          mkdir -p .report-out
+          if [ "${{ steps.run.outputs.report }}" != "true" ]; then
+            echo "::warning::report not produced"
+            echo none > .report-out/report.bin
+          fi
+
       - name: Upload report
-        if: steps.run.outputs.report == 'true'
+        if: always() && steps.check.outputs.skip == 'false'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

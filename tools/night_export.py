@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import os
+import tempfile
 import sys
 from pathlib import Path
 
@@ -54,10 +55,18 @@ def main(argv=None) -> int:
             print(keygen(Path(args.private_out)))
             return 0
         plain = decrypt_report(Path(args.private).read_bytes(), Path(args.source).read_bytes())
-        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(plain)
+        target = Path(args.out)
+        fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".out-")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(plain)
+            os.replace(tmp, target)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         return 0
     except Exception as e:
         print(f"night_export: failed ({type(e).__name__})", file=sys.stderr)
