@@ -29,6 +29,8 @@ JUMP = 0.25
 RUN_LIMIT = 5
 TOLERANCE_LOW = 0.01
 TOLERANCE_HIGH = 0.03
+SWITCH_REASONS = frozenset({"no-data", "coverage-band", "score-gain", "low-bin", "holdout", "code-share",
+                            "all-conditions-met"})
 
 
 def _hkdf(secret: bytes, info: bytes) -> bytes:
@@ -291,6 +293,53 @@ def _verdict(results: dict):
         return None
 
 
+def switch_line(result: dict) -> str:
+    verdict = result.get("verdict")
+    if verdict == "PASS" and result.get("reason") == "all-conditions-met":
+        return "report: switch=PASS reason=all-conditions-met"
+    if verdict == "FAIL" and result.get("reason") in SWITCH_REASONS and result["reason"] != "all-conditions-met":
+        return f"report: switch=FAIL reason={result['reason']}"
+    if verdict == "PARTIAL":
+        return "report: switch=PARTIAL"
+    return "report: switch=NA"
+
+
+def switch_outcome(daily: dict, codes: list, partial: bool, clock, started: float) -> dict:
+    try:
+        if partial:
+            return {"verdict": "PARTIAL", "reason": None, "pooled": 0}
+        import forecast_eval
+        import forecast_report
+        import gheymat_forecast as fc
+        candidates = sorted(fc.BLEND_METHODS)
+        if len(candidates) != 1:
+            return {"verdict": "NA", "reason": None, "pooled": 0}
+        default_rows: dict = {}
+        candidate_rows: dict = {}
+        for code in codes:
+            series = daily["codes"][code]
+            if not isinstance(series, dict) or not series:
+                continue
+            if clock() - started >= TOTAL_SECONDS:
+                return {"verdict": "PARTIAL", "reason": None, "pooled": 0}
+            points = forecast_report.points_from_daily(series)
+            base = forecast_eval.switch_rows(points, fc.DEFAULT_METHOD)
+            if base and clock() - started >= TOTAL_SECONDS:
+                return {"verdict": "PARTIAL", "reason": None, "pooled": 0}
+            other = forecast_eval.switch_rows(points, candidates[0])
+            if base and other:
+                default_rows[code] = base
+                candidate_rows[code] = other
+        decision = forecast_eval.switch_decision(default_rows, candidate_rows)
+        reason = decision.get("reason")
+        passed = reason == "all-conditions-met"
+        if reason not in SWITCH_REASONS or passed != (decision.get("switch") is True):
+            return {"verdict": "NA", "reason": None, "pooled": 0}
+        return {"verdict": "PASS" if passed else "FAIL", "reason": reason, "pooled": len(default_rows)}
+    except Exception:
+        return {"verdict": "NA", "reason": None, "pooled": 0}
+
+
 def _round(value) -> str:
     return "n/a" if value is None else f"{value:.2f}"
 
@@ -323,13 +372,15 @@ def build(env, daily: dict, now: float, log, clock, started: float, feed_dir) ->
             results[code] = evaluate_code(code, daily["codes"][code], today, generated_at)
         except Exception as e:
             log(f"report: code evaluation failed ({type(e).__name__})")
+    switch = switch_outcome(daily, codes, partial, clock, started)
+    log(switch_line(switch))
     scan = {c: quality(daily["codes"][c]) for c in codes if isinstance(daily["codes"][c], dict)}
     track = track_stats(feed_dir, env)
     cross = cross_check(daily["codes"], live_closes(feed_dir, env))
     pooled = _pooled(results)
     body = {"generated": generated_at, "historyDate": latest, "partial": partial, "codes": results,
             "quality": scan, "regimeVerdict": _verdict(results), "pooledCoverage": pooled, "track": track,
-            "archiveVsLive": cross}
+            "archiveVsLive": cross, "switch": switch}
     summary = {"codes": len(results), "passing": sum(1 for r in results.values() if r.get("pass")),
                "pooled": pooled, "issues": sum(1 for q in scan.values() if q["issues"]),
                "scored": track["scored"], "partial": partial}
