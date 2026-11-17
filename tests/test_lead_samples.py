@@ -380,3 +380,10 @@ def test_day_run_swallows_everything(tmp_path, monkeypatch):
 def test_snapshot_does_not_use_sampler():
     text = (TOOLS / "gheymat_snapshot.py").read_text()
     assert "lead_samples" not in text and "day_run" not in text
+
+
+def test_numbers_with_thousands_separators_parse():
+    assert ls._number("732,200") == 732200.0
+    assert ls._number("1,234,567.5") == 1234567.5
+    assert ls._number("12,,3") == 123.0
+    assert ls._number("abc") is None and ls._number(True) is None
