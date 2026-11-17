@@ -1154,11 +1154,18 @@ def _publish(args) -> int:
         print(f"history: {crypto_files} crypto files; fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     if args.ai:
+        live_prices = live_prices_for(snapshot["rates"], daily)
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
                             lambda logical: load_published(out, logical, SEALER),
                             signals_http=requests.Session(), archive_root=out,
                             refresh_news=not args.defer_news,
-                            live_prices=live_prices_for(snapshot["rates"], daily))
+                            live_prices=live_prices)
+        if os.environ.get("GHEYMAT_STATE_DIR"):
+            try:
+                import live_close
+                live_close.day_hook(os.environ, datetime.now(timezone.utc), live_prices, print)
+            except Exception:
+                pass
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
