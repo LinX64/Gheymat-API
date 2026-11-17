@@ -5,11 +5,15 @@ from bisect import bisect_right
 from datetime import date, timedelta
 from statistics import median
 
-METHODS = {"fhs": "filtered-quantile-v1", "eq": "empirical-quantile-v1"}
+METHODS = {"fhs": "filtered-quantile-v1", "eq": "empirical-quantile-v1", "fhs2": "filtered-quantile-v2"}
 DEFAULT_METHOD = "fhs"
 METHOD = METHODS[DEFAULT_METHOD]
 EWMA_LAMBDA = 0.94
 EWMA_SEED_RETURNS = 30
+BLEND_WEIGHT = 0.5
+BLEND_LONG_RETURNS = 250
+BLEND_METHODS = frozenset({"fhs2"})
+FILTERED_METHODS = frozenset({"fhs", "fhs2"})
 MIN_SIGMA = 1e-5
 HORIZON_DAYS = 7
 BAND = 0.8
@@ -54,10 +58,18 @@ class Series:
         self.dates = [d for d, _ in closes]
         self.prices = [p for _, p in closes]
         self.sigma = ewma_sigma(self.prices)
+        self._blend = None
 
-    def sigma_at(self, day):
+    def sigma_for(self, method=None):
+        if method in BLEND_METHODS:
+            if self._blend is None:
+                self._blend = blended_sigma(self.prices, self.sigma)
+            return self._blend
+        return self.sigma
+
+    def sigma_at(self, day, method=None):
         i = bisect_right(self.dates, day) - 1
-        return self.sigma[i] if i >= 0 else None
+        return self.sigma_for(method)[i] if i >= 0 else None
 
     def close_on_or_before(self, day, earliest):
         i = bisect_right(self.dates, day) - 1
@@ -65,9 +77,9 @@ class Series:
             return None
         return self.dates[i], self.prices[i]
 
-    def horizon_returns(self):
+    def horizon_returns(self, method=None):
         out = []
-        for d, p, s in zip(self.dates, self.prices, self.sigma):
+        for d, p, s in zip(self.dates, self.prices, self.sigma_for(method)):
             target = d + timedelta(days=HORIZON_DAYS)
             hit = self.close_on_or_before(target, target - timedelta(days=TARGET_SLACK_DAYS))
             if hit is not None and hit[0] > d:
@@ -88,12 +100,31 @@ def ewma_sigma(prices):
     return out
 
 
+def blended_sigma(prices, ewma=None, weight=BLEND_WEIGHT, long_returns=BLEND_LONG_RETURNS):
+    ewma = ewma_sigma(prices) if ewma is None else ewma
+    rets = [math.log(b / a) for a, b in zip(prices, prices[1:])]
+    cum = [0.0]
+    for r in rets:
+        cum.append(cum[-1] + r * r)
+    out = []
+    for i, e in enumerate(ewma):
+        end = i - 1
+        lo = max(0, end - long_returns)
+        n = end - lo
+        if n <= 0:
+            out.append(e)
+            continue
+        long_var = (cum[end] - cum[lo]) / n
+        out.append(max(math.sqrt((1 - weight) * e * e + weight * long_var), MIN_SIGMA))
+    return out
+
+
 def band_at(returns, basis_date, sigma_now=None, method=DEFAULT_METHOD):
     earliest = basis_date - timedelta(days=LOOKBACK_DAYS)
     window = [(r, s) for b, t, r, s in returns if t <= basis_date and b >= earliest]
     if len(window) < MIN_RETURNS_FOR_BAND:
         return None
-    if method == "fhs":
+    if method in FILTERED_METHODS:
         if sigma_now is None:
             return None
         usable = sorted(r / s for r, s in window)
@@ -130,6 +161,8 @@ def summarize(weeks):
 
 
 def backtest(series, returns, method=DEFAULT_METHOD, band_fn=None):
+    if method in BLEND_METHODS:
+        returns = series.horizon_returns(method)
     weeks = []
     if not series.dates:
         return weeks
@@ -141,7 +174,7 @@ def backtest(series, returns, method=DEFAULT_METHOD, band_fn=None):
             bdate, bprice = basis
             target = bdate + timedelta(days=HORIZON_DAYS)
             actual = series.close_on_or_before(target, target - timedelta(days=TARGET_SLACK_DAYS))
-            sigma_now = series.sigma_at(bdate)
+            sigma_now = series.sigma_at(bdate, method)
             if band_fn is None:
                 band = band_at(returns, bdate, sigma_now, method)
             else:
@@ -208,7 +241,7 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
     gap = max_recent_gap(series, today)
     if gap is None or gap > MAX_RECENT_GAP_DAYS:
         return None, "recent-gap"
-    returns = series.horizon_returns()
+    returns = series.horizon_returns(method)
     weeks = backtest(series, returns, method)
     if len(weeks) < MIN_BACKTEST_WEEKS:
         return None, "history"
@@ -218,7 +251,7 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
         return None, "calibration"
     if not COVERAGE_RECENT[0] <= cov_recent <= COVERAGE_RECENT[1]:
         return None, "calibration-recent"
-    band = band_at(returns, basis_date, series.sigma_at(basis_date), method)
+    band = band_at(returns, basis_date, series.sigma_at(basis_date, method), method)
     if band is None:
         return None, "history"
     low, likely, high = (basis_price * math.exp(x) for x in band)
@@ -230,7 +263,7 @@ def build_forecast(code, points, today, generated_at, history_close=None, method
     if not (0 < low <= likely <= high) or high / low > widest:
         return None, "sanity"
     method_name, signals, cov_out, weeks_out = METHODS[method], [], cov_all, len(weeks)
-    if signal_ctx is not None:
+    if signal_ctx is not None and method not in BLEND_METHODS:
         try:
             import gheymat_blend
             pick = gheymat_blend.choose(code, series, returns, signal_ctx, weeks, basis_date, method)
