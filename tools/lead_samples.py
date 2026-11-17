@@ -145,7 +145,7 @@ def _number(x) -> float | None:
         return None
     if isinstance(x, str):
         try:
-            x = float(x.strip())
+            x = float(x.strip().replace(",", ""))
         except ValueError:
             return None
     if isinstance(x, (int, float)):
