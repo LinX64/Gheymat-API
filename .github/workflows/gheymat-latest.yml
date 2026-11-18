@@ -199,6 +199,8 @@ jobs:
           GHEYMAT_PLAIN: "0"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GHEYMAT_AI_SOURCES: ${{ secrets.GHEYMAT_AI_SOURCES }}
+          LIVE_NOTIFY_SECRET: ${{ secrets.LIVE_NOTIFY_SECRET }}
+          LIVE_NOTIFY_URL: ${{ vars.LIVE_NOTIFY_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
