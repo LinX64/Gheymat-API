@@ -83,7 +83,7 @@ def assemble(src: Path, out: Path, sealer: Sealer, registry: list[dict] | None =
             source_logical = f"{source}/{rel}"
             got = read_sealed(out / source, source_logical, sealer)
             if got is None:
-                if rel in ("ai/news", "ai/brief"):
+                if rel in ("ai/news", "ai/news-archive", "ai/brief"):
                     log(f"{vid}: {rel} not available, skipped")
                 continue
             doc, issued = got
