@@ -1166,6 +1166,14 @@ def _publish(args) -> int:
                 live_close.day_hook(os.environ, datetime.now(timezone.utc), live_prices, print)
             except Exception:
                 pass
+    state_dir = os.environ.get("GHEYMAT_STATE_DIR") or None
+    try:
+        import metal_closes
+        metal_closes.run(state_dir, snapshot["rates"], datetime.now(timezone.utc),
+                         lambda logical: load_published(out, logical, SEALER),
+                         lambda logical, obj: write(out / logical, obj))
+    except Exception:
+        pass
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
@@ -1176,6 +1184,12 @@ def _publish(args) -> int:
         "converter": {"fetchedAt": utc_now_iso() if computed_rates else None,
                       "ageSeconds": 0.0 if computed_rates else None, "stale": not bool(computed_rates)},
     })
+    try:
+        import live_notify
+        live_notify.run(os.environ, state_dir, snapshot["rates"], daily,
+                        gheymat_ai.default_today().isoformat(), snapshot["fetchedAt"])
+    except Exception:
+        pass
     return 0
 
 

@@ -155,8 +155,14 @@ def shadow_signals(daily, signals_http, archive_root, now, log, env) -> None:
 def run_step(daily: dict, write_doc, load_doc, now: datetime | None = None, log=print, env=None, http=None,
              signals_http=None, archive_root=None, refresh_news: bool = True, live_prices=None) -> dict | None:
     news_ids = run_news(write_doc, load_doc, now, log, env, http, archive_root, refresh_news)
-    signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
     state_dir = (os.environ if env is None else env).get("GHEYMAT_STATE_DIR") or None
+    try:
+        import news_days
+        news_days.update(write_doc, load_doc, state_dir, load_doc(gheymat_news.LOGICAL),
+                         now or datetime.now(timezone.utc), log)
+    except Exception as e:
+        log(f"ai: news archive skipped: {type(e).__name__}")
+    signal_ctx = signal_context(signals_http, archive_root, now, log) if SIGNALS_ENABLED and signals_http is not None else None
     try:
         summary = publish(daily, write_doc, load_doc, now, news_ids=news_ids, signal_ctx=signal_ctx,
                           archive_root=state_dir, log=log, live_prices=live_prices, env=env)
