@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
+from gheymat_seal import MAX_ENVELOPE_BYTES
+
 LOGICAL = "v1/ai/news-archive"
 NAME = "news_days"
 RETENTION_DAYS = 400
 MAX_PER_DAY = 40
-MAX_SEALED_BYTES = 3_000_000
+MAX_SEALED_BYTES = MAX_ENVELOPE_BYTES - 64 * 1024
 SEAL_OVERHEAD = 1024
+EFFECTS = ("usd_up", "usd_down", "gold_up", "gold_down", "coins_up", "coins_down", "neutral")
+TEXT_FIELDS = ("url", "source", "title", "lang", "en", "fa")
 FIELDS = ("id", "url", "source", "publishedAt", "title", "lang", "en", "fa", "effect", "tagger")
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
 
@@ -33,6 +37,10 @@ def clean_item(raw) -> dict | None:
     if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw["id"]:
         return None
     if day_key(raw.get("publishedAt")) is None:
+        return None
+    if any(not isinstance(raw.get(k), str) for k in TEXT_FIELDS):
+        return None
+    if raw.get("effect") is not None and raw["effect"] not in EFFECTS:
         return None
     return {k: raw.get(k) for k in FIELDS}
 
@@ -87,7 +95,9 @@ def update(write_doc, load_doc, state_dir, news_doc, now: datetime, log=print, s
         previous = load_doc(LOGICAL)
         stored = {r["date"]: r["items"] for r in store.load(state_dir, NAME, log)
                   if isinstance(r.get("items"), list)} if state_dir else {}
-        base = stored or days_of(previous)
+        saved = [i for rows in stored.values() for i in rows]
+        carried = [i for rows in days_of(previous).values() for i in rows]
+        base = merge(merge({}, saved), carried)
         items = news_doc.get("items") if isinstance(news_doc, dict) else None
         merged = merge(base, items)
         stamp = _iso(now)

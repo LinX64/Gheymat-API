@@ -71,3 +71,27 @@ def test_no_secret_means_no_call(tmp_path):
     post = Post()
     assert go(tmp_path, rows(2), post, env={}) is False
     assert post.calls == []
+
+
+def test_intraday_baseline_beats_history_close(tmp_path):
+    intraday = {"points": [{"ts": "2026-11-17T08:00:00Z", "sell": 105.0, "buy": 1, "price": None},
+                           {"ts": "2026-11-18T08:00:00Z", "sell": 108.0, "buy": 1, "price": None}]}
+    post = Post()
+    load = lambda logical: intraday if logical == "v1/intraday/usd" else None
+    ln.run(ENV, str(tmp_path), [{"code": "usd", "sell": 110.0, "buy": 109.0, "price": None}], DAILY,
+           "2026-11-18", "t", [].append, post, load)
+    assert post.calls[0][1]["json"]["rates"][0]["changePercent"] == 4.76
+
+
+def test_history_close_used_without_intraday(tmp_path):
+    post = Post()
+    ln.run(ENV, str(tmp_path), [{"code": "usd", "sell": 110.0, "buy": 109.0, "price": None}], DAILY,
+           "2026-11-18", "t", [].append, post, lambda _l: None)
+    assert post.calls[0][1]["json"]["rates"][0]["changePercent"] == 10.0
+
+
+def test_non_https_url_override_is_ignored(tmp_path):
+    post = Post()
+    env = {**ENV, "LIVE_NOTIFY_URL": "http://evil.example/x"}
+    go(tmp_path, [{"code": "usd", "sell": 110.0, "buy": 109.0, "price": None}], post, env)
+    assert post.calls[0][0] == ln.DEFAULT_URL

@@ -1171,7 +1171,8 @@ def _publish(args) -> int:
         import metal_closes
         metal_closes.run(state_dir, snapshot["rates"], datetime.now(timezone.utc),
                          lambda logical: load_published(out, logical, SEALER),
-                         lambda logical, obj: write(out / logical, obj))
+                         lambda logical, obj: write(out / logical, obj),
+                         known=set(daily["codes"]))
     except Exception:
         pass
     write(out / "health", {
@@ -1187,7 +1188,8 @@ def _publish(args) -> int:
     try:
         import live_notify
         live_notify.run(os.environ, state_dir, snapshot["rates"], daily,
-                        gheymat_ai.default_today().isoformat(), snapshot["fetchedAt"])
+                        gheymat_ai.default_today().isoformat(), snapshot["fetchedAt"],
+                        load_doc=lambda logical: load_published(out, logical, SEALER))
     except Exception:
         pass
     return 0

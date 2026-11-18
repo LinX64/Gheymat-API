@@ -25,8 +25,8 @@ def live_values(rates) -> dict[str, dict]:
         if r["kind"] == "coin":
             buy, sell = r.get("buy"), r.get("sell")
             if _price(sell) or _price(buy):
-                out[r["code"]] = {"buy": float(buy) if _price(buy) else None,
-                                  "sell": float(sell) if _price(sell) else None}
+                out[r["code"]] = {"buy": int(round(buy)) if _price(buy) else None,
+                                  "sell": int(round(sell)) if _price(sell) else None}
         elif _price(r.get("price")):
             out[r["code"]] = {"price": float(r["price"])}
     return out
@@ -64,7 +64,7 @@ def closed_points(records, today: str) -> dict[str, list[dict]]:
     return out
 
 
-def run(state_dir, rates, now: datetime, load_doc, write_doc, log=print, store=None) -> int:
+def run(state_dir, rates, now: datetime, load_doc, write_doc, log=print, store=None, known=()) -> int:
     if not state_dir:
         return 0
     try:
@@ -75,7 +75,7 @@ def run(state_dir, rates, now: datetime, load_doc, write_doc, log=print, store=N
         today = tehran_day(now)
         written = 0
         for code, points in closed_points(store.load(state_dir, NAME, log), today).items():
-            if not points:
+            if not points or code in known:
                 continue
             logical = f"v1/history/{code}"
             old = load_doc(logical)

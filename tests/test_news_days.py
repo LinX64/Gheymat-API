@@ -104,3 +104,33 @@ def test_sealing_round_trip_and_registration():
     doc = nd.build(nd.merge({}, [item("a", "2026-11-18T10:00:00Z")]), NOW, "2026-11-18T12:00:00Z")
     env = sealer.seal(nd.LOGICAL, doc)
     assert gs.open_envelope(env, master, key.public_key(), nd.LOGICAL, max_age=None) == doc
+
+
+def test_real_seal_stays_under_envelope_cap():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    sealer = gs.Sealer(bytes(range(32)), Ed25519PrivateKey.from_private_bytes(bytes(range(100, 132))))
+    rows = []
+    for n in range(3000):
+        r = item(f"i{n}", f"2026-{1 + n % 12:02d}-{1 + n % 28:02d}T{n % 24:02d}:{n % 60:02d}:00Z")
+        r["en"] = r["fa"] = "x" * 1200
+        rows.append(r)
+    doc = nd.build(nd.merge({}, rows), datetime(2026, 12, 31, tzinfo=timezone.utc), "g")
+    assert nd.MAX_SEALED_BYTES < gs.MAX_ENVELOPE_BYTES
+    assert len(json.dumps(sealer.seal(nd.LOGICAL, doc))) <= gs.MAX_ENVELOPE_BYTES
+
+
+def test_clean_item_rejects_malformed_fields():
+    good = item("a", "2026-11-18T10:00:00Z")
+    assert nd.clean_item(good) is not None
+    assert nd.clean_item({**good, "url": None}) is None
+    assert nd.clean_item({**good, "fa": 3}) is None
+    assert nd.clean_item({**good, "effect": "sideways"}) is None
+    assert nd.clean_item({**good, "effect": "usd_up"})["effect"] == "usd_up"
+
+
+def test_update_unions_state_and_published(tmp_path):
+    disk = Disk()
+    nd.update(disk.write, disk.load, None, {"items": [item("a", "2026-11-17T10:00:00Z")]}, NOW, log=lambda *_: None)
+    archive_store.write(str(tmp_path), nd.NAME, [{"date": "2026-11-18", "items": [item("b", "2026-11-18T10:00:00Z")]}], 0)
+    out = nd.update(disk.write, disk.load, str(tmp_path), {"items": []}, NOW, log=lambda *_: None)
+    assert {i["id"] for d in out["days"] for i in d["items"]} == {"a", "b"}

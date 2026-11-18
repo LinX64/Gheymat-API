@@ -81,3 +81,28 @@ def test_existing_history_points_win_and_are_kept(tmp_path):
 def test_no_state_dir_does_nothing():
     disk = Disk()
     assert mc.run(None, rates(1.0, 2.0), D1, disk.load, disk.write) == 0
+
+
+def test_coin_buy_sell_are_ints(tmp_path):
+    disk = Disk()
+    run(tmp_path, disk, rates(1000.0, 5000.0), D1)
+    run(tmp_path, disk, rates(1300.0, 5600.0), D2)
+    p = disk.docs["v1/history/azadi"]["points"][0]
+    assert type(p["buy"]) is int and type(p["sell"]) is int and isinstance(p["price"], float)
+
+
+def test_codes_in_daily_are_left_to_history_writer(tmp_path):
+    disk = Disk()
+    mc.run(str(tmp_path), rates(1000.0, 5000.0), D1, disk.load, disk.write, log=lambda *_: None, known={"azadi"})
+    mc.run(str(tmp_path), rates(1300.0, 5600.0), D2, disk.load, disk.write, log=lambda *_: None, known={"azadi"})
+    assert "v1/history/azadi" not in disk.docs and "v1/history/gram" in disk.docs
+
+
+def test_currency_and_existing_coin_series_untouched(tmp_path):
+    usd = {"code": "usd", "days": 1, "points": [{"date": "2026-11-17", "price": 5.0}]}
+    azadi = {"code": "azadi", "days": 1, "points": [{"date": "2026-11-17", "price": 9.0, "buy": 8, "sell": 9}]}
+    disk = Disk({"v1/history/usd": usd, "v1/history/azadi": azadi})
+    run(tmp_path, disk, rates(1000.0, 5000.0), D1)
+    run(tmp_path, disk, rates(1300.0, 5600.0), D2)
+    assert disk.docs["v1/history/usd"] == usd and "v1/history/usd" not in disk.writes
+    assert disk.docs["v1/history/azadi"]["points"][0] == azadi["points"][0]
