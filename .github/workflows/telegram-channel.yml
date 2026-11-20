@@ -1,0 +1,39 @@
+name: Telegram channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: What to run
+        type: choice
+        default: check
+        options: [check, description, photo, welcome, post]
+  schedule:
+    - cron: "30 6 * * 1,3,6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-channel
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/telegram_channel.py
+            tools/telegram_icon.png
+          sparse-checkout-cone-mode: false
+      - name: Channel
+        run: python3 -I tools/telegram_channel.py "$MODE"
+        env:
+          MODE: ${{ inputs.mode || 'post' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ANDROID_LIVE: ${{ vars.TELEGRAM_ANDROID_LIVE }}
