@@ -208,14 +208,32 @@ def test_auth_and_rate_failures_stop_the_run_and_keep_what_was_summarized():
     for status in (401, 403, 429):
         store, http, logs, _ = run([entry("Alpha story headline", "1", minutes_ago=10), entry("Beta story headline", "2", minutes_ago=20), entry("Gamma story headline", "3", minutes_ago=30)],
                                    by_title={"Alpha": reply(), "Beta": Resp(status)})
-        assert [i["title"] for i in items(store)] == ["Alpha story headline"] and 2 <= len(http.posts) <= 3
+        assert [i["title"] for i in items(store)] == ["Alpha story headline"] and 2 <= len(http.posts) <= news.MODEL_WORKERS
         assert any(line.startswith("::warning::news") for line in logs)
+
+
+def test_a_stopping_api_error_starts_no_new_model_call():
+    class Gated(FakeHttp):
+        def post(self, url, headers=None, json=None, timeout=None):
+            if "Alpha" not in json["messages"][0]["content"]:
+                time.sleep(0.3)
+            return super().post(url, headers=headers, json=json, timeout=timeout)
+
+    entries = [entry("Alpha story headline", "a", minutes_ago=5)] + [
+        entry(f"Headline number {i} here", str(i), minutes_ago=10 + i) for i in range(12)]
+    store = Store()
+    http = Gated({FEED: rss(entries)}, by_title={"Alpha": Resp(401)})
+    logs = []
+    news.publish(store.write, store.load, NOW, env=ENV_BIG, http=http, clock=lambda: 0.0, log=logs.append)
+    assert 1 <= len(http.posts) <= news.MODEL_WORKERS
+    assert any(line.startswith("::warning::news") for line in logs)
 
 
 def test_three_api_errors_in_a_row_stop_the_run():
     entries = [entry(f"Headline number {i} here", str(i), minutes_ago=10 + i) for i in range(6)]
     store, http, logs, _ = run(entries, by_title={"number 0 ": Resp(500), "number 1 ": requests.ConnectionError(), "number 2 ": Resp(200)})
-    assert len(http.posts) >= 3 and news.LOGICAL not in store.docs and any("::warning::" in line for line in logs)
+    assert 3 <= len(http.posts) <= 3 + news.MODEL_WORKERS - 1
+    assert news.LOGICAL not in store.docs and any("::warning::" in line for line in logs)
 
 
 def test_a_single_network_error_only_skips_that_story():
@@ -405,11 +423,49 @@ def test_budget_exhausted_before_any_summary_keeps_the_old_generated_at_or_publi
     _, http, _, result = run([entry("Gamma story headline", "3", minutes_ago=5)], store=store, now=NOW + timedelta(minutes=31),
                              clock=lambda: t[0], on_get=lambda: t.__setitem__(0, 100.0))
     assert http.posts == [] and store.docs[news.LOGICAL]["generatedAt"] == first and result["complete"] is False
-    t[0] = 0.0
-    store, http, _, result = run([entry("Delta story headline", "4", minutes_ago=5), entry("Echo story headline", "5", minutes_ago=9)],
-                                 clock=lambda: t[0], on_post=lambda: t.__setitem__(0, 100.0))
-    doc = store.docs.get(news.LOGICAL)
-    assert 1 <= len(http.posts) <= 2 and (doc is None) == (result is None) and (doc is None or len(doc["items"]) <= 1)
+
+
+def test_finished_summaries_are_applied_when_the_budget_runs_out_mid_run(monkeypatch):
+    monkeypatch.setattr(news, "MODEL_WORKERS", 1)
+    monkeypatch.setattr(news, "MODEL_CALL_SECONDS", 0.3)
+    t = [0.0]
+    release = threading.Event()
+    count = []
+
+    def second_call_hangs():
+        count.append(1)
+        if len(count) == 2:
+            t[0] = 100.0
+            release.wait(10)
+
+    try:
+        store, http, _, result = run([entry("Delta story headline", "4", minutes_ago=5), entry("Echo story headline", "5", minutes_ago=9)],
+                                     clock=lambda: t[0], on_post=second_call_hangs)
+    finally:
+        release.set()
+    assert len(http.posts) == 2 and result["new"] == 1 and result["complete"] is True
+    assert [i["title"] for i in items(store)] == ["Delta story headline"]
+
+
+def test_a_timed_out_slot_does_not_hide_later_finished_slots(monkeypatch):
+    monkeypatch.setattr(news, "MODEL_CALL_SECONDS", 0.2)
+    release = threading.Event()
+
+    class Hang(FakeHttp):
+        def post(self, url, headers=None, json=None, timeout=None):
+            if "Alpha" in json["messages"][0]["content"]:
+                release.wait(10)
+            return super().post(url, headers=headers, json=json, timeout=timeout)
+
+    entries = [entry("Alpha story headline", "a", minutes_ago=5), entry("Beta story headline", "b", minutes_ago=9),
+               entry("Gamma story headline", "c", minutes_ago=13)]
+    store, logs = Store(), []
+    try:
+        result = news.publish(store.write, store.load, NOW, env=ENV, http=Hang({FEED: rss(entries)}), clock=lambda: 0.0, log=logs.append)
+    finally:
+        release.set()
+    assert sorted(i["title"] for i in items(store)) == ["Beta story headline", "Gamma story headline"]
+    assert result["new"] == 2 and "::warning::news: model call timed out" in logs
 
 
 def test_unexpected_response_bodies_skip_the_story_without_raising():
@@ -605,6 +661,39 @@ def test_overlong_headlines_and_descriptions_are_bounded():
     assert len(http.posts[0]["json"]["messages"][0]["content"]) < 800
 
 
+def test_a_late_model_call_cannot_leak_rows_into_the_shared_capture_list(monkeypatch):
+    monkeypatch.setattr(news, "MODEL_CALL_SECONDS", 0.2)
+    news.CAPTURED.clear()
+    release = threading.Event()
+
+    class Hang(FakeHttp):
+        def post(self, url, headers=None, json=None, timeout=None):
+            release.wait(10)
+            return super().post(url, headers=headers, json=json, timeout=timeout)
+
+    store = Store()
+    http = Hang({FEED: rss([entry("Alpha story headline", "a", minutes_ago=5)])})
+    try:
+        news.publish(store.write, store.load, NOW, env=ENV, http=http, clock=lambda: 0.0, log=lambda *_: None)
+    finally:
+        release.set()
+    deadline = time.monotonic() + 2
+    while len(http.posts) < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.3)
+    assert news.CAPTURED == []
+
+
+def test_a_skipped_run_returns_the_same_score_order_as_the_refresh_that_built_it():
+    entries = [entry("Gold and dollar rates jump in Tehran", "g1", minutes_ago=300), entry("General update number 1 headline", "g2", minutes_ago=5),
+               entry("Oil tanker sanctions news today", "g3", minutes_ago=60), entry("General update number 2 headline", "g4", minutes_ago=20)]
+    store, _, _, first = run(entries, env=ENV_BIG)
+    http = FakeHttp({FEED: rss(entries)})
+    skipped = news.publish(store.write, store.load, NOW + timedelta(minutes=1), env=ENV_BIG, http=http, refresh=False)
+    assert skipped["skipped"] is True and len(first["top"]) == 4
+    assert skipped["top"] == first["top"] and set(skipped["top"]) == set(skipped["ids"])
+
+
 def test_refresh_false_never_touches_the_network_and_reseals():
     store, _, _, _ = run([entry("Alpha story headline", "1")])
     store.writes.clear()
@@ -723,7 +812,7 @@ def test_a_hung_model_call_ends_the_phase_at_the_deadline(monkeypatch):
         result = news.publish(store.write, store.load, NOW, env=ENV, http=http, clock=lambda: 0.0, log=logs.append)
     finally:
         release.set()
-    assert time.monotonic() - started < 2 and 1 <= len(http.posts) <= 2
+    assert time.monotonic() - started < 2 and len(http.posts) == 2
     assert result["complete"] is False and result["new"] == 0 and "::warning::news: model call timed out" in logs
 
 
@@ -890,6 +979,20 @@ def test_scoring_stops_once_the_overall_budget_is_spent(monkeypatch):
 ])
 def test_quantities_compare_as_normalised_numeric_values(source, summary, kept):
     assert (news.quantities(summary) <= news.quantities(source)) is kept
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("288K", {"288000"}), ("5m", {"5000000"}), ("2B", {"2000000000"}), ("2.5M", {"2500000"}),
+    ("288 K", {"288"}), ("5 m", {"5"}), ("2 b", {"2"}), ("5 k", {"5"}),
+    ("288 thousand", {"288000"}), ("5 million", {"5000000"}), ("۲۸۸ هزار", {"288000"}), ("۵ میلیون", {"5000000"}),
+])
+def test_single_letter_magnitudes_need_to_touch_the_number(text, expected):
+    assert news.quantities(text) == expected
+
+
+def test_single_letter_magnitudes_are_not_amounts_when_spaced():
+    assert news.AMOUNT.search("288k dollars") and news.AMOUNT.search("5 million dollars") and news.AMOUNT.search("2 bn dollars")
+    assert news.AMOUNT.fullmatch("288 dollars") and not news.AMOUNT.fullmatch("288 k dollars")
 
 
 def test_quantities_are_canonical_strings():

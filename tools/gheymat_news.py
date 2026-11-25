@@ -74,6 +74,7 @@ NUMBER_WORDS.update({"صفر": "0", "یک": "1", "دو": "2", "سه": "3", "چه
 MAGNITUDES = {"hundred": 100, "thousand": 10**3, "million": 10**6, "billion": 10**9, "trillion": 10**12,
               "k": 10**3, "m": 10**6, "b": 10**9,
               "صد": 100, "هزار": 10**3, "میلیون": 10**6, "میلیارد": 10**9, "تریلیون": 10**12}
+SHORT_MAGNITUDES = {"k", "m", "b"}
 AMBIGUOUS = {"one", "یک"}
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
@@ -97,7 +98,7 @@ SUFFIX = "(?:s|es|ها|های|ی|ای)?"
 LEXICON_RE = {topic: [re.compile(r"(?<![^\W\d_])" + re.escape(term.lower()) + SUFFIX + r"(?![^\W\d_])") for term in terms]
               for topic, terms in LEXICON.items()}
 AMOUNT = re.compile(
-    r"\d[\d.,٬،٫/]*\s*(?:(?:هزار|میلیون|میلیارد|تریلیون|thousand|million|billion|trillion|k|m|bn|b)(?![^\W\d_])\s*)?"
+    r"\d[\d.,٬،٫/]*(?:(?:\s*(?:هزار|میلیون|میلیارد|تریلیون|thousand|million|billion|trillion|bn)|k|m|b)(?![^\W\d_]))?\s*"
     r"(?:دلار|ریال|تومان|یورو|dollar|usd|rial|toman|euro)(?:s|es|ها|های|ی|ای)?(?![^\W\d_])")
 PERSIAN_FIX = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " "})
 
@@ -188,9 +189,15 @@ def quantities(text: str) -> set[str]:
     flat = re.sub(r"(?<=[۰-۹٠-٩])٫(?=[۰-۹٠-٩])", ".", text).translate(DIGITS)
     flat = re.sub(r"(?<=\d)[٬,،](?=\d{3}(?!\d))", "", flat)
     seq = []
-    for tok in re.findall(r"\d+(?:\.\d+)?|[^\W\d_]+", flat.lower()):
+    previous = None
+    for match in re.finditer(r"\d+(?:\.\d+)?|[^\W\d_]+", flat.lower()):
+        tok = match.group()
+        attached = previous is not None and previous.end() == match.start() and previous.group()[0].isdigit()
+        previous = match
         if tok[0].isdigit():
             seq.append(("n", Decimal(tok)))
+        elif tok in SHORT_MAGNITUDES and not attached:
+            continue
         elif tok in AMBIGUOUS:
             seq.append(("one", Decimal(1)))
         elif tok in NUMBER_WORDS:
@@ -503,7 +510,7 @@ CAPTURED: list[dict] = []
 LABELS_SEEN = tuple(EFFECTS) + ("unclear",)
 
 
-def parse_output(payload, item: dict) -> dict | None:
+def parse_output(payload, item: dict, capture: list | None = None) -> dict | None:
     if not isinstance(payload, dict) or payload.get("stop_reason") not in ("end_turn", "stop_sequence"):
         return None
     content = payload.get("content")
@@ -525,7 +532,7 @@ def parse_output(payload, item: dict) -> dict | None:
     effect = shadow if TAGS_ENABLED else None
     try:
         raw = obj.get("effect")
-        CAPTURED.append({
+        (CAPTURED if capture is None else capture).append({
             "id": hashlib.sha256(item["title"].encode("utf-8")).hexdigest()[:16],
             "title": item["title"][:300], "category": item.get("category"),
             "model_effect": raw if raw in LABELS_SEEN else None,
@@ -536,7 +543,7 @@ def parse_output(payload, item: dict) -> dict | None:
     return {"en": en, "fa": fa, "effect": effect, "shadowEffect": shadow}
 
 
-def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
+def summarize(http, key: str, item: dict, capture: list | None = None) -> tuple[dict | None, int, int]:
     body = {
         "model": MODEL,
         "max_tokens": 1024,
@@ -561,7 +568,7 @@ def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
         usage = payload.get("usage") if isinstance(payload, dict) else None
         used_in = int(usage.get("input_tokens") or 0) if isinstance(usage, dict) else 0
         used_out = int(usage.get("output_tokens") or 0) if isinstance(usage, dict) else 0
-        return parse_output(payload, item), used_in, used_out
+        return parse_output(payload, item, capture), used_in, used_out
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
         raise ApiError("body") from e
 
@@ -600,6 +607,17 @@ def reseal(write_doc, previous, now: datetime) -> dict | None:
             keep.append(raw)
     write_doc(LOGICAL, {**previous, "items": keep})
     return {"ids": [i["id"] for i in keep], "skipped": True}
+
+
+def sealed(write_doc, previous, kept: list[dict], categories: dict, now: datetime) -> dict | None:
+    result = reseal(write_doc, previous, now)
+    if result is None:
+        return None
+    for item in kept:
+        item["score"] = item_score(item, categories, now)
+    present = set(result["ids"])
+    result["top"] = [i["id"] for i in sorted(kept, key=rank_key)[:MAX_ITEMS] if i["id"] in present]
+    return result
 
 
 def last_check(previous) -> datetime | None:
@@ -689,7 +707,7 @@ class Slot:
         self.error = None
 
 
-def start_models(make_http, key: str, pool: list[dict]):
+def start_models(make_http, key: str, pool: list[dict], capture: list | None = None):
     slots = [Slot() for _ in pool]
     todo: queue.Queue = queue.Queue()
     for index in range(len(pool)):
@@ -711,8 +729,10 @@ def start_models(make_http, key: str, pool: list[dict]):
                 try:
                     if session is None:
                         raise ApiError("network")
-                    slot.value = summarize(session, key, pool[index])
+                    slot.value = summarize(session, key, pool[index], capture)
                 except BaseException as exc:
+                    if isinstance(exc, ApiStop):
+                        halt.set()
                     slot.error = exc
                 slot.done.set()
         finally:
@@ -737,6 +757,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     kept = previous_items(previous, now)
     key = env.get("ANTHROPIC_API_KEY")
     sources, rejected = parse_sources(env)
+    categories = {s["name"]: s["category"] for s in sources}
     if refresh:
         if (env.get("GHEYMAT_AI_SOURCES") or "").strip():
             log(f"news: sources {len(sources)} usable ({rejected} rejected)")
@@ -744,7 +765,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             log("::warning::news: no usable sources configured")
     checked = last_check(previous)
     if not refresh or not key or not sources or (checked and now - checked < MIN_INTERVAL):
-        return reseal(write_doc, previous, now)
+        return sealed(write_doc, previous, kept, categories, now)
     make_http = (lambda: http) if http is not None else requests.Session
     started = clock()
     fetched = fetch_all(make_http, sources, now, clock)
@@ -767,8 +788,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
         candidates.extend(rows[:source["max_items"]])
     if not reached:
         log(f"news: fetched 0/{len(sources)} ok, items 0, summarised 0, published 0")
-        return reseal(write_doc, previous, now)
-    categories = {s["name"]: s["category"] for s in sources}
+        return sealed(write_doc, previous, kept, categories, now)
     for item in kept:
         item["score"] = item_score(item, categories, now)
     failed = load_memo(env, now)
@@ -787,18 +807,24 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     api_errors = 0
     incomplete = scoring_cut
     pool = choose(fresh, kept)
+    capture: list[dict] = []
     model_deadline = clock() + MODEL_SECONDS
-    slots, halt = start_models(make_http, key, pool) if pool else ([], threading.Event())
+    slots, halt = start_models(make_http, key, pool, capture) if pool else ([], threading.Event())
     try:
+        cut = False
         for cand, slot in zip(pool, slots):
-            moment = clock()
-            if moment - started > budget_seconds or moment >= model_deadline:
-                incomplete = True
-                break
-            if not slot.done.wait(max(0.0, min(model_deadline - moment, MODEL_CALL_SECONDS))):
-                incomplete = True
-                log("::warning::news: model call timed out")
-                break
+            if not cut:
+                moment = clock()
+                if moment - started > budget_seconds or moment >= model_deadline:
+                    cut = True
+                elif not slot.done.wait(max(0.0, min(model_deadline - moment, MODEL_CALL_SECONDS))):
+                    cut = True
+                    log("::warning::news: model call timed out")
+                if cut:
+                    incomplete = True
+                    halt.set()
+            if cut and not slot.done.is_set():
+                continue
             if isinstance(slot.error, ApiError):
                 incomplete = True
                 stats["dropped"] += 1
@@ -825,8 +851,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
         halt.set()
     if failed != memo_before:
         save_memo(env, failed)
-    headline_log.collect(list(CAPTURED), env, now, log)
-    CAPTURED.clear()
+    headline_log.collect(list(capture), env, now, log)
     complete = not incomplete or stats["new"] > 0
     generated = now if complete else parse_date(previous.get("generatedAt") if isinstance(previous, dict) else None)
     if generated is None:
