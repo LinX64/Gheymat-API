@@ -470,7 +470,7 @@ def test_news_child_log_lines_are_echoed():
     assert "noise line" not in env.lines and "other: x" not in env.lines
 
 
-def test_news_child_gets_the_extra_sources_secret_and_nothing_else_changes():
+def test_news_child_gets_the_extra_sources_secret():
     loop, env = make(5)
     loop.serve()
     assert env.envs("news")[0]["GHEYMAT_AI_SOURCES_EXTRA"] == "extra"

@@ -6,7 +6,7 @@ The workflow's own gate job stays authoritative. It still decides whether to pub
 
 ## Why
 
-GitHub's scheduler fires rarely, so a self-starting chain could go quiet for long stretches. The Worker's cron runs every minute and starts a run whenever the window is open and none is active. Runs never start each other, and a run outside the window just ends. After a failed run the Worker's backoff means recovery takes about 10 minutes.
+GitHub's scheduler fires rarely, so a self-starting chain could go quiet for long stretches. The Worker's cron runs every minute and starts a run whenever the window is open and none is active. Runs never start each other, and a run outside the window just ends. After a failed run the Worker's backoff means recovery takes about 10 minutes. A run also ends red when a channel alarm fires (one channel failed 5 times in a row) or nothing could be published 5 times in a row, so publishing then pauses about 10 minutes on every channel.
 
 ## Shape
 
