@@ -1458,3 +1458,14 @@ def test_hours_off_by_default_ignores_the_clock():
     assert loop.hours is False
     assert loop.run() == 0
     assert env.counts.get("gh", 0) == 0 and env.counts.get("prices", 0) >= 1
+
+
+def test_loop_started_inside_slot_keeps_serving_past_slot_end():
+    slot_start = int(datetime.datetime(2026, 11, 14, 20, 30, tzinfo=datetime.timezone(datetime.timedelta(hours=3, minutes=30))).timestamp())
+    slot_end = slot_start + 300
+    loop, env = hours_loop(slot_start)
+    assert cadence.in_window(slot_start) is True
+    assert loop.run() == 0
+    assert env.t > slot_end
+    assert cadence.in_window(env.t) is False
+    assert max(env.times("prices") + env.times("slow")) > slot_end

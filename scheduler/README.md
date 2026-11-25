@@ -6,7 +6,7 @@ The workflow's own gate job stays authoritative. It still decides whether to pub
 
 ## Why
 
-GitHub's scheduler fires rarely, so a self-starting chain could go quiet for long stretches. The Worker's cron runs every minute and starts a run whenever the window is open and none is active. Runs never start each other, and a run outside the window just ends. After a failed run the Worker's backoff means recovery takes about 10 minutes. A run also ends red when a channel alarm fires (one channel failed 5 times in a row) or nothing could be published 5 times in a row, so publishing then pauses about 10 minutes on every channel.
+GitHub's scheduler fires rarely, so a self-starting chain could go quiet for long stretches. The Worker's cron runs every minute and starts a run whenever the window is open and none is active. Runs never start each other, and a run outside the window just ends. After a failed run the Worker's backoff means recovery takes about 10 minutes. Only a run that published nothing ends red and makes the Worker wait about 10 minutes. A channel alarm alone (one channel failed 5 times in a row) keeps the run green, so publishing continues.
 
 ## Shape
 
@@ -14,9 +14,29 @@ GitHub's scheduler fires rarely, so a self-starting chain could go quiet for lon
 - Files: `index.js` (the handler), `wrangler.toml` (cron trigger and settings), `package.json` (module type only, no dependencies), `test/scheduler.test.js` (node tests), and this README.
 - The window logic is kept in sync with `tools/cadence.py`. `tests/make_window_cases.py` generates `tests/fixtures/window_cases.json` from `cadence.in_window`, and both `pytest` (`tests/test_window_fixture.py`) and `node --test scheduler/test/*.test.js` check the Worker against that same fixture. Regenerate the fixture after any change to the window rules.
 
+## Schedule
+
+All times are Tehran time.
+
+| When | What |
+| --- | --- |
+| Saturday to Wednesday 08:00-17:00 | day window |
+| Thursday 08:00-13:00 | day window |
+| Friday | day window off |
+| 20:30 and 23:30, every day | short run, 5 minutes (:00 to :04:59) |
+| 12:00, Friday only | short run, 5 minutes |
+| 01:00 | report dispatch |
+| 02:00 | report retry |
+
+## Short runs and the nightly report
+
+- A short run is a 5-minute slot. Inside a slot the Worker dispatches the publish workflow like it does in the day window, and the run serves its normal few minutes. Slots are the `NIGHT_SLOTS` and `FRIDAY_SLOTS` constants in `index.js` and `tools/cadence.py`.
+- At 01:00 and 02:00 (the first minute of each hour) the Worker dispatches the report workflow named by `REPORT_WORKFLOW` (default `report.yml`) on the same ref with the same token, and returns `report-dispatched`. It does this whatever the publish window says. The report is named after the trading day that just ended (the Tehran date 8 hours earlier), so both attempts share one name and the second is a safety net. The report workflow keeps its own crons as a backup.
+- The report judges only the day window and skips when a short-run slot is active or starts within 15 minutes.
+
 ## Behaviour
 
-- Inside the window, each minute: if any run of the publish workflow is active (created in the last 10 minutes and not completed), do nothing (`active`).
+- Inside the window (day window or a night slot), each minute: if any run of the publish workflow is active (created in the last 10 minutes and not completed), do nothing (`active`).
 - If the newest run ended red or timed out in the last 10 minutes, wait (`backoff`), so a persistent failure does not become one red run a minute.
 - Otherwise dispatch the workflow on `master` (`dispatched`). Outside the window it makes no calls (`closed`).
 - Any `error:*` result makes the cron invocation fail, so it shows as a failure in the Worker's Cron Events. `error:401` or `error:403` usually means the token expired.
