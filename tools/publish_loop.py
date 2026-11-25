@@ -65,6 +65,8 @@ STATE_FIELDS = (
 )
 ALERT_PAGES = "Feed: Cloudflare deploy failing"
 ALERT_STORE = "Feed: store failing"
+ALERT_SLOW = "Feed: slow lane stalled"
+ALERT_BUILD = "Feed: build or GitHub publish failing"
 STORE_SECRETS = ("FEED_STORE_KEY_ID", "FEED_STORE_SECRET", "FEED_STORE_BUCKET")
 APP_SECRETS = (
     "GH_TOKEN",
@@ -671,6 +673,7 @@ class Loop:
         if self.push_pages(f"Publish {self.iteration}"):
             self.failures = 0
             self.gh_failures = 0
+            self.alerted.discard(ALERT_BUILD)
             self.last_gh = now
             self.say(f"#{self.iteration} published {self.clock(self.env.now())}")
             return "ok"
@@ -720,6 +723,7 @@ class Loop:
                 self.last_slow = now
                 self.slow_ok_at = now
                 self.slow_alarm = False
+                self.alerted.discard(ALERT_SLOW)
                 self.fresh_restore = False
                 self.force_slow = False
             pages_wanted = self.pages_mode == "every" or (self.pages_mode == "shell" and not self.pages_tried)
@@ -790,6 +794,7 @@ class Loop:
             self.say("::error::The slow lane has not succeeded for 90 minutes")
             self.red = True
             self.slow_alarm = True
+            self.alert(ALERT_SLOW, "Prices publish, but the slow lane (history, forecasts and news) has not succeeded for 90 minutes.")
         if self.cf_failures == 0:
             self.alerted.discard(ALERT_PAGES)
         if self.store_failures == 0:
@@ -807,6 +812,7 @@ class Loop:
         if self.failures == 5:
             self.say("::error::Restore, build or GitHub publish failed 5 times in a row")
             self.red = True
+            self.alert(ALERT_BUILD, "Restore, build or the GitHub publish has failed 5 times in a row.")
         if self.nothing >= 5:
             self.say("::error::Nothing could be published 5 times in a row")
             return False

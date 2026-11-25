@@ -810,6 +810,50 @@ def test_a_recovered_deploy_can_alert_again():
     assert env.counts["issue_create"] == 2
 
 
+def test_slow_lane_alarm_opens_one_issue():
+    loop, env = make(120)
+    env.script["slow"] = 5
+    loop.serve()
+    titles = [call[1] for call in env.calls if call[0] == "issue_create"]
+    assert sum(pl.ALERT_SLOW in " ".join(map(str, t)) for t in titles) == 1
+
+
+def test_build_alarm_opens_one_issue():
+    loop, env = make(120)
+    env.script["push"] = 1
+    loop.serve()
+    titles = [call[1] for call in env.calls if call[0] == "issue_create"]
+    assert sum(pl.ALERT_BUILD in " ".join(map(str, t)) for t in titles) == 1
+
+
+def test_build_alert_clears_after_a_good_push():
+    loop, env = make(60)
+    loop.alerted.add(pl.ALERT_BUILD)
+    loop.serve()
+    assert pl.ALERT_BUILD not in loop.alerted
+
+
+def test_slow_alert_clears_after_a_good_slow_lane():
+    loop, env = make(60)
+    loop.alerted.add(pl.ALERT_SLOW)
+    loop.serve()
+    assert pl.ALERT_SLOW not in loop.alerted
+
+
+def test_alarm_and_nothing_published_still_exit_one():
+    env = FakeEnv()
+    env.script["prices"] = 3
+    env.script["slow"] = 3
+    codes = []
+    for _ in range(8):
+        loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
+        codes.append(loop.run())
+        if codes[-1] == 1:
+            break
+    assert codes[-1] == 1
+    assert any("Nothing could be published" in line for line in env.lines)
+
+
 def test_a_healthy_run_opens_no_issue():
     loop, env = make(30)
     loop.serve()
