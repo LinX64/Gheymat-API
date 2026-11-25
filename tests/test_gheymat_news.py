@@ -1031,9 +1031,8 @@ def test_unusable_output_is_not_retried_for_six_hours_and_is_persisted_without_t
     bad = reply(text="not json")
     store, http, _, result = run([entry("Alpha story headline", "1")], env=env, replies=[bad])
     assert len(http.posts) == 1 and result["dropped"] == 1
-    files = list(tmp_path.iterdir())
-    assert [f.name for f in files] == [news.MEMO_FILE]
-    text = files[0].read_text(encoding="utf-8")
+    assert sorted(f.name for f in tmp_path.iterdir()) == sorted([news.HEALTH_FILE, news.MEMO_FILE])
+    text = (tmp_path / news.MEMO_FILE).read_text(encoding="utf-8")
     raw_id = news.item_id(news.canonical_url("https://a.example/1"))
     assert "Alpha" not in text and raw_id not in text and news.memo_key("test-key", raw_id) in text
     store, http, _, _ = run([entry("Alpha story headline", "1")], env=env, store=store, now=NOW + timedelta(minutes=31))
@@ -1115,8 +1114,8 @@ def test_ties_break_by_newer_first_then_id():
     assert [c["id"] for c in news.choose(fresh, same)] == [fresh[1]["id"]]
 
 
-def test_ranking_version_is_two():
-    assert news.RANKING_VERSION == 2
+def test_ranking_version_is_three():
+    assert news.RANKING_VERSION == 3
 
 
 def test_source_cut_keeps_the_best_scored_stories_not_the_newest():
@@ -1200,3 +1199,110 @@ def test_extra_sources_are_fetched_and_never_logged():
                                       "https://extra.example/feed": rss([entry("Beta story headline", "2", host="extra.example")])}, env=env)
     assert len(items(store)) == 2
     assert not any(w in line.lower() for line in logs for w in ("extra", "http", "example"))
+
+
+def hot_prev(i, hours_ago):
+    return prev_item(i, hours_ago, title=f"Dollar rate story {i} in Tehran")
+
+
+def test_zero_hit_items_only_fill_empty_slots():
+    hot = [hot_prev(i, 40 + (i % 5)) for i in range(10)]
+    cold = [prev_item(100 + i, 1) for i in range(35)]
+    store = previous_store(hot + cold, checked="2026-11-09T01:00:00Z")
+    store, _, _, _ = run([entry("Plain story number x words", "p", minutes_ago=1)], store=store, env=ENV_BIG)
+    ids = {i["id"] for i in items(store)}
+    assert len(ids) == 40
+    assert all(h["id"] in ids for h in hot)
+    assert sum(1 for c in cold if c["id"] in ids) == 29
+
+
+def test_old_hit_items_outrank_fresh_zero_hit_items_when_forty_hits_exist():
+    hot = [hot_prev(i, 47) for i in range(40)]
+    cold = [prev_item(100 + i, 0.1) for i in range(5)]
+    store = previous_store(hot + cold, checked="2026-11-09T01:00:00Z")
+    store, _, _, _ = run([entry("Plain story number x words", "p", minutes_ago=1)], store=store, env=ENV_BIG)
+    ids = {i["id"] for i in items(store)}
+    assert ids == {h["id"] for h in hot}
+
+
+def test_zero_hit_candidate_is_not_summarised_when_forty_hits_are_held():
+    hot = [hot_prev(i, 20) for i in range(40)]
+    store = previous_store(hot, checked="2026-11-09T01:00:00Z")
+    store, http, _, _ = run([entry("Plain story number x words", "p", minutes_ago=1)], store=store, env=ENV_BIG)
+    assert http.posts == []
+    assert {i["id"] for i in items(store)} == {h["id"] for h in hot}
+
+
+def test_choose_zero_hit_candidates_only_take_free_slots():
+    def mk(i, score, hit):
+        return {"id": f"{i:016d}", "score": score, "hit": hit, "published": NOW - timedelta(hours=1)}
+
+    kept = [mk(i, 1.0, True) for i in range(38)]
+    fresh = [mk(100, 1.0, False), mk(101, 1.0, False), mk(102, 1.2, True)]
+    picked = news.choose(fresh, kept)
+    assert [c["id"] for c in picked] == [fresh[2]["id"], fresh[0]["id"]]
+    assert news.choose([mk(103, 1.0, False)], [mk(i, 1.0, True) for i in range(40)]) == []
+
+
+def test_mixed_window_keeps_newest_first_output():
+    hot = [hot_prev(i, 20 + i) for i in range(20)]
+    cold = [prev_item(100 + i, 1 + i) for i in range(30)]
+    store = previous_store(hot + cold, checked="2026-11-09T01:00:00Z")
+    store, _, _, _ = run([entry("Plain story number x words", "p", minutes_ago=1)], store=store, env=ENV_BIG)
+    got = items(store)
+    ids = {i["id"] for i in got}
+    assert len(got) == 40 and all(h["id"] in ids for h in hot)
+    published = [i["publishedAt"] for i in got]
+    assert published == sorted(published, reverse=True)
+
+
+def health_env(tmp_path):
+    return {**ENV2, "GHEYMAT_STATE_DIR": str(tmp_path)}
+
+
+def health_lines(logs):
+    return [line for line in logs if "source health" in line]
+
+
+def test_health_line_logged_once_per_tehran_day_after_noon(tmp_path):
+    env = health_env(tmp_path)
+    feeds = {FEED: rss([entry("Alpha story headline", "1")]), FEED2: Resp(500)}
+    early = datetime(2026, 11, 9, 7, 0, tzinfo=timezone.utc)
+    _, _, logs, _ = run(feeds=feeds, env=env, now=early)
+    assert health_lines(logs) == []
+    _, _, logs, _ = run(feeds=feeds, env=env, now=NOW)
+    assert health_lines(logs) == ["::warning::news: source health: 1 of 2 sources failed every fetch today #02"]
+    _, _, logs, _ = run(feeds=feeds, env=env, now=NOW + timedelta(hours=1))
+    assert health_lines(logs) == []
+    _, _, logs, _ = run(feeds=feeds, env=env, now=NOW + timedelta(days=1))
+    assert len(health_lines(logs)) == 1
+
+
+def test_health_line_has_no_warning_when_every_source_worked_once(tmp_path):
+    env = health_env(tmp_path)
+    flaky = {FEED: rss([entry("Alpha story headline", "1")]), FEED2: Resp(500)}
+    good = {FEED: rss([entry("Alpha story headline", "1")]), FEED2: rss([entry("Beta story headline", "2", host="b.example")])}
+    run(feeds=flaky, env=env, now=datetime(2026, 11, 9, 7, 0, tzinfo=timezone.utc))
+    _, _, logs, _ = run(feeds=good, env=env, now=NOW)
+    assert health_lines(logs) == ["news: source health: 0 of 2 sources failed every fetch today"]
+
+
+def test_health_file_holds_only_indexes_and_counts(tmp_path):
+    env = health_env(tmp_path)
+    run(feeds={FEED: rss([entry("Alpha story headline", "1")]), FEED2: Resp(500)}, env=env)
+    raw = json.loads((tmp_path / news.HEALTH_FILE).read_text())
+    assert raw == {"day": "2026-11-09", "sources": {"01": [1, 0], "02": [0, 1]}, "logged": True}
+
+
+def test_broken_health_file_counts_as_empty(tmp_path):
+    env = health_env(tmp_path)
+    (tmp_path / news.HEALTH_FILE).write_text("{nope")
+    _, _, logs, _ = run(feeds={FEED: Resp(500), FEED2: Resp(500)}, env=env)
+    assert health_lines(logs) == ["::warning::news: source health: 2 of 2 sources failed every fetch today #01 #02"]
+    (tmp_path / news.HEALTH_FILE).write_text(json.dumps({"day": "2026-11-09", "sources": {"01": "x"}, "logged": False}))
+    assert news.load_health(env, "2026-11-09")["sources"] == {}
+
+
+def test_no_state_dir_means_no_health_file_and_still_logs():
+    _, _, logs, _ = run(feeds={FEED: Resp(500), FEED2: Resp(500)}, env=ENV2)
+    assert len(health_lines(logs)) == 1

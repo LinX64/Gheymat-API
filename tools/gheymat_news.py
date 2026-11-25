@@ -37,7 +37,10 @@ MODEL_WORKERS = 4
 MEMO_SECONDS = 6 * 3600
 MEMO_FILE = "news_failed.json"
 FEED_DEADLINE_SECONDS = 12.0
-RANKING_VERSION = 2
+RANKING_VERSION = 3
+HEALTH_FILE = "news_health.json"
+HEALTH_HOUR = 12
+TEHRAN = timezone(timedelta(hours=3, minutes=30))
 SUMMARY_MAX = 140
 TITLE_MAX = 300
 TEXT_MAX = 600
@@ -615,7 +618,7 @@ def sealed(write_doc, previous, kept: list[dict], categories: dict, now: datetim
     if result is None:
         return None
     for item in kept:
-        item["score"] = item_score(item, categories, now)
+        rescore(item, categories, now)
     present = set(result["ids"])
     result["top"] = [i["id"] for i in sorted(kept, key=rank_key)[:MAX_ITEMS] if i["id"] in present]
     return result
@@ -647,13 +650,15 @@ def archive_news(root, now: datetime, items: list[dict], log=print, version: str
 
 
 def rank_key(item: dict) -> tuple:
-    return (-item["score"], -item["published"].timestamp(), item["id"])
+    return (not item.get("hit", True), -item["score"], -item["published"].timestamp(), item["id"])
 
 
-def item_score(item: dict, categories: dict, now: datetime) -> float:
+def rescore(item: dict, categories: dict, now: datetime) -> None:
     text = " ".join(str(item.get(k) or "") for k in ("title", "desc", "en", "fa"))
     category = item.get("category") or categories.get(item.get("source")) or "general"
-    return score_of(lexicon_topics(text)[1], category, item["published"], now)
+    hits = lexicon_topics(text)[1]
+    item["hit"] = hits > 0
+    item["score"] = score_of(hits, category, item["published"], now)
 
 
 def choose(fresh: list[dict], kept: list[dict]) -> list[dict]:
@@ -667,6 +672,63 @@ def choose(fresh: list[dict], kept: list[dict]) -> list[dict]:
             keys.append(key)
             picked.append(cand)
     return picked
+
+
+def health_path(env) -> str | None:
+    directory = env.get("GHEYMAT_STATE_DIR")
+    return os.path.join(directory, HEALTH_FILE) if directory else None
+
+
+def load_health(env, day: str) -> dict:
+    path = health_path(env)
+    empty = {"day": day, "sources": {}, "logged": False}
+    if not path:
+        return empty
+    try:
+        with open(path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+        counts = {}
+        for number, pair in raw["sources"].items():
+            ok, bad = pair
+            if not (isinstance(number, str) and number.isdigit() and isinstance(ok, int) and isinstance(bad, int)):
+                return empty
+            counts[number] = [ok, bad]
+        if raw["day"] != day:
+            return empty
+        return {"day": day, "sources": counts, "logged": raw["logged"] is True}
+    except Exception:
+        return empty
+
+
+def save_health(env, health: dict) -> None:
+    path = health_path(env)
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temp = path + ".tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(health, handle)
+        os.replace(temp, path)
+    except Exception:
+        pass
+
+
+def track_health(env, fetched: list, total: int, now: datetime, log=print) -> None:
+    local = now.astimezone(TEHRAN)
+    health = load_health(env, local.date().isoformat())
+    for number, (got, _) in enumerate(fetched, 1):
+        pair = health["sources"].setdefault(f"{number:02d}", [0, 0])
+        pair[0 if got is not None else 1] += 1
+    if not health["logged"] and local.hour >= HEALTH_HOUR:
+        down = sorted(n for n, (ok, bad) in health["sources"].items()
+                      if ok == 0 and bad > 0 and n.isdigit() and 1 <= int(n) <= total)
+        line = f"news: source health: {len(down)} of {total} sources failed every fetch today"
+        if down:
+            line = "::warning::" + line + " " + " ".join(f"#{n}" for n in down)
+        log(line)
+        health["logged"] = True
+    save_health(env, health)
 
 
 def memo_key(key: str, item_id: str) -> str:
@@ -774,6 +836,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     make_http = (lambda: http) if http is not None else requests.Session
     started = clock()
     fetched = fetch_all(make_http, sources, now, clock)
+    track_health(env, fetched, len(sources), now, log)
     candidates, reached, scoring_cut = [], 0, False
     for number, (source, (got, outcome)) in enumerate(zip(sources, fetched), 1):
         if got is None:
@@ -788,14 +851,14 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             topics, hits = lexicon_topics(cand["title"] + " " + cand["desc"])
             if source["keywords_only"] and not hits:
                 continue
-            rows.append({**cand, "category": source["category"], "topics": topics, "score": score_of(hits, source["category"], cand["published"], now)})
+            rows.append({**cand, "category": source["category"], "topics": topics, "hit": hits > 0, "score": score_of(hits, source["category"], cand["published"], now)})
         rows.sort(key=rank_key)
         candidates.extend(rows[:source["max_items"]])
     if not reached:
         log(f"news: fetched 0/{len(sources)} ok, items 0, summarised 0, published 0")
         return sealed(write_doc, previous, kept, categories, now)
     for item in kept:
-        item["score"] = item_score(item, categories, now)
+        rescore(item, categories, now)
     failed = load_memo(env, now, key)
     memo_before = dict(failed)
     seen = {i["id"] for i in kept}
@@ -862,7 +925,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     if generated is None:
         return None
     for item in kept:
-        item["score"] = item_score(item, categories, now)
+        rescore(item, categories, now)
     ranked = sorted(kept, key=rank_key)[:MAX_ITEMS]
     items = sorted(ranked, key=lambda i: (i["published"], i["id"]), reverse=True)
     published_ids = {i["id"] for i in items}

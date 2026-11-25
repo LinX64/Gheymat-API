@@ -20,11 +20,26 @@ BRIEF_NEWS_CARDS = 3
 CARD_PRIORITY = ("usd", "eur", "gram", "emami", "gbp", "aed", "try", "usdt", "btc")
 SHARP_MOVE = 0.03
 WEEK_ENTRIES = 7
-USD_SENTENCES = {
-    "record": ("The dollar closed at a record high.", "دلار در بالاترین قیمت پایانی خود بسته شد."),
-    "rose": ("The dollar rose sharply this week.", "دلار این هفته به‌شدت بالا رفت."),
-    "fell": ("The dollar fell sharply this week.", "دلار این هفته به‌شدت پایین آمد."),
+RECORD_MIN_CLOSES = 250
+MOVE_SENTENCES = {
+    "usd": {
+        "record": ("The dollar closed at a record high.", "دلار در بالاترین قیمت پایانی خود بسته شد."),
+        "rose": ("The dollar rose sharply this week.", "دلار این هفته به‌شدت بالا رفت."),
+        "fell": ("The dollar fell sharply this week.", "دلار این هفته به‌شدت پایین آمد."),
+    },
+    "gram": {
+        "record": ("Gold (18k, per gram) closed at a record high.", "طلای ۱۸ عیار در بالاترین قیمت پایانی خود بسته شد."),
+        "rose": ("Gold (18k, per gram) rose sharply this week.", "طلای ۱۸ عیار این هفته به‌شدت بالا رفت."),
+        "fell": ("Gold (18k, per gram) fell sharply this week.", "طلای ۱۸ عیار این هفته به‌شدت پایین آمد."),
+    },
+    "emami": {
+        "record": ("The Emami coin closed at a record high.", "سکه امامی در بالاترین قیمت پایانی خود بسته شد."),
+        "rose": ("The Emami coin rose sharply this week.", "سکه امامی این هفته به‌شدت بالا رفت."),
+        "fell": ("The Emami coin fell sharply this week.", "سکه امامی این هفته به‌شدت پایین آمد."),
+    },
 }
+MOVE_CODES = ("usd", "gram", "emami")
+MAX_MOVE_SENTENCES = 2
 FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
@@ -68,12 +83,12 @@ def card_order(codes: list[str], changes: dict) -> list[str]:
     return fixed + rest
 
 
-def usd_move(points: list[dict]) -> str | None:
+def price_move(points: list[dict]) -> str | None:
     if len(points) < 2:
         return None
     prices = [p["price"] for p in points]
     last = prices[-1]
-    if last > max(prices[:-1]):
+    if len(prices) >= RECORD_MIN_CLOSES and last > max(prices[:-1]):
         return "record"
     if len(prices) > WEEK_ENTRIES:
         earlier = prices[-1 - WEEK_ENTRIES]
@@ -82,6 +97,18 @@ def usd_move(points: list[dict]) -> str | None:
         if last <= earlier * (1 - SHARP_MOVE):
             return "fell"
     return None
+
+
+def move_points(code: str, daily: dict, load_doc) -> list[dict]:
+    points = points_from_series(daily.get("codes", {}).get(code, {}))
+    if points:
+        return points
+    doc = load_doc(f"v1/history/{code}")
+    rows = doc.get("points") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [{"date": r["date"], "price": float(r["price"])} for r in rows
+            if isinstance(r, dict) and isinstance(r.get("date"), str) and isinstance(r.get("price"), (int, float)) and r["price"] > 0]
 
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
@@ -131,9 +158,14 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
         rebuilt += 1
     forecast_track.flush(track_state, log)
     en, fa = brief_text(len(published))
-    move = usd_move(points_from_series(daily.get("codes", {}).get("usd", {})))
-    if move:
-        en, fa = f"{USD_SENTENCES[move][0]} {en}", f"{USD_SENTENCES[move][1]} {fa}"
+    en_parts, fa_parts = [], []
+    for code in MOVE_CODES:
+        move = price_move(move_points(code, daily, load_doc))
+        if move and len(en_parts) < MAX_MOVE_SENTENCES:
+            en_parts.append(MOVE_SENTENCES[code][move][0])
+            fa_parts.append(MOVE_SENTENCES[code][move][1])
+    if en_parts:
+        en, fa = " ".join(en_parts + [en]), " ".join(fa_parts + [fa])
     previous_brief = load_doc("v1/ai/brief")
     cards = [{"kind": "forecast", "code": c} for c in card_order(published, changes)] + [{"kind": "news", "id": i} for i in list(news_ids)[:BRIEF_NEWS_CARDS]]
     brief = {"generatedAt": generated_at, "en": en, "fa": fa, "cards": cards, "forecastCodes": published}
