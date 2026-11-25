@@ -34,6 +34,10 @@ def sample_epochs():
         for hour in EDGE_HOURS:
             boundary = epoch_of(base.replace(hour=hour))
             epochs.update((boundary - 1, boundary, boundary + 1))
+        for hour, minute in c.NIGHT_SLOTS:
+            start = epoch_of(base.replace(hour=hour, minute=minute))
+            end = start + c.NIGHT_SLOT_MINUTES * 60
+            epochs.update((start - 1, start, start + 1, end - 1, end, end + 1))
     return sorted(epochs)
 
 

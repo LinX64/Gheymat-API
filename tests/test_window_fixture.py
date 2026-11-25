@@ -32,13 +32,29 @@ def test_fixture_has_open_and_closed_cases():
     assert any(not case["open"] for case in CASES)
 
 
-def test_fixture_has_friday_case():
+def test_fixture_friday_open_only_in_night_slots():
     fridays = [
         case for case in CASES
         if datetime.datetime.fromtimestamp(case["epoch"], TEHRAN).weekday() == FRIDAY
     ]
     assert fridays
-    assert all(not case["open"] for case in fridays)
+    for case in fridays:
+        local = datetime.datetime.fromtimestamp(case["epoch"], TEHRAN)
+        in_slot = any(
+            local.hour == h and m <= local.minute < m + 5 for h, m in c.NIGHT_SLOTS
+        )
+        assert case["open"] == in_slot, case
+
+
+def test_fixture_has_night_slot_edges_on_friday_and_thursday():
+    edges = {case["epoch"]: case["open"] for case in CASES}
+    for day in (14, 19, 20):
+        for hour, minute in ((20, 30), (23, 30)):
+            start = int(datetime.datetime(2026, 11, day, hour, minute, tzinfo=TEHRAN).timestamp())
+            assert edges[start - 1] is False
+            assert edges[start] is True
+            assert edges[start + 300 - 1] is True
+            assert edges[start + 300] is False
 
 
 def test_fixture_has_thursday_1300_edge():

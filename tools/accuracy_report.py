@@ -98,7 +98,9 @@ def artifact_exists(env, name: str, runner=subprocess.run) -> bool | None:
 
 
 def window_too_close(now: float) -> bool:
-    return cadence.in_window(now) or cadence.next_open(now) - now < MIN_OPEN_GAP
+    if cadence.in_day_window(now) or cadence.next_day_open(now) - now < MIN_OPEN_GAP:
+        return True
+    return cadence.in_night_slot(now) or cadence.next_night_start(now) - now < MIN_OPEN_GAP
 
 
 def check(env, now: float, log, runner=subprocess.run) -> bool:

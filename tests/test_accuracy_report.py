@@ -505,3 +505,25 @@ def test_switch_partial_between_method_calls(monkeypatch, tmp_path):
     logs = []
     ar.run({"GITHUB_OUTPUT": str(tmp_path / "o")}, CLOSED, logs.append, lambda: now["v"])
     assert calls == [] and "report: switch=PARTIAL" in logs
+
+
+NIGHT_SLOT_AT = datetime(2026, 11, 20, 17, 0, tzinfo=timezone.utc).timestamp()
+
+
+def test_report_skips_inside_and_just_before_night_slot(tmp_path):
+    env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": str(tmp_path / "o")}
+    assert ar.check(env, NIGHT_SLOT_AT - 299, lambda *_: None, runner("0")) is True
+    assert ar.check(env, NIGHT_SLOT_AT, lambda *_: None, runner("0")) is True
+    assert ar.check(env, NIGHT_SLOT_AT + 299, lambda *_: None, runner("0")) is True
+
+
+def test_report_runs_outside_night_slot_gap(tmp_path):
+    env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": str(tmp_path / "o")}
+    assert ar.check(env, NIGHT_SLOT_AT - 301, lambda *_: None, runner("0")) is False
+    assert ar.check(env, NIGHT_SLOT_AT + 300, lambda *_: None, runner("0")) is False
+
+
+def test_report_judges_day_window_only_for_day_gap():
+    morning = datetime(2026, 11, 21, 4, 30, tzinfo=timezone.utc).timestamp()
+    assert ar.window_too_close(morning - 301) is False
+    assert ar.window_too_close(morning - 299) is True

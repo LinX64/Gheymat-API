@@ -139,6 +139,40 @@ def test_window_thursday_closes_at_13(clock, expected):
     assert c.in_window(epoch("thursday", clock)) is expected
 
 
-@pytest.mark.parametrize("clock", ["08:00", "10:00", "16:59"])
+@pytest.mark.parametrize("clock", ["08:00", "10:00", "16:59", "19:00", "23:00"])
 def test_window_closed_friday(clock):
     assert c.in_window(epoch("friday", clock)) is False
+
+
+@pytest.mark.parametrize("day", SAT_TO_WED + ["thursday", "friday"])
+@pytest.mark.parametrize("clock,expected", [
+    ("20:29", False), ("20:30", True), ("20:34", True), ("20:35", False),
+    ("23:29", False), ("23:30", True), ("23:34", True), ("23:35", False),
+    ("22:00", False),
+])
+def test_night_slots_open_every_day(day, clock, expected):
+    assert c.in_window(epoch(day, clock)) is expected
+
+
+def test_night_slot_is_not_day_window():
+    assert c.in_night_slot(epoch("friday", "20:30")) is True
+    assert c.in_day_window(epoch("friday", "20:30")) is False
+    assert c.in_day_window(epoch("saturday", "10:00")) is True
+    assert c.in_night_slot(epoch("saturday", "10:00")) is False
+
+
+def test_next_day_open_ignores_night_slots():
+    evening = epoch("saturday", "20:00")
+    assert c.next_day_open(evening) == epoch("sunday", "08:00")
+    assert c.next_open(evening) == epoch("sunday", "08:00")
+
+
+def test_next_night_start():
+    assert c.next_night_start(epoch("friday", "10:00")) == epoch("friday", "20:30")
+    assert c.next_night_start(epoch("friday", "20:30")) == epoch("friday", "23:30")
+    assert c.next_night_start(epoch("friday", "23:40")) == epoch("friday", "20:30") + 86400
+
+
+def test_night_slot_tier_is_night_or_mid_as_before():
+    assert c.tier(epoch("friday", "20:30")) == c.NIGHT
+    assert c.tier(epoch("saturday", "23:30")) == c.NIGHT

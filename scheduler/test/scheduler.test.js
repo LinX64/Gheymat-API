@@ -20,7 +20,7 @@ test("window edges", () => {
   assert.equal(inWindow(tehran(2026, 11, 19, 12, 59)), true);
   assert.equal(inWindow(tehran(2026, 11, 19, 13, 0)), false);
   for (let h = 0; h < 24; h++) {
-    assert.equal(inWindow(tehran(2026, 11, 20, h, 30)), false);
+    assert.equal(inWindow(tehran(2026, 11, 20, h, 30)), h === 20 || h === 23);
   }
   assert.equal(inWindow(tehran(2026, 11, 14, 7, 59)), false);
   assert.equal(inWindow(tehran(2026, 11, 14, 8, 0)), true);
@@ -179,4 +179,58 @@ test("scheduled throws on an error result", async () => {
 
 test("scheduled stays quiet when closed", async () => {
   await worker.scheduled({ scheduledTime: CLOSED_NOW * 1000 }, { ...env });
+});
+
+test("night slot edges every day", () => {
+  for (const day of [14, 19, 20]) {
+    for (const [h, m] of [[20, 30], [23, 30]]) {
+      assert.equal(inWindow(tehran(2026, 11, day, h, m) - 1), false);
+      assert.equal(inWindow(tehran(2026, 11, day, h, m)), true);
+      assert.equal(inWindow(tehran(2026, 11, day, h, m + 4) + 59), true);
+      assert.equal(inWindow(tehran(2026, 11, day, h, m + 5)), false);
+    }
+  }
+});
+
+test("publish dispatches inside a night slot on a Friday", async () => {
+  const f = makeFetch([{ status: 200, body: { workflow_runs: [] } }, { status: 204 }]);
+  assert.equal(await tick(env, tehran(2026, 11, 20, 23, 31), f), "dispatched");
+  assert.equal(f.calls[1].url, "https://api.github.com/repos/o/r/actions/workflows/w.yml/dispatches");
+});
+
+test("closed just outside a night slot", async () => {
+  const f = makeFetch([]);
+  assert.equal(await tick(env, tehran(2026, 11, 20, 20, 35), f), "closed");
+  assert.equal(await tick(env, tehran(2026, 11, 20, 20, 29), f), "closed");
+  assert.equal(f.calls.length, 0);
+});
+
+test("report dispatches at 01:00 and 02:00 only", async () => {
+  for (const [h, m, expected] of [[1, 0, "report-dispatched"], [2, 0, "report-dispatched"], [1, 1, "closed"], [3, 0, "closed"], [0, 0, "closed"], [2, 59, "closed"]]) {
+    const f = makeFetch([{ status: 204 }]);
+    assert.equal(await tick(env, tehran(2026, 11, 20, h, m), f), expected, `${h}:${m}`);
+    assert.equal(f.calls.length, expected === "closed" ? 0 : 1);
+  }
+});
+
+test("report dispatch uses the report workflow, ref and token", async () => {
+  const f = makeFetch([{ status: 204 }]);
+  await tick({ ...env, REPORT_WORKFLOW: "r.yml" }, tehran(2026, 11, 20, 1, 0), f);
+  assert.equal(f.calls[0].url, "https://api.github.com/repos/o/r/actions/workflows/r.yml/dispatches");
+  assert.equal(f.calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(f.calls[0].init.body), { ref: "master" });
+  assert.equal(f.calls[0].init.headers.Authorization, "Bearer tok");
+});
+
+test("report workflow defaults to report.yml", async () => {
+  const f = makeFetch([{ status: 204 }]);
+  await tick(env, tehran(2026, 11, 20, 2, 0), f);
+  assert.ok(f.calls[0].url.endsWith("/workflows/report.yml/dispatches"));
+});
+
+test("report dispatch errors surface", async () => {
+  assert.equal(await tick(env, tehran(2026, 11, 20, 1, 0), makeFetch([{ status: 422 }])), "error:422");
+  assert.equal(await tick(env, tehran(2026, 11, 20, 1, 0), makeFetch([new Error("x")])), "error:network");
+  const { GH_DISPATCH_TOKEN, ...noToken } = env;
+  assert.equal(await tick(noToken, tehran(2026, 11, 20, 1, 0), makeFetch([])), "error:config");
 });
