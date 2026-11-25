@@ -1,7 +1,9 @@
 import re
 from pathlib import Path
 
-TEXT = (Path(__file__).resolve().parent.parent / ".github/workflows/gheymat-latest.yml").read_text()
+WORKFLOWS = Path(__file__).resolve().parent.parent / ".github/workflows"
+TEXT = (WORKFLOWS / "report.yml").read_text()
+PUBLISH = (WORKFLOWS / "gheymat-latest.yml").read_text()
 
 
 def job(name):
@@ -12,8 +14,8 @@ def job(name):
 
 def test_report_job_conditions():
     body = job("report")
-    assert "needs: gate" in body
-    assert "needs.gate.outputs.open == 'false' && github.ref == 'refs/heads/master'" in body
+    assert "needs:" not in body
+    assert "if: github.ref == 'refs/heads/master'" in body
     assert "continue-on-error: true" in body
     assert "timeout-minutes: 4" in body
     assert "contents: read" in body and "actions: read" in body and "write" not in body.split("steps:")[0]
@@ -27,9 +29,31 @@ def test_report_job_is_state_free():
     assert body.count("actions/cache/") == 1
 
 
-def test_report_job_no_lead_secret_and_idle_has_no_secrets():
+def test_report_has_no_lead_secret():
     assert "LEAD" not in TEXT
-    assert "secrets." not in job("idle").replace("secrets.GITHUB_TOKEN", "")
+
+
+def test_publish_workflow_has_no_idle_report_or_self_start():
+    for name in ("idle", "report"):
+        assert not re.search(rf"^  {name}:", PUBLISH, re.M)
+    assert "idle.py" not in PUBLISH and "force_report" not in PUBLISH
+    assert not (WORKFLOWS / "watchdog.yml").exists()
+    assert "gate:" in PUBLISH and "publish:" in PUBLISH
+
+
+def test_publish_step_gets_the_extra_sources_secret_and_deploy_steps_do_not():
+    assert "GHEYMAT_AI_SOURCES_EXTRA: ${{ secrets.GHEYMAT_AI_SOURCES_EXTRA }}" in PUBLISH
+    assert PUBLISH.count("GHEYMAT_AI_SOURCES_EXTRA:") == 1
+
+
+def test_report_runs_on_a_schedule_through_the_closed_hours():
+    head = TEXT.split("concurrency:")[0]
+    crons = re.findall(r"- cron: '(\d+) (\d+) \* \* \*'", head)
+    assert len(crons) >= 20
+    hours = {int(h) for _, h in crons}
+    assert hours <= set(range(14, 24)) | {0, 1, 2, 3}
+    assert {14, 23, 0, 3} <= hours
+    assert "workflow_dispatch:" in head
 
 
 def test_report_secrets_only_in_build_step():
@@ -57,7 +81,7 @@ def test_force_input_declared():
 
 
 def test_all_actions_pinned_to_full_sha():
-    for line in re.findall(r"uses: (\S+)", TEXT):
+    for line in re.findall(r"uses: (\S+)", TEXT + PUBLISH):
         if line.startswith("./"):
             continue
         assert re.search(r"@[0-9a-f]{40}$", line), line

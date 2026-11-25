@@ -1,12 +1,12 @@
 # Publish scheduler
 
-A Cloudflare Worker that starts the publish workflow on a one-minute cron. Each minute it checks whether a publish run is already active and whether the publishing window is open. If no run is active and the window is open, it dispatches the publish workflow. Otherwise it does nothing.
+A Cloudflare Worker that is the only thing that starts the publish workflow, on a one-minute cron. Each minute it checks whether a publish run is already active and whether the publishing window is open. If no run is active and the window is open, it dispatches the publish workflow. Otherwise it does nothing.
 
 The workflow's own gate job stays authoritative. It still decides whether to publish, so the Worker only starts runs; it never publishes on its own.
 
 ## Why
 
-GitHub's scheduler fires rarely, so the publish chain could go quiet for long stretches. The Worker's cron runs every minute and keeps the chain started inside the window.
+GitHub's scheduler fires rarely, so a self-starting chain could go quiet for long stretches. The Worker's cron runs every minute and starts a run whenever the window is open and none is active. Runs never start each other, and a run outside the window just ends. After a failed run the Worker's backoff means recovery takes about 10 minutes. A run also ends red when a channel alarm fires (one channel failed 5 times in a row) or nothing could be published 5 times in a row, so publishing then pauses about 10 minutes on every channel.
 
 ## Shape
 
@@ -30,10 +30,6 @@ The agent cannot do these steps. Run them yourself.
 2. Create a fine-grained GitHub token: resource owner `LinX64`, only the repository `Gheymat-API`, repository permission Actions read and write (Metadata read is added automatically), and an expiry date. Put the expiry in your calendar.
 3. From `scheduler/`, run `npx wrangler login`, then `npx wrangler deploy`.
 4. Copy the token, then run `pbpaste | npx wrangler secret put GH_DISPATCH_TOKEN`, then clear the clipboard. Never type the token on a command line and never commit it.
-5. In the GitHub Actions tab, check that runs with the event `workflow_dispatch` appear when the chain is idle. In the Cloudflare dashboard, open the Worker's logs or Cron Events and check for `active`, `dispatched` or `backoff` each minute inside the window.
+5. In the GitHub Actions tab, check that runs with the event `workflow_dispatch` appear when no run is active. In the Cloudflare dashboard, open the Worker's logs or Cron Events and check for `active`, `dispatched` or `backoff` each minute inside the window.
 6. Renewal: when the token expires the Worker reports `error:401`. Create a new token and repeat step 4.
-7. Rollback: run `npx wrangler delete`. The old chain and the watchdog stay in place and keep working.
-
-## Stage note
-
-The old chain, the idle runs and the watchdog are intentionally unchanged in this stage. They are removed in a later change, after the Worker has run cleanly inside the window for several days.
+7. Rollback: run `npx wrangler delete`. Nothing else starts the publish workflow, so start it by hand (`workflow_dispatch`) until the Worker is back.

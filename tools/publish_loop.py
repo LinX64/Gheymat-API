@@ -28,7 +28,6 @@ GITHUB_PUSH_SPACING = 400
 SLOW_LANE_SPACING = 1800
 SLOW_LANE_BACKOFF = 600
 SLOW_LANE_ALARM = 5400
-CHAIN_AFTER = 120
 STATE_FILE = "loop-state.json"
 STATE_MAX_AGE = 200
 CHAIN_RESERVE = 35
@@ -73,9 +72,11 @@ APP_SECRETS = (
     "GHEYMAT_SIGNING_KEY",
     "ANTHROPIC_API_KEY",
     "GHEYMAT_AI_SOURCES",
+    "GHEYMAT_AI_SOURCES_EXTRA",
     "LIVE_NOTIFY_SECRET",
     *STORE_SECRETS,
 )
+NEWS_LOG_PREFIXES = ("news:", "::warning::news:", "ai: news")
 KIND_PATTERN = re.compile(r"[a-z]{1,16}")
 CLOUDFLARE_SECRETS = ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID")
 
@@ -583,7 +584,7 @@ class Loop:
     def assemble_site(self):
         log = []
         self.env.rmtree("site")
-        scrub_assemble = ("GH_TOKEN", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES")
+        scrub_assemble = ("GH_TOKEN", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA")
         scrub_verify = scrub_assemble + ("GHEYMAT_SIGNING_KEY",)
         steps = (
             ([self.python, ASSEMBLE, "--src", "dist", "--out", "site"], self.child_env(*scrub_assemble)),
@@ -603,6 +604,7 @@ class Loop:
                 "GH_TOKEN",
                 "ANTHROPIC_API_KEY",
                 "GHEYMAT_AI_SOURCES",
+                "GHEYMAT_AI_SOURCES_EXTRA",
                 "GHEYMAT_SIGNING_KEY",
                 "GHEYMAT_PAYLOAD_KEY",
             )
@@ -690,6 +692,9 @@ class Loop:
         )
         if code != 0:
             self.say(f"::warning::#{self.iteration} news step exit {code}")
+        for line in output.splitlines():
+            if line.startswith(NEWS_LOG_PREFIXES):
+                self.say(line)
         if "news: refreshed" in output.splitlines():
             self.force = True
             self.force_slow = True
@@ -913,38 +918,15 @@ class Loop:
         self.save_state()
         return 1 if self.red else 0
 
-    def chain(self):
-        if self.environ.get("GITHUB_REF") != "refs/heads/master":
-            return 0
-        if self.env.now() - self.started < CHAIN_AFTER:
-            self.say("Run ended early, not chaining another")
-            return 0
-        return self.dispatch_next()
-
-    def dispatch_next(self):
-        code, _ = self.env.run(
-            ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"],
-            env=self.child_env(*APP_SECRETS[1:], *CLOUDFLARE_SECRETS),
-            timeout=None if self.hard is None else min(30, max(5, self.hard - self.env.now())),
-        )
-        return 0 if code == 0 else 1
-
     def run(self):
         self.configure()
         if self.hours and not cadence.in_window(self.env.now()):
-            self.say("Outside publishing hours, handing over to the idle run")
-            if self.environ.get("GITHUB_REF") != "refs/heads/master":
-                return 0
-            return 1 if self.dispatch_next() else 0
+            self.say("Outside publishing hours")
+            return 0
         if not self.start():
             return 1
         code = self.serve()
-        if code == 2:
-            if self.environ.get("GITHUB_REF") == "refs/heads/master":
-                self.dispatch_next()
-            return 1
-        chained = self.chain()
-        return 1 if code or chained else 0
+        return 1 if code else 0
 
 
 def main():
