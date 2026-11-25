@@ -150,6 +150,7 @@ def base_environ(**extra):
         "PUBLISH_LOOP_MINUTES": "30",
         "ANTHROPIC_API_KEY": "ak",
         "GHEYMAT_AI_SOURCES": "src",
+        "GHEYMAT_AI_SOURCES_EXTRA": "extra",
         "GHEYMAT_SIGNING_KEY": "sk",
         "GHEYMAT_PAYLOAD_KEY": "pk",
         "CLOUDFLARE_API_TOKEN": "cft",
@@ -460,6 +461,21 @@ def test_news_refresh_forces_next_build_and_slow_lane():
     assert 45 <= builds[1][5] - builds[0][5] < 60
 
 
+def test_news_child_log_lines_are_echoed():
+    loop, env = make(5)
+    env.outputs["news"] = "news: refreshed\nnoise line\n::warning::news: feed slow\nai: news kept 3\nother: x\n"
+    loop.serve()
+    for line in ("news: refreshed", "::warning::news: feed slow", "ai: news kept 3"):
+        assert line in env.lines
+    assert "noise line" not in env.lines and "other: x" not in env.lines
+
+
+def test_news_child_gets_the_extra_sources_secret():
+    loop, env = make(5)
+    loop.serve()
+    assert env.envs("news")[0]["GHEYMAT_AI_SOURCES_EXTRA"] == "extra"
+
+
 def test_news_failure_warns():
     loop, env = make(2)
     env.script["news"] = 124
@@ -545,12 +561,12 @@ def test_wrangler_setup_success():
     assert loop.mirror is True
     npm = [c for c in env.calls if c[0] == "npm"]
     assert len(npm) == 1 and npm[0][1][-1] == "wrangler@4.159.0" and npm[0][3] == 300
-    for key in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
+    for key in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA", *STORE_KEYS):
         assert key not in npm[0][2]
     create = [c for c in env.calls if c[0] == "create"][0]
     assert create[1][-5:] == ["project", "create", "gheymat-feed", "--production-branch", "master"]
     assert create[2]["WRANGLER_SEND_METRICS"] == "false" and create[3] == 120
-    for key in ("GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
+    for key in ("GH_TOKEN", "GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA", *STORE_KEYS):
         assert key not in create[2]
     assert create[2]["CLOUDFLARE_API_TOKEN"] == "cft" and create[2]["CLOUDFLARE_ACCOUNT_ID"] == "cfa"
 
@@ -596,65 +612,37 @@ def test_failed_project_create_is_ignored():
     assert loop.mirror is True
 
 
-def finish(ref, elapsed):
-    env = FakeEnv()
-    loop = pl.Loop(env, base_environ(GITHUB_REF=ref), lambda: "", python="python")
-    loop.started = env.t - elapsed
-    return loop, env, loop.chain()
-
-
-def test_chain_on_master_after_the_threshold():
-    loop, env, code = finish("refs/heads/master", pl.CHAIN_AFTER)
-    assert code == 0
-    call = env.calls[0]
-    assert call[1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
-    assert call[2]["GH_TOKEN"] == TOKEN
-    for key in ("GHEYMAT_PAYLOAD_KEY", "GHEYMAT_SIGNING_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", *STORE_KEYS):
-        assert key not in call[2]
-
-
-def test_no_chain_under_the_threshold():
-    loop, env, code = finish("refs/heads/master", pl.CHAIN_AFTER - 1)
-    assert code == 0 and env.calls == []
-    assert "Run ended early, not chaining another" in env.lines
-
-
-def test_no_chain_off_master():
-    loop, env, code = finish("refs/heads/develop", 99999)
-    assert code == 0 and env.calls == []
-
-
-def test_run_chains_but_returns_one_when_red():
+def test_run_returns_one_when_red():
     loop, env = make(120)
     env.script["slow"] = 5
     assert loop.run() == 1
-    assert env.counts["gh"] == 1
+    assert env.counts.get("gh", 0) == 0
 
 
-def test_run_goes_red_but_still_chains_when_nothing_published():
+def test_run_goes_red_when_nothing_published():
     loop, env = make(120)
     env.script["prices"] = 3
     env.script["slow"] = 3
     assert loop.run() == 1
-    assert env.counts["gh"] == 1
+    assert env.counts.get("gh", 0) == 0
 
 
-def test_run_chains_after_full_clean_run():
+def test_run_after_full_clean_run_starts_nothing():
     loop, env = make(360, mirror=False)
     assert loop.run() == 0
-    assert env.counts["gh"] == 1
+    assert env.counts.get("gh", 0) == 0
 
 
 def test_deploy_env_is_scrubbed():
     loop, env = make(3)
     loop.serve()
     deploy = env.envs("deploy")[0]
-    for key in ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", *STORE_KEYS):
+    for key in ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA", *STORE_KEYS):
         assert key not in deploy
     assert deploy["WRANGLER_SEND_METRICS"] == "false"
     assert deploy["CLOUDFLARE_API_TOKEN"] == "cft"
     assemble = env.envs("assemble")[0]
-    for key in ("GH_TOKEN", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES"):
+    for key in ("GH_TOKEN", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA"):
         assert key not in assemble
     assert assemble["GHEYMAT_SIGNING_KEY"] == "sk"
     verify_site = env.envs("verify_site")[0]
@@ -922,7 +910,7 @@ def test_cloudflare_failing_across_runs_alarms_once():
     errors = [line for line in env.lines if "Cloudflare deploy failed 5 times in a row" in line]
     assert len(errors) == 1
     assert codes.count(1) == 1
-    assert env.counts["gh"] == 6
+    assert env.counts.get("gh", 0) == 0
 
 
 def test_four_runs_push_pages_no_more_often_than_the_spacing():
@@ -934,7 +922,7 @@ def test_four_runs_push_pages_no_more_often_than_the_spacing():
     assert all(gap >= pl.GITHUB_PUSH_SPACING for gap in zip_gaps(stamps))
 
 
-def test_nothing_across_runs_goes_red_still_chains_and_saves_zero():
+def test_nothing_across_runs_goes_red_and_saves_zero():
     env = FakeEnv()
     first = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
     first.nothing = 4
@@ -945,7 +933,7 @@ def test_nothing_across_runs_goes_red_still_chains_and_saves_zero():
     env.script["slow"] = 3
     loop = run_loop(env, GITHUB_REF="refs/heads/master", **state_environ())
     assert loop.run() == 1
-    assert env.counts["gh"] == 1
+    assert env.counts.get("gh", 0) == 0
     assert saved(env)["nothing"] == 0
 
 
@@ -1043,14 +1031,6 @@ def test_install_retries_stop_when_the_budget_is_short():
     loop.start()
     assert env.counts["npm"] < 3
     assert loop.mirror is False
-
-
-def test_chain_has_a_fixed_timeout_when_budgeted():
-    loop, env = make(3, **HARD)
-    loop.start()
-    loop.started = env.t - pl.CHAIN_AFTER
-    loop.chain()
-    assert [c for c in env.calls if c[0] == "gh"][0][3] == 30
 
 
 def test_news_and_slow_lane_respect_the_remaining_budget():
@@ -1156,7 +1136,7 @@ def test_state_age_is_measured_at_process_start(age, warm):
     assert env.counts.get("fetch", 0) == (0 if warm else 1)
 
 
-def test_broken_build_across_runs_alarms_once_then_goes_red_and_chains():
+def test_broken_build_across_runs_alarms_once_then_goes_red():
     env = FakeEnv()
     env.script["prices"] = 3
     env.script["slow"] = 3
@@ -1171,7 +1151,7 @@ def test_broken_build_across_runs_alarms_once_then_goes_red_and_chains():
     errors = [line for line in env.lines if "failed 5 times in a row" in line]
     assert len(errors) == 1
     assert codes[-1] == 1 and set(codes[:-1]) == {0}
-    assert env.counts["gh"] == len(codes)
+    assert env.counts.get("gh", 0) == 0
     assert saved(env)["nothing"] == 0
 
 
@@ -1423,27 +1403,12 @@ def hours_loop(at, hours="on"):
 def test_run_does_nothing_outside_hours():
     loop, env = hours_loop(WINDOW_SHUT)
     assert loop.run() == 0
-    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
-    assert "Outside publishing hours, handing over to the idle run" in env.lines
-
-
-def test_chain_continues_outside_hours_into_the_idle_run():
-    loop, env = hours_loop(WINDOW_SHUT)
-    loop.started = env.t - 999
-    assert loop.chain() == 0
-    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
-
-
-def test_chain_continues_inside_hours():
-    loop, env = hours_loop(WINDOW_OPEN)
-    loop.started = env.t - 999
-    assert loop.chain() == 0
-    assert env.calls[0][1] == ["gh", "workflow", "run", "gheymat-latest.yml", "--ref", "master"]
+    assert env.calls == []
+    assert "Outside publishing hours" in env.lines
 
 
 def test_hours_off_by_default_ignores_the_clock():
     loop, env = hours_loop(WINDOW_SHUT, hours="")
-    loop.started = env.t - 999
     assert loop.hours is False
-    assert loop.chain() == 0
-    assert env.calls and env.calls[0][1][0] == "gh"
+    assert loop.run() == 0
+    assert env.counts.get("gh", 0) == 0 and env.counts.get("prices", 0) >= 1

@@ -1,0 +1,129 @@
+name: Daily report
+
+on:
+  schedule:
+    - cron: '0 14 * * *'
+    - cron: '30 14 * * *'
+    - cron: '0 15 * * *'
+    - cron: '30 15 * * *'
+    - cron: '0 16 * * *'
+    - cron: '30 16 * * *'
+    - cron: '0 17 * * *'
+    - cron: '30 17 * * *'
+    - cron: '0 18 * * *'
+    - cron: '30 18 * * *'
+    - cron: '0 19 * * *'
+    - cron: '30 19 * * *'
+    - cron: '0 20 * * *'
+    - cron: '30 20 * * *'
+    - cron: '0 21 * * *'
+    - cron: '30 21 * * *'
+    - cron: '0 22 * * *'
+    - cron: '30 22 * * *'
+    - cron: '0 23 * * *'
+    - cron: '30 23 * * *'
+    - cron: '0 0 * * *'
+    - cron: '30 0 * * *'
+    - cron: '0 1 * * *'
+    - cron: '30 1 * * *'
+    - cron: '0 2 * * *'
+    - cron: '30 2 * * *'
+    - cron: '0 3 * * *'
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force_report:
+        description: 'Build the accuracy report even if today already has one (window must be closed)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: gheymat-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Report
+    if: github.ref == 'refs/heads/master'
+    continue-on-error: true
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 4
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check today
+        id: check
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT_FORCE: ${{ inputs.force_report && 'true' || 'false' }}
+          REPORT_KEYED: ${{ secrets.GHEYMAT_OWNER_PUBKEY != '' && 'true' || 'false' }}
+        run: python3 tools/accuracy_report.py --check
+
+      - name: Mark the day
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        run: |
+          mkdir -p .report-out
+          echo none > .report-out/report.bin
+
+      - name: Claim the day
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.check.outputs.name }}
+          path: .report-out/report.bin
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+
+      - name: Python and dependencies
+        if: steps.check.outputs.skip == 'false'
+        uses: ./.github/actions/setup-python-deps
+
+      - name: Restore feed state
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            dist
+            .feed-state
+          key: feed-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: feed-state-
+
+      - name: Build report
+        id: run
+        if: steps.check.outputs.skip == 'false'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GHEYMAT_PAYLOAD_KEY: ${{ secrets.GHEYMAT_PAYLOAD_KEY }}
+          GHEYMAT_SIGNING_KEY: ${{ secrets.GHEYMAT_SIGNING_KEY }}
+          GHEYMAT_OWNER_PUBKEY: ${{ secrets.GHEYMAT_OWNER_PUBKEY }}
+          REPORT_FEED_DIR: .feed-state
+        run: python tools/accuracy_report.py
+
+      - name: Warn when nothing was produced
+        if: always() && steps.check.outputs.skip == 'false' && steps.run.outputs.report != 'true'
+        continue-on-error: true
+        run: echo "::warning::report not produced"
+
+      - name: Upload report
+        if: steps.run.outputs.report == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.check.outputs.name }}
+          path: .report-out/report.bin
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: ignore
+          include-hidden-files: true

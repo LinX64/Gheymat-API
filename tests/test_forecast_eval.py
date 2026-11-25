@@ -83,7 +83,7 @@ def test_compare_none_when_no_method_in_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_ALL", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
@@ -91,7 +91,7 @@ def test_compare_none_when_recent_coverage_out_of_band(monkeypatch):
     monkeypatch.setattr(fc, "COVERAGE_RECENT", (2.0, 3.0))
     out = fe.compare(make_points())
     assert out["best"] is None
-    assert set(out["results"]) == set(fc.METHODS)
+    assert set(out["results"]) == set(fe.PUBLISHED_METHODS)
 
 
 def test_report_lines():
@@ -106,7 +106,7 @@ def test_main_json_and_missing_file(tmp_path, capsys):
     f.write_text(json.dumps(make_daily()))
     assert fe.main(["--daily", str(f), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fc.METHODS)
+    assert set(data["codes"]) == {"a", "b"} and set(data["totals"]) == set(fe.PUBLISHED_METHODS)
     assert fe.main(["--daily", str(f)]) == 0
     assert fe.main(["--daily", str(tmp_path / "nope.json")]) == 2
     assert capsys.readouterr().err.strip() == "FileNotFoundError"
@@ -153,3 +153,432 @@ def test_tail_misses_sum_with_coverage():
     assert math.isclose(below + above, 1 - fc.coverage(weeks))
     r = fe.evaluate(make_points(), "fhs")
     assert math.isclose(r["miss_below"] + r["miss_above"], 1 - r["coverage"], abs_tol=1e-12)
+
+
+def _closes(n, start=date(2020, 1, 1)):
+    return [(start + timedelta(days=i), 100.0 + i * 0.01) for i in range(n)]
+
+
+def _series_with_sigma(sigma):
+    s = fc.Series(_closes(len(sigma)))
+    s.sigma = list(sigma)
+    return s
+
+
+def test_regime_bin_boundaries():
+    assert fe.regime_bin(0.0) == "low"
+    assert fe.regime_bin(0.33333) == "low"
+    assert fe.regime_bin(1 / 3) == "mid"
+    assert fe.regime_bin(0.5) == "mid"
+    assert fe.regime_bin(0.6666) == "mid"
+    assert fe.regime_bin(2 / 3) == "high"
+    assert fe.regime_bin(1.0) == "high"
+
+
+def test_sigma_percentile_ranks_against_trailing_only():
+    n = 400
+    up = _series_with_sigma([(i + 1) * 1e-4 for i in range(n)])
+    down = _series_with_sigma([(n - i) * 1e-4 for i in range(n)])
+    flat = _series_with_sigma([1e-3] * n)
+    day = up.dates[300]
+    assert fe.sigma_percentile(up, day) == 1.0
+    assert fe.sigma_percentile(down, day) == 0.0
+    assert fe.sigma_percentile(flat, day) == 0.5
+
+
+def test_sigma_percentile_ignores_future_values():
+    base = [(i % 7 + 1) * 1e-4 for i in range(400)]
+    altered = base[:301] + [9.0] * 99
+    day = fc.Series(_closes(400)).dates[300]
+    assert fe.sigma_percentile(_series_with_sigma(base), day) == fe.sigma_percentile(_series_with_sigma(altered), day)
+    truncated = _series_with_sigma(base[:301])
+    assert fe.sigma_percentile(truncated, day) == fe.sigma_percentile(_series_with_sigma(base), day)
+
+
+def test_sigma_percentile_respects_lookback_and_minimum():
+    n = 1500
+    sigma = [1.0 if i < 305 else 0.001 for i in range(n)]
+    sigma[1400] = 0.002
+    s = _series_with_sigma(sigma)
+    assert fe.sigma_percentile(s, s.dates[1400]) == 1.0
+    short = _series_with_sigma([1e-3] * 400)
+    assert fe.sigma_percentile(short, short.dates[fc.MIN_RETURNS_FOR_BAND - 1]) is None
+    assert fe.sigma_percentile(short, short.dates[fc.MIN_RETURNS_FOR_BAND]) is not None
+
+
+def test_regime_features_unchanged_by_future_data():
+    pts = make_points()
+    cut = date(2022, 6, 1)
+    altered = [dict(p) if date.fromisoformat(p["date"]) <= cut else {"date": p["date"], "price": p["price"] * 3.7 + i}
+               for i, p in enumerate(pts)]
+    a = fe._annotated(pts, "fhs")
+    b = fe._annotated(altered, "fhs")
+    early_a = [(w["basisDate"], w["pct"], w["unusual"]) for w in a if w["basisDate"] <= cut]
+    early_b = [(w["basisDate"], w["pct"], w["unusual"]) for w in b if w["basisDate"] <= cut]
+    assert early_a and early_a == early_b
+    for c in (date(2022, 6, 1), date(2022, 9, 1), date(2022, 12, 15)):
+        assert fe.check_regime_no_lookahead(pts, "fhs", c)
+
+
+def test_regime_no_lookahead_detects_leak(monkeypatch):
+    pts = make_points()
+    monkeypatch.setattr(fe, "sigma_percentile", lambda series, day: len(series.dates) / 10000)
+    assert fe.check_regime_no_lookahead(pts, "fhs", date(2022, 6, 1)) is False
+
+
+def test_unusual_flag_matches_build_forecast_rule():
+    pts = make_points()
+    closes = fc.clean_series(pts)
+    series = fc.Series(closes)
+    returns = series.horizon_returns()
+    basis_date, basis_price = closes[-1]
+    _, flag = fe._features(series, returns, basis_date, basis_price)
+    past_abs = sorted(abs(r) for b, _, r, _ in returns if b < basis_date - timedelta(days=fc.HORIZON_DAYS))
+    latest = series.close_on_or_before(basis_date - timedelta(days=fc.HORIZON_DAYS),
+                                       basis_date - timedelta(days=fc.HORIZON_DAYS + fc.TARGET_SLACK_DAYS))
+    assert flag == (abs(math.log(basis_price / latest[1])) > fc.quantile(past_abs, fc.UNUSUAL_PERCENTILE))
+    spiked = [dict(p) for p in pts]
+    spiked[-1]["price"] = spiked[-1]["price"] * 5
+    s2 = fc.Series(fc.clean_series(spiked))
+    _, flag2 = fe._features(s2, s2.horizon_returns(), basis_date, spiked[-1]["price"])
+    assert flag2 is True
+
+
+def _crafted(n=156, miss_bin="high"):
+    pcts = {"low": 0.1, "mid": 0.5, "high": 0.9}
+    order = ["low", "mid", "high"]
+    d0 = date(2020, 1, 1)
+    rows = []
+    for i in range(n):
+        b = order[i % 3]
+        k = i // 3
+        inside = (k % 2 == 0) if b == miss_bin else (k % 10 != 0)
+        rows.append({"basisDate": d0 + timedelta(days=7 * i), "inside": inside, "pct": pcts[b],
+                     "unusual": i % 20 == 0})
+    return rows
+
+
+def test_analyze_code_tables_and_unusual_split():
+    a = fe.analyze_code(_crafted())
+    assert a["weeks"] == 156 and a["skipped"] == 0
+    assert sum(a["bins"][b]["n"] for b in fe.BINS) == 156
+    assert a["worst"] == "high" and a["best"] in ("low", "mid")
+    assert math.isclose(a["bins"]["high"]["coverage"], 0.5)
+    assert a["gap"] >= fe.MIN_GAP
+    assert sum(a["holdout"][b]["n"] for b in fe.BINS) == fe.HOLDOUT_WEEKS
+    assert sum(a["beforeHoldout"][b]["n"] for b in fe.BINS) == 156 - fe.HOLDOUT_WEEKS
+    assert sum(a["early"][b]["n"] for b in fe.BINS) + sum(a["late"][b]["n"] for b in fe.BINS) == 156
+    assert a["unusual"]["unusual"]["n"] + a["unusual"]["usual"]["n"] == 156
+
+
+def test_verdict_pass_with_worst_bin(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    result = fe.regimes(make_daily(("usd", "a", "b")))
+    assert result["verdict"]["verdict"] == "PASS"
+    assert result["verdict"]["worst"] == "high"
+    assert result["verdict"]["codesMatching"] == 3 == result["verdict"]["codesWithData"]
+
+
+def test_verdict_pass_names_calm_bin_when_calm_is_worst(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted(miss_bin="low"))
+    result = fe.regimes(make_daily(("usd", "a")))
+    assert result["verdict"]["verdict"] == "PASS" and result["verdict"]["worst"] == "low"
+
+
+def _jump_points(seed, n=2000):
+    rng = random.Random(seed)
+    p = 100.0
+    d0 = date(2019, 1, 1)
+    out = []
+    for i in range(n):
+        if i % 30 == 29:
+            p *= math.exp(rng.choice((-1, 1)) * 0.12)
+        else:
+            p *= math.exp(rng.gauss(0, 0.002))
+        out.append({"date": (d0 + timedelta(days=i)).isoformat(), "price": p})
+    return out
+
+
+def test_end_to_end_calm_regime_misses_more():
+    daily = {"codes": {c: {p["date"]: (None, p["price"]) for p in _jump_points(s)}
+                       for c, s in (("usd", 1), ("a", 2), ("b", 3))}}
+    result = fe.regimes(daily)
+    assert result["verdict"]["verdict"] == "PASS" and result["verdict"]["worst"] == "low"
+    bins = result["codes"]["usd"]["bins"]
+    assert bins["low"]["coverage"] < bins["mid"]["coverage"] - fe.MIN_GAP
+
+
+def test_extremes_tie_has_no_worst():
+    table = {"low": {"n": 5, "coverage": 0.5}, "mid": {"n": 5, "coverage": 0.5}, "high": {"n": 5, "coverage": 0.9}}
+    assert fe._extremes(table)[0] is None
+    table["mid"]["coverage"] = 0.6
+    assert fe._extremes(table)[:2] == ("low", "high")
+
+
+def test_verdict_fails_when_reference_bin_not_worst_before_holdout(monkeypatch):
+    rows = _crafted()
+    cut = len(rows) - fe.HOLDOUT_WEEKS
+    shifted = [dict(r, inside=(r["pct"] != 0.1)) if i < cut else r for i, r in enumerate(rows)]
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: shifted)
+    v = fe.regimes(make_daily(("usd", "a")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-holdout"
+
+
+def test_verdict_fails_first_condition(monkeypatch):
+    flat = [dict(r, inside=True) for r in _crafted()]
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: flat)
+    v = fe.regimes(make_daily(("usd", "a")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-gap"
+
+    late_flip = [dict(r, inside=(r["inside"] if i < 78 else (r["pct"] != 0.5))) for i, r in enumerate(_crafted())]
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: late_flip)
+    v = fe.regimes(make_daily(("usd", "a")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-halves"
+
+
+def test_verdict_fails_on_holdout_and_code_share(monkeypatch):
+    rows = _crafted()
+    holdout_flip = rows[:-fe.HOLDOUT_WEEKS] + [dict(r, inside=(r["pct"] == 0.9 or r["inside"])) for r in rows[-fe.HOLDOUT_WEEKS:]]
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: holdout_flip)
+    v = fe.regimes(make_daily(("usd", "a")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-holdout"
+
+    good, other = _crafted(), _crafted(miss_bin="low")
+
+    def pick(points, method):
+        return good if points[0]["price"] == primary_first else other
+
+    primary_first = fe.points_from_daily(make_daily(("usd", "a", "b"))["codes"]["usd"])[0]["price"]
+    monkeypatch.setattr(fe, "_annotated", pick)
+    v = fe.regimes(make_daily(("usd", "a", "b")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "code-share"
+    assert v["codesMatching"] == 1 and v["codesWithData"] == 3
+
+
+def test_verdict_fails_without_primary_or_history():
+    v = fe.regimes(make_daily(("a", "b")))["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-no-data"
+    short = {"codes": {"usd": {p["date"]: (None, p["price"]) for p in make_points(n=200)}}}
+    result = fe.regimes(short)
+    assert result["codes"]["usd"] is None
+    assert result["verdict"]["reason"] == "primary-no-data"
+    assert fe.regimes_report(result)[0] == "usd regimes insufficient-history"
+
+
+def test_weeks_without_enough_trailing_data_are_skipped_and_counted(monkeypatch):
+    calls = {"n": 0}
+
+    def stub(series, day):
+        calls["n"] += 1
+        return None if calls["n"] <= 10 else 0.5
+
+    monkeypatch.setattr(fe, "sigma_percentile", stub)
+    rows = fe._annotated(make_points(), "fhs")
+    a = fe.analyze_code(rows)
+    assert a["skipped"] == 10
+    assert sum(a["bins"][b]["n"] for b in fe.BINS) == a["weeks"] - 10
+
+
+def test_random_walk_fails():
+    daily = {"codes": {c: {p["date"]: (None, p["price"]) for p in make_points(seed=s)}
+                       for c, s in (("usd", 11), ("a", 12), ("b", 13))}}
+    v = fe.regimes(daily)["verdict"]
+    assert v["verdict"] == "FAIL" and v["reason"] == "primary-halves"
+
+
+def test_cli_regimes_json_matches_text(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    f = tmp_path / "daily.json"
+    f.write_text(json.dumps(make_daily(("usd", "a"))))
+    assert fe.main(["--daily", str(f), "--regimes"]) == 0
+    text = capsys.readouterr().out.strip().splitlines()
+    assert fe.main(["--daily", str(f), "--regimes", "--json", "--codes", "usd,a"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    v = data["verdict"]
+    assert set(data["codes"]) == {"usd", "a"} and {"bins", "early", "late", "holdout", "unusual", "skipped"} <= set(data["codes"]["usd"])
+    assert text[-1].startswith(f"verdict {v['verdict']} worst={v['worst']} reason={v['reason']}")
+    assert v["verdict"] == "PASS"
+    assert fe.main(["--daily", str(f), "--regimes", "--codes", "a"]) == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1].startswith("verdict FAIL")
+
+
+def test_cli_without_regimes_unchanged(tmp_path, capsys):
+    f = tmp_path / "daily.json"
+    f.write_text(json.dumps(make_daily()))
+    assert fe.main(["--daily", str(f)]) == 0
+    out = capsys.readouterr().out
+    assert "verdict" not in out and "regimes" not in out and out.strip().splitlines()[-1].startswith("totals ")
+
+
+def test_variant_lookahead_check_passes():
+    pts = make_points()
+    cut = date.fromisoformat(pts[800]["date"])
+    assert fe.check_no_lookahead(pts, "fhs2", cut)
+
+
+def test_permutation_is_deterministic_and_bounded():
+    pts = make_points()
+    a = fe.permutation_pvalue(pts, "fhs", 6, 3)
+    b = fe.permutation_pvalue(pts, "fhs", 6, 3)
+    assert a == b
+    assert a["n_perm"] == 6 and a["observed"] is not None
+    assert 1 / 7 <= a["p"] <= 1.0 and 0 < a["p"]
+
+
+def test_permutation_keeps_start_and_dates():
+    pts = make_points(n=300)
+    closes = fc.clean_series(pts)
+    rets = [math.log(b / a) for (_, a), (_, b) in zip(closes, closes[1:])]
+    blocks = [rets[i:i + fe.PERM_BLOCK_DAYS] for i in range(0, len(rets), fe.PERM_BLOCK_DAYS)]
+    out = fe._shuffled_points(closes, list(reversed(range(len(blocks)))), blocks)
+    assert out[0]["price"] == closes[0][1] and [p["date"] for p in out] == [p["date"] for p in pts]
+    assert math.isclose(sum(math.log(b["price"] / a["price"]) for a, b in zip(out, out[1:])), sum(rets), rel_tol=1e-9)
+
+
+def test_permutation_none_without_history():
+    r = fe.permutation_pvalue(make_points(n=100), "fhs", 5)
+    assert r["observed"] is None and r["p"] is None
+
+
+def test_regimes_zero_perm_unchanged(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    daily = make_daily(("usd", "a", "b"))
+    codes = {c: fe.analyze_code(_crafted()) for c in ("a", "b", "usd")}
+    assert fe.regimes(daily, n_perm=0) == {"codes": codes, "verdict": fe.verdict(codes)}
+    assert fe.regimes(daily) == fe.regimes(daily, n_perm=0)
+
+
+def test_perm_condition_gates_verdict(monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    daily = make_daily(("usd", "a", "b"))
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.04})
+    ok = fe.regimes(daily, n_perm=9)
+    assert ok["verdict"]["verdict"] == "PASS" and ok["permutation"]["p"] == 0.04
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.06})
+    bad = fe.regimes(daily, n_perm=9)
+    assert bad["verdict"]["verdict"] == "FAIL" and bad["verdict"]["reason"] == "primary-permutation"
+    assert any(l.startswith("permutation ") and "p=0.0600" in l for l in fe.regimes_report(bad))
+
+
+def test_cli_perm_flag(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(fe, "_annotated", lambda points, method: _crafted())
+    monkeypatch.setattr(fe, "permutation_pvalue", lambda pts, m, n, seed=0: {"observed": 0.3, "n_perm": n, "p": 0.02})
+    f = tmp_path / "d.json"
+    f.write_text(json.dumps({"codes": {"usd": {"2020-01-01": [None, 1.0]}}}))
+    assert fe.main(["--daily", str(f), "--regimes", "--perm", "7", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["permutation"]["n_perm"] == 7 and out["verdict"]["verdict"] == "PASS"
+
+
+def _rows(n, score, inside, tail_score=None, tail_inside=None):
+    out = []
+    for i in range(n):
+        tail = i >= n - fe.SWITCH_HOLDOUT_WEEKS
+        sc = tail_score if tail_score is not None and tail else score
+        ins = tail_inside(i) if tail_inside is not None and tail else inside(i)
+        out.append({"basisDate": i, "inside": ins, "intervalScore": sc, "pct": (0.1, 0.5, 0.8)[i % 3]})
+    return out
+
+
+def _default_inside(i):
+    return i % 4 != 0
+
+
+def _cand_inside(i):
+    return True if i % 3 == 0 else _default_inside(i)
+
+
+def _small_inside(i):
+    return True if i % 144 == 0 else _default_inside(i)
+
+
+def _outcomes(n=300, cand=None):
+    default = {c: _rows(n, 1.0, _default_inside) for c in "wxyz"}
+    cand_out = {c: _rows(n, 0.8, _cand_inside) for c in "wxyz"}
+    for c, rows in (cand or {}).items():
+        cand_out[c] = rows
+    return default, cand_out
+
+
+def test_switch_constants_are_preregistered():
+    assert fe.SWITCH_MIN_SCORE_GAIN == 0.03 and fe.SWITCH_LOW_BIN_MIN_GAIN == 0.03
+    assert fe.SWITCH_COVERAGE_BAND == fc.COVERAGE_ALL
+    assert fe.SWITCH_MIN_CODE_SHARE == 2 / 3 and fe.SWITCH_HOLDOUT_WEEKS == 52
+
+
+def test_switch_all_conditions_pass():
+    d, c = _outcomes()
+    assert fe.switch_decision(d, c) == {"switch": True, "reason": "all-conditions-met"}
+
+
+def test_switch_no_data():
+    assert fe.switch_decision({}, {}) == {"switch": False, "reason": "no-data"}
+    assert fe.switch_decision({"a": None}, {"a": None})["reason"] == "no-data"
+    short = {"a": _rows(fe.SWITCH_HOLDOUT_WEEKS, 1.0, _default_inside)}
+    assert fe.switch_decision(short, short)["reason"] == "no-data"
+
+
+def test_switch_fails_on_coverage_band_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, lambda i: True) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "coverage-band"}
+
+
+def test_switch_fails_on_score_gain_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.99, _cand_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "score-gain"}
+
+
+def test_switch_fails_on_low_bin_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _small_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "low-bin"}
+
+
+def test_switch_fails_on_holdout_score_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _cand_inside, tail_score=1.2) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "holdout"}
+
+
+def test_switch_fails_on_holdout_low_bin_alone():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 0.8, _cand_inside, tail_inside=_default_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "holdout"}
+
+
+def test_switch_holdout_is_not_counted_in_main_gains():
+    d, _ = _outcomes()
+    c = {k: _rows(300, 1.0, _default_inside, tail_score=0.1, tail_inside=_cand_inside) for k in "wxyz"}
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "score-gain"}
+
+
+def test_switch_fails_on_code_share_alone():
+    worse = {k: _rows(300, 1.1, _cand_inside, tail_score=0.8) for k in "yz"}
+    d, c = _outcomes(cand=worse)
+    assert fe.switch_decision(d, c) == {"switch": False, "reason": "code-share"}
+
+
+def test_switch_two_thirds_of_codes_is_enough():
+    d = {k: _rows(300, 1.0, _default_inside) for k in "xyz"}
+    c = {k: _rows(300, 0.8, _cand_inside) for k in "xy"}
+    c["z"] = _rows(300, 1.1, _cand_inside)
+    assert fe.switch_decision(d, c)["switch"] is True
+
+
+def test_compare_defaults_to_the_published_methods_only():
+    result = fe.compare(make_points(n=2600, seed=5))
+    assert set(result["results"]) == set(fe.PUBLISHED_METHODS)
+    assert "fhs2" not in result["results"] and result["best"] != "fhs2"
+    assert set(fe._wins({"x": result})) == set(fe.PUBLISHED_METHODS)
+
+
+def test_switch_rows_feed_switch_decision_end_to_end():
+    pts = make_points(n=3000, seed=9)
+    base = fe.switch_rows(pts, "fhs")
+    cand = fe.switch_rows(pts, "fhs2")
+    assert base and cand
+    assert {r["basisDate"] for r in base} & {r["basisDate"] for r in cand}
+    decision = fe.switch_decision({"a": base}, {"a": cand})
+    assert set(decision) == {"switch", "reason"} and isinstance(decision["switch"], bool)

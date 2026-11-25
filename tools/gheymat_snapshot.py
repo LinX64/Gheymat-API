@@ -675,6 +675,24 @@ def archive_shrank(out: Path, daily: dict) -> tuple[int, int] | None:
     return (before, now) if now < before // 2 else None
 
 
+def live_prices_for(rates: list[dict], daily: dict) -> dict:
+    prices = {}
+    try:
+        codes = daily["codes"]
+        rows = list(rates)
+    except Exception:
+        return {}
+    for r in rows:
+        try:
+            if r.get("code") in codes and r.get("kind") in ("currency", "coin"):
+                price = r.get("sell") if r.get("sell") is not None else r.get("buy")
+                if isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0:
+                    prices[r["code"]] = float(price)
+        except Exception:
+            continue
+    return prices
+
+
 def save_daily(out: Path, daily: dict) -> None:
     write(out / "v1" / "daily.json", daily)
 
@@ -1136,10 +1154,27 @@ def _publish(args) -> int:
         print(f"history: {crypto_files} crypto files; fetched {fetched} archive days, {files} history files, {long_files} long-history files, "
               f"coverage {min(have) if have else '-'} .. {max(have) if have else '-'} ({len(have)} days)")
     if args.ai:
+        live_prices = live_prices_for(snapshot["rates"], daily)
         gheymat_ai.run_step(daily, lambda logical, obj: write(out / logical, obj),
                             lambda logical: load_published(out, logical, SEALER),
                             signals_http=requests.Session(), archive_root=out,
-                            refresh_news=not args.defer_news)
+                            refresh_news=not args.defer_news,
+                            live_prices=live_prices)
+        if os.environ.get("GHEYMAT_STATE_DIR"):
+            try:
+                import live_close
+                live_close.day_hook(os.environ, datetime.now(timezone.utc), live_prices, print)
+            except Exception:
+                pass
+    state_dir = os.environ.get("GHEYMAT_STATE_DIR") or None
+    try:
+        import metal_closes
+        metal_closes.run(state_dir, snapshot["rates"], datetime.now(timezone.utc),
+                         lambda logical: load_published(out, logical, SEALER),
+                         lambda logical, obj: write(out / logical, obj),
+                         known=set(daily["codes"]))
+    except Exception:
+        pass
     write(out / "health", {
         "ok": True, "lastFetchAt": snapshot["fetchedAt"],
         "ageSeconds": round(max(0.0, age_seconds(snapshot["fetchedAt"])), 1), "consecutiveFailures": 0,
@@ -1150,6 +1185,13 @@ def _publish(args) -> int:
         "converter": {"fetchedAt": utc_now_iso() if computed_rates else None,
                       "ageSeconds": 0.0 if computed_rates else None, "stale": not bool(computed_rates)},
     })
+    try:
+        import live_notify
+        live_notify.run(os.environ, state_dir, snapshot["rates"], daily,
+                        gheymat_ai.default_today().isoformat(), snapshot["fetchedAt"],
+                        load_doc=lambda logical: load_published(out, logical, SEALER))
+    except Exception:
+        pass
     return 0
 
 

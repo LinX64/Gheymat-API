@@ -31,7 +31,7 @@ def load_instrument_codes() -> tuple[set[str], set[str]]:
 
 
 CORE_DOCS = ("latest", "instruments", "daily.json", "history/{c}", "longhistory/{c}", "intraday/{c}")
-AI_DOCS = ("ai/forecast/{c}", "ai/news", "ai/brief")
+AI_DOCS = ("ai/forecast/{c}", "ai/news", "ai/news-archive", "ai/brief")
 
 
 def relative_logicals(groups, codes) -> list[str]:
