@@ -20,6 +20,7 @@ BRIEF_NEWS_CARDS = 3
 CARD_PRIORITY = ("usd", "eur", "gram", "emami", "gbp", "aed", "try", "usdt", "btc")
 SHARP_MOVE = 0.03
 WEEK_ENTRIES = 7
+RECORD_MIN_CLOSES = 250
 MOVE_SENTENCES = {
     "usd": {
         "record": ("The dollar closed at a record high.", "دلار در بالاترین قیمت پایانی خود بسته شد."),
@@ -87,7 +88,7 @@ def price_move(points: list[dict]) -> str | None:
         return None
     prices = [p["price"] for p in points]
     last = prices[-1]
-    if last > max(prices[:-1]):
+    if len(prices) >= RECORD_MIN_CLOSES and last > max(prices[:-1]):
         return "record"
     if len(prices) > WEEK_ENTRIES:
         earlier = prices[-1 - WEEK_ENTRIES]
@@ -96,6 +97,18 @@ def price_move(points: list[dict]) -> str | None:
         if last <= earlier * (1 - SHARP_MOVE):
             return "fell"
     return None
+
+
+def move_points(code: str, daily: dict, load_doc) -> list[dict]:
+    points = points_from_series(daily.get("codes", {}).get(code, {}))
+    if points:
+        return points
+    doc = load_doc(f"v1/history/{code}")
+    rows = doc.get("points") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [{"date": r["date"], "price": float(r["price"])} for r in rows
+            if isinstance(r, dict) and isinstance(r.get("date"), str) and isinstance(r.get("price"), (int, float)) and r["price"] > 0]
 
 
 def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
@@ -147,7 +160,7 @@ def publish(daily: dict, write_doc, load_doc, now: datetime | None = None,
     en, fa = brief_text(len(published))
     en_parts, fa_parts = [], []
     for code in MOVE_CODES:
-        move = price_move(points_from_series(daily.get("codes", {}).get(code, {})))
+        move = price_move(move_points(code, daily, load_doc))
         if move and len(en_parts) < MAX_MOVE_SENTENCES:
             en_parts.append(MOVE_SENTENCES[code][move][0])
             fa_parts.append(MOVE_SENTENCES[code][move][1])
