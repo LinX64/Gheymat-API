@@ -400,7 +400,7 @@ def test_children_get_no_more_secrets_than_before():
     loop, env, factory = build(10, GHEYMAT_STORE="on", GHEYMAT_PAGES="every")
     loop.start()
     loop.serve()
-    sensitive = ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES")
+    sensitive = ("GH_TOKEN", "GHEYMAT_SIGNING_KEY", "GHEYMAT_PAYLOAD_KEY", "ANTHROPIC_API_KEY", "GHEYMAT_AI_SOURCES", "GHEYMAT_AI_SOURCES_EXTRA")
     for call in env.calls:
         if call[0] == "deploy":
             assert not any(key in call[2] for key in sensitive)
