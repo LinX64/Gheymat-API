@@ -467,3 +467,65 @@ def test_run_step_passes_live_prices_through(monkeypatch):
     monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: None)
     ai.run_step({"codes": {}}, lambda *_: None, lambda *_: None, NOW, log=lambda *_: None, live_prices={"usd": 1.0})
     assert seen == [{"usd": 1.0}]
+
+
+def series_ending(prices, end=date(2026, 11, 8)):
+    start = end - timedelta(days=len(prices) - 1)
+    return [{"date": (start + timedelta(days=i)).isoformat(), "price": float(p)} for i, p in enumerate(prices)]
+
+
+def brief_of(points_by_code, news_ids=()):
+    store = Store()
+    ai.fc.build_forecast, saved = stub_build(), ai.fc.build_forecast
+    try:
+        ai.publish(daily_from(points_by_code), store.write, store.load, NOW, news_ids=news_ids, log=lambda *_: None)
+    finally:
+        ai.fc.build_forecast = saved
+    return store.docs["v1/ai/brief"]
+
+
+def test_forecast_cards_follow_the_fixed_priority_then_the_largest_move():
+    moves = {"btc": (100, 101), "cad": (100, 110), "chf": (100, 80), "usd": (100, 100.5), "aud": (100, 110),
+             "eur": (100, 101), "xyz": (100, 100), "gram": (100, 103)}
+    brief = brief_of({c: series_ending(list(v)) for c, v in moves.items()})
+    assert [c["code"] for c in brief["cards"]] == ["usd", "eur", "gram", "btc", "chf", "aud", "cad", "xyz"]
+    assert brief["forecastCodes"] == sorted(moves)
+
+
+def test_news_cards_are_the_first_three_of_the_given_order():
+    brief = brief_of({"usd": series_ending([100, 101])}, news_ids=["a", "b", "c", "d"])
+    assert [c for c in brief["cards"] if c["kind"] == "news"] == [{"kind": "news", "id": i} for i in "abc"]
+    assert brief["cards"][0] == {"kind": "forecast", "code": "usd"}
+
+
+def test_brief_adds_a_record_sentence_when_the_last_close_is_the_highest():
+    brief = brief_of({"usd": series_ending([100, 101, 102, 150])})
+    assert brief["en"] == "The dollar closed at a record high. Next-week estimates are ready for 1 currencies."
+    assert brief["fa"].startswith("دلار در بالاترین قیمت پایانی خود بسته شد. ") and "1" not in brief["fa"]
+
+
+@pytest.mark.parametrize("prices,en,fa", [
+    ([200, 100, 100, 100, 100, 100, 100, 100, 104], "The dollar rose sharply this week.", "دلار این هفته به‌شدت بالا رفت."),
+    ([50, 100, 100, 100, 100, 100, 100, 100, 96], "The dollar fell sharply this week.", "دلار این هفته به‌شدت پایین آمد."),
+])
+def test_brief_adds_a_weekly_move_sentence(prices, en, fa):
+    brief = brief_of({"usd": series_ending(prices)})
+    assert brief["en"].startswith(en + " Next-week") and brief["fa"].startswith(fa + " ")
+
+
+def test_brief_text_is_unchanged_without_a_record_or_a_sharp_week():
+    brief = brief_of({"usd": series_ending([200, 100, 100, 100, 100, 100, 100, 100, 101])})
+    assert brief["en"] == "Next-week estimates are ready for 1 currencies."
+    brief = brief_of({"usd": series_ending([200, 100, 101])})
+    assert brief["en"] == "Next-week estimates are ready for 1 currencies."
+    assert set(brief) == {"generatedAt", "en", "fa", "cards", "forecastCodes"}
+
+
+def test_run_news_returns_the_score_order_and_falls_back_to_ids(monkeypatch):
+    doc = {"ids": ["a", "b", "c"], "top": ["c", "a", "b"], "skipped": False, "new": 0, "dropped": 0, "in": 0, "out": 0}
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: doc)
+    assert ai.run_news(lambda *_: None, lambda *_: None, NOW, log=lambda *_: None) == ["c", "a", "b"]
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: {**doc, "top": None})
+    assert ai.run_news(lambda *_: None, lambda *_: None, NOW, log=lambda *_: None) == ["a", "b", "c"]
+    monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: {"ids": ["a"], "skipped": True})
+    assert ai.run_news(lambda *_: None, lambda *_: None, NOW, log=lambda *_: None) == ["a"]

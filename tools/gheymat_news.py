@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import json
 import os
@@ -10,6 +11,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, localcontext
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -30,14 +32,17 @@ FETCH_SECONDS = 15.0
 MODEL_SECONDS = 35.0
 MODEL_CALL_SECONDS = 40.0
 BUDGET_SECONDS = FETCH_SECONDS + MODEL_SECONDS
-FETCH_THREADS = 6
+FETCH_THREADS = 12
+MODEL_WORKERS = 4
+MEMO_SECONDS = 6 * 3600
+MEMO_FILE = "news_failed.json"
 FEED_DEADLINE_SECONDS = 12.0
-RANKING_VERSION = 1
+RANKING_VERSION = 2
 SUMMARY_MAX = 140
 TITLE_MAX = 300
 TEXT_MAX = 600
 FEED_MAX_BYTES = 2_000_000
-MAX_SOURCES = 30
+MAX_SOURCES = 45
 DEFAULT_MAX_ITEMS = 15
 CATEGORIES = ("fx", "gold", "oil", "sanctions", "politics", "economy", "general")
 CATEGORY_PRIOR = {"fx": 1.5, "gold": 1.5, "oil": 1.5, "sanctions": 1.5, "economy": 1.0, "politics": 0.5, "general": 0.0}
@@ -67,23 +72,35 @@ NUMBER_WORDS.update({"صفر": "0", "یک": "1", "دو": "2", "سه": "3", "چه
                      "هشت": "8", "ده": "10", "یازده": "11", "دوازده": "12", "سیزده": "13", "چهارده": "14",
                      "پانزده": "15", "شانزده": "16", "هفده": "17", "هجده": "18", "نوزده": "19", "بیست": "20",
                      "سی": "30", "چهل": "40", "پنجاه": "50", "شصت": "60", "هفتاد": "70", "هشتاد": "80", "نود": "90"})
-MAGNITUDES = {"hundred": "H", "thousand": "K", "million": "M", "billion": "B", "trillion": "T",
-              "صد": "H", "هزار": "K", "میلیون": "M", "میلیارد": "B", "تریلیون": "T"}
+MAGNITUDES = {"hundred": 100, "thousand": 10**3, "million": 10**6, "billion": 10**9, "trillion": 10**12,
+              "k": 10**3, "m": 10**6, "b": 10**9,
+              "صد": 100, "هزار": 10**3, "میلیون": 10**6, "میلیارد": 10**9, "تریلیون": 10**12}
+SHORT_MAGNITUDES = {"k", "m", "b"}
 AMBIGUOUS = {"one", "یک"}
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
 
 LEXICON = {
     "fx": ("dollar", "rial", "toman", "exchange rate", "currency", "currencies", "forex", "central bank", "inflation",
-           "interest rate", "دلار", "ریال", "تومان", "نرخ ارز", "ارز", "بانک مرکزی", "تورم", "نرخ بهره"),
-    "gold": ("gold", "coin", "bullion", "ounce", "طلا", "سکه"),
-    "oil": ("oil", "crude", "barrel", "opec", "نفت", "بشکه", "اوپک"),
-    "sanctions": ("sanction", "embargo", "تحریم"),
-    "politics": ("negotiation", "talks", "diplomat", "ceasefire", "مذاکره", "مذاکرات", "دیپلماسی", "آتش بس"),
+           "interest rate", "دلار", "ریال", "تومان", "نرخ ارز", "ارز", "بانک مرکزی", "تورم", "نرخ بهره",
+           "قیمت دلار", "نرخ دلار", "بازار ارز", "صرافی", "حواله", "درهم", "تتر", "رکورد", "جهش", "کانال",
+           "record", "surge", "soar", "plunge", "devaluation"),
+    "gold": ("gold", "coin", "bullion", "ounce", "طلا", "سکه", "اونس", "مثقال", "نیم سکه", "ربع سکه"),
+    "oil": ("oil", "crude", "barrel", "opec", "نفت", "بشکه", "اوپک", "نفتکش", "tanker", "تنگه هرمز", "hormuz",
+            "پالایشگاه"),
+    "sanctions": ("sanction", "embargo", "تحریم", "ofac", "fatf", "خزانه داری", "treasury", "snapback",
+                  "مکانیسم ماشه"),
+    "politics": ("negotiation", "talks", "diplomat", "ceasefire", "مذاکره", "مذاکرات", "دیپلماسی", "آتش بس",
+                 "جنگ", "حمله", "موشک", "پهپاد", "هسته ای", "غنی سازی", "آژانس", "برجام", "ترامپ", "اسرائیل",
+                 "war", "strike", "missile", "drone", "nuclear", "iaea", "enrichment", "trump", "israel", "iran",
+                 "tehran"),
 }
-SUFFIX = "(?:s|es|ها|های|ی|ای|ان)?"
-LEXICON_RE = {topic: [re.compile(r"(?<![^\W\d_])" + re.escape(term) + SUFFIX + r"(?![^\W\d_])") for term in terms]
+SUFFIX = "(?:s|es|ها|های|ی|ای)?"
+LEXICON_RE = {topic: [re.compile(r"(?<![^\W\d_])" + re.escape(term.lower()) + SUFFIX + r"(?![^\W\d_])") for term in terms]
               for topic, terms in LEXICON.items()}
+AMOUNT = re.compile(
+    r"\d[\d.,٬،٫/]*(?:(?:\s*(?:هزار|میلیون|میلیارد|تریلیون|thousand|million|billion|trillion|bn)|k|m|b)(?![^\W\d_]))?\s*"
+    r"(?:دلار|ریال|تومان|یورو|dollar|usd|rial|toman|euro)(?:s|es|ها|های|ی|ای)?(?![^\W\d_])")
 PERSIAN_FIX = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " "})
 
 SYSTEM = (
@@ -158,30 +175,48 @@ def clean(text: str | None, strict: bool = False) -> str | None:
     return SPACE.sub(" ", text).strip()
 
 
+def canonical_number(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    text = text.lstrip("0")
+    if not text or text.startswith("."):
+        text = "0" + text
+    return text
+
+
 def quantities(text: str) -> set[str]:
     text = re.sub(r"(?<=[۰-۹])/(?=[۰-۹])", ".", text)
     flat = re.sub(r"(?<=[۰-۹٠-٩])٫(?=[۰-۹٠-٩])", ".", text).translate(DIGITS)
-    flat = re.sub(r"(?<=\d)[٬,](?=\d{3}(?!\d))", "", flat)
+    flat = re.sub(r"(?<=\d)[٬,،](?=\d{3}(?!\d))", "", flat)
     seq = []
-    for tok in re.findall(r"\d+(?:\.\d+)?|[^\W\d_]+", flat.lower()):
+    previous = None
+    for match in re.finditer(r"\d+(?:\.\d+)?|[^\W\d_]+", flat.lower()):
+        tok = match.group()
+        attached = previous is not None and previous.end() == match.start() and previous.group()[0].isdigit()
+        previous = match
         if tok[0].isdigit():
-            seq.append(("n", tok))
+            seq.append(("n", Decimal(tok)))
+        elif tok in SHORT_MAGNITUDES and not attached:
+            continue
         elif tok in AMBIGUOUS:
-            seq.append(("one", "1"))
+            seq.append(("one", Decimal(1)))
         elif tok in NUMBER_WORDS:
-            seq.append(("n", NUMBER_WORDS[tok]))
+            seq.append(("n", Decimal(NUMBER_WORDS[tok])))
         elif tok in MAGNITUDES:
             seq.append(("m", MAGNITUDES[tok]))
     found, i = set(), 0
-    while i < len(seq):
-        kind, value = seq[i]
-        if kind in ("n", "one") and i + 1 < len(seq) and seq[i + 1][0] == "m":
-            found.add(value + seq[i + 1][1])
-            i += 2
-            continue
-        if kind != "one":
-            found.add(value)
-        i += 1
+    with localcontext() as ctx:
+        ctx.prec = 200
+        while i < len(seq):
+            kind, value = seq[i]
+            if kind in ("n", "one") and i + 1 < len(seq) and seq[i + 1][0] == "m":
+                found.add(canonical_number(value * seq[i + 1][1]))
+                i += 2
+                continue
+            if kind == "n":
+                found.add(canonical_number(value))
+            i += 1
     return found
 
 
@@ -244,16 +279,21 @@ def near_identical(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(a & b) / len(a | b) >= NEAR_DUPLICATE
 
 
-def parse_sources(env) -> tuple[list[dict], int]:
-    configured = env.get("GHEYMAT_AI_SOURCES")
-    if not configured or not configured.strip():
-        return [], 0
+def source_list(configured) -> list | None:
+    if not isinstance(configured, str) or not configured.strip():
+        return None
     try:
         raw = json.loads(configured)
     except ValueError:
+        return None
+    return raw if isinstance(raw, list) else None
+
+
+def parse_sources(env) -> tuple[list[dict], int]:
+    main = source_list(env.get("GHEYMAT_AI_SOURCES"))
+    if main is None:
         return [], 0
-    if not isinstance(raw, list):
-        return [], 0
+    raw = main + (source_list(env.get("GHEYMAT_AI_SOURCES_EXTRA")) or [])
     sources, seen, rejected = [], set(), 0
     for entry in raw:
         if not isinstance(entry, dict):
@@ -288,9 +328,11 @@ def load_sources(env) -> list[dict]:
 
 def lexicon_topics(text: str) -> tuple[list[str], int]:
     flat = SPACE.sub(" ", (text or "").translate(DIGITS).translate(PERSIAN_FIX).lower())
+    bare = SPACE.sub(" ", AMOUNT.sub(" ", flat))
     topics, hits = [], 0
     for topic in TOPICS:
-        found = sum(1 for pattern in LEXICON_RE[topic] if pattern.search(flat))
+        haystack = bare if topic == "fx" else flat
+        found = sum(1 for pattern in LEXICON_RE[topic] if pattern.search(haystack))
         if found:
             topics.append(topic)
             hits += found
@@ -299,7 +341,8 @@ def lexicon_topics(text: str) -> tuple[list[str], int]:
 
 def score_of(hits: int, category: str, published: datetime, now: datetime) -> float:
     age = max(0.0, (now - published).total_seconds()) / WINDOW.total_seconds()
-    return min(hits, MAX_HITS) + CATEGORY_PRIOR.get(category, 0.0) + max(0.0, 1.0 - age)
+    prior = CATEGORY_PRIOR.get(category, 0.0) if hits > 0 else 0.0
+    return min(hits, MAX_HITS) + prior + max(0.0, 1.0 - age)
 
 
 def text_of(node, *names: str) -> str:
@@ -468,7 +511,7 @@ CAPTURED: list[dict] = []
 LABELS_SEEN = tuple(EFFECTS) + ("unclear",)
 
 
-def parse_output(payload, item: dict) -> dict | None:
+def parse_output(payload, item: dict, capture: list | None = None) -> dict | None:
     if not isinstance(payload, dict) or payload.get("stop_reason") not in ("end_turn", "stop_sequence"):
         return None
     content = payload.get("content")
@@ -490,7 +533,7 @@ def parse_output(payload, item: dict) -> dict | None:
     effect = shadow if TAGS_ENABLED else None
     try:
         raw = obj.get("effect")
-        CAPTURED.append({
+        (CAPTURED if capture is None else capture).append({
             "id": hashlib.sha256(item["title"].encode("utf-8")).hexdigest()[:16],
             "title": item["title"][:300], "category": item.get("category"),
             "model_effect": raw if raw in LABELS_SEEN else None,
@@ -501,7 +544,7 @@ def parse_output(payload, item: dict) -> dict | None:
     return {"en": en, "fa": fa, "effect": effect, "shadowEffect": shadow}
 
 
-def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
+def summarize(http, key: str, item: dict, capture: list | None = None) -> tuple[dict | None, int, int]:
     body = {
         "model": MODEL,
         "max_tokens": 1024,
@@ -526,7 +569,7 @@ def summarize(http, key: str, item: dict) -> tuple[dict | None, int, int]:
         usage = payload.get("usage") if isinstance(payload, dict) else None
         used_in = int(usage.get("input_tokens") or 0) if isinstance(usage, dict) else 0
         used_out = int(usage.get("output_tokens") or 0) if isinstance(usage, dict) else 0
-        return parse_output(payload, item), used_in, used_out
+        return parse_output(payload, item, capture), used_in, used_out
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
         raise ApiError("body") from e
 
@@ -567,6 +610,17 @@ def reseal(write_doc, previous, now: datetime) -> dict | None:
     return {"ids": [i["id"] for i in keep], "skipped": True}
 
 
+def sealed(write_doc, previous, kept: list[dict], categories: dict, now: datetime) -> dict | None:
+    result = reseal(write_doc, previous, now)
+    if result is None:
+        return None
+    for item in kept:
+        item["score"] = item_score(item, categories, now)
+    present = set(result["ids"])
+    result["top"] = [i["id"] for i in sorted(kept, key=rank_key)[:MAX_ITEMS] if i["id"] in present]
+    return result
+
+
 def last_check(previous) -> datetime | None:
     if not isinstance(previous, dict):
         return None
@@ -592,19 +646,111 @@ def archive_news(root, now: datetime, items: list[dict], log=print, version: str
         log(f"::warning::news: archive skipped ({type(exc).__name__})")
 
 
+def rank_key(item: dict) -> tuple:
+    return (-item["score"], -item["published"].timestamp(), item["id"])
+
+
+def item_score(item: dict, categories: dict, now: datetime) -> float:
+    text = " ".join(str(item.get(k) or "") for k in ("title", "desc", "en", "fa"))
+    category = item.get("category") or categories.get(item.get("source")) or "general"
+    return score_of(lexicon_topics(text)[1], category, item["published"], now)
+
+
 def choose(fresh: list[dict], kept: list[dict]) -> list[dict]:
-    ranked = sorted(fresh, key=lambda c: (-c["score"], -c["published"].timestamp(), c["id"]))
-    held = [(i["published"], i["id"]) for i in kept]
-    chosen: list[tuple] = []
+    keys = [rank_key(i) for i in kept]
     picked = []
-    for cand in ranked:
+    for cand in sorted(fresh, key=rank_key):
         if len(picked) >= MAX_NEW_PER_RUN:
             break
-        trial = chosen + [(cand["published"], cand["id"])]
-        if all(sum(1 for o in held if o > k) + sum(1 for o in trial if o > k) < MAX_ITEMS for k in trial):
-            chosen = trial
+        key = rank_key(cand)
+        if sum(1 for k in keys if k < key) < MAX_ITEMS:
+            keys.append(key)
             picked.append(cand)
     return picked
+
+
+def memo_key(key: str, item_id: str) -> str:
+    return hmac.new(key.encode("utf-8"), b"news-memo:" + item_id.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+def load_memo(env, now: datetime, key: str | None = None) -> dict:
+    directory = env.get("GHEYMAT_STATE_DIR")
+    if not directory or not key:
+        return {}
+    try:
+        with open(os.path.join(directory, MEMO_FILE), encoding="utf-8") as handle:
+            raw = json.load(handle)["failed"]
+        memo = {}
+        for key, stamp in raw.items():
+            when = parse_date(stamp)
+            if isinstance(key, str) and when is not None and now - when < timedelta(seconds=MEMO_SECONDS):
+                memo[key] = when
+        return memo
+    except Exception:
+        return {}
+
+
+def save_memo(env, memo: dict, key: str | None = None) -> None:
+    directory = env.get("GHEYMAT_STATE_DIR")
+    if not directory or not key:
+        return
+    try:
+        os.makedirs(directory, exist_ok=True)
+        target = os.path.join(directory, MEMO_FILE)
+        temp = target + ".tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump({"failed": {k: iso(v) for k, v in sorted(memo.items())}}, handle)
+        os.replace(temp, target)
+    except Exception:
+        pass
+
+
+class Slot:
+    def __init__(self):
+        self.done = threading.Event()
+        self.value = None
+        self.error = None
+
+
+def start_models(make_http, key: str, pool: list[dict], capture: list | None = None):
+    slots = [Slot() for _ in pool]
+    todo: queue.Queue = queue.Queue()
+    for index in range(len(pool)):
+        todo.put(index)
+    halt = threading.Event()
+
+    def work():
+        try:
+            session = make_http()
+        except Exception:
+            session = None
+        try:
+            while not halt.is_set():
+                try:
+                    index = todo.get_nowait()
+                except queue.Empty:
+                    return
+                slot = slots[index]
+                try:
+                    if session is None:
+                        raise ApiError("network")
+                    slot.value = summarize(session, key, pool[index], capture)
+                except BaseException as exc:
+                    if isinstance(exc, ApiStop):
+                        halt.set()
+                    slot.error = exc
+                slot.done.set()
+        finally:
+            close = getattr(session, "close", None)
+            if close:
+                try:
+                    close()
+                except Exception:
+                    pass
+
+    for _ in range(min(MODEL_WORKERS, len(pool))):
+        threading.Thread(target=work, daemon=True).start()
+    return slots, halt
 
 
 def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=None,
@@ -616,6 +762,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     kept = previous_items(previous, now)
     key = env.get("ANTHROPIC_API_KEY")
     sources, rejected = parse_sources(env)
+    categories = {s["name"]: s["category"] for s in sources}
     if refresh:
         if (env.get("GHEYMAT_AI_SOURCES") or "").strip():
             log(f"news: sources {len(sources)} usable ({rejected} rejected)")
@@ -623,9 +770,8 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             log("::warning::news: no usable sources configured")
     checked = last_check(previous)
     if not refresh or not key or not sources or (checked and now - checked < MIN_INTERVAL):
-        return reseal(write_doc, previous, now)
+        return sealed(write_doc, previous, kept, categories, now)
     make_http = (lambda: http) if http is not None else requests.Session
-    http = http or requests.Session()
     started = clock()
     fetched = fetch_all(make_http, sources, now, clock)
     candidates, reached, scoring_cut = [], 0, False
@@ -643,16 +789,21 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             if source["keywords_only"] and not hits:
                 continue
             rows.append({**cand, "category": source["category"], "topics": topics, "score": score_of(hits, source["category"], cand["published"], now)})
-        rows.sort(key=lambda c: (c["published"], c["id"]), reverse=True)
+        rows.sort(key=rank_key)
         candidates.extend(rows[:source["max_items"]])
     if not reached:
         log(f"news: fetched 0/{len(sources)} ok, items 0, summarised 0, published 0")
-        return reseal(write_doc, previous, now)
+        return sealed(write_doc, previous, kept, categories, now)
+    for item in kept:
+        item["score"] = item_score(item, categories, now)
+    failed = load_memo(env, now, key)
+    memo_before = dict(failed)
     seen = {i["id"] for i in kept}
     titles = [i["tokens"] for i in kept]
     fresh = []
-    for cand in sorted(candidates, key=lambda c: c["published"])[-MAX_CANDIDATES:]:
-        if cand["id"] in seen or any(near_identical(cand["tokens"], t) for t in titles):
+    best = sorted(candidates, key=rank_key)[:MAX_CANDIDATES]
+    for cand in sorted(best, key=lambda c: c["published"]):
+        if cand["id"] in seen or memo_key(key, cand["id"]) in failed or any(near_identical(cand["tokens"], t) for t in titles):
             continue
         seen.add(cand["id"])
         titles.append(cand["tokens"])
@@ -661,45 +812,59 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     api_errors = 0
     incomplete = scoring_cut
     pool = choose(fresh, kept)
+    capture: list[dict] = []
     model_deadline = clock() + MODEL_SECONDS
+    slots, halt = start_models(make_http, key, pool, capture) if pool else ([], threading.Event())
     try:
-        for cand in pool:
-            moment = clock()
-            if moment - started > budget_seconds or moment >= model_deadline:
-                incomplete = True
-                break
-            try:
-                result, used_in, used_out = call_bounded(lambda: summarize(http, key, cand),
-                                                         min(model_deadline - moment, MODEL_CALL_SECONDS))
-            except ModelTimeout:
-                incomplete = True
-                log("::warning::news: model call timed out")
-                break
-            except ApiError:
+        cut = False
+        for cand, slot in zip(pool, slots):
+            if not cut:
+                moment = clock()
+                if moment - started > budget_seconds or moment >= model_deadline:
+                    cut = True
+                elif not slot.done.wait(max(0.0, min(model_deadline - moment, MODEL_CALL_SECONDS))):
+                    cut = True
+                    log("::warning::news: model call timed out")
+                if cut:
+                    incomplete = True
+                    halt.set()
+            if cut and not slot.done.is_set():
+                continue
+            if isinstance(slot.error, ApiError):
                 incomplete = True
                 stats["dropped"] += 1
                 api_errors += 1
                 if api_errors >= MAX_CONSECUTIVE_API_ERRORS:
                     raise ApiStop("errors")
                 continue
+            if slot.error is not None:
+                raise slot.error
+            result, used_in, used_out = slot.value
             api_errors = 0
             stats["in"] += used_in
             stats["out"] += used_out
             if result is None:
                 stats["dropped"] += 1
+                failed[memo_key(key, cand["id"])] = now
                 continue
             kept.append({**cand, **result})
             stats["new"] += 1
     except ApiStop as stop:
         incomplete = True
         log(f"::warning::news: API stopped this run ({stop})")
-    headline_log.collect(list(CAPTURED), env, now, log)
-    CAPTURED.clear()
+    finally:
+        halt.set()
+    if failed != memo_before:
+        save_memo(env, failed, key)
+    headline_log.collect(list(capture), env, now, log)
     complete = not incomplete or stats["new"] > 0
     generated = now if complete else parse_date(previous.get("generatedAt") if isinstance(previous, dict) else None)
     if generated is None:
         return None
-    items = sorted(kept, key=lambda i: (i["published"], i["id"]), reverse=True)[:MAX_ITEMS]
+    for item in kept:
+        item["score"] = item_score(item, categories, now)
+    ranked = sorted(kept, key=rank_key)[:MAX_ITEMS]
+    items = sorted(ranked, key=lambda i: (i["published"], i["id"]), reverse=True)
     published_ids = {i["id"] for i in items}
     stats["dropped"] += sum(1 for i in kept if i.get("shadowEffect") != "unknown" and i["id"] not in published_ids)
     rendered = [render(i) for i in items]
@@ -708,4 +873,5 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     log(f"news: dropped {stats['dropped']}")
     archive_news(archive_root if archive_root is not None else env.get("GHEYMAT_ARCHIVE_ROOT"), now, items, log,
                  config_version(sources))
-    return {"ids": [i["id"] for i in items], "skipped": False, "complete": complete, **stats}
+    return {"ids": [i["id"] for i in items], "top": [i["id"] for i in ranked], "skipped": False,
+            "complete": complete, **stats}
