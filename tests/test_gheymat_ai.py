@@ -529,3 +529,52 @@ def test_run_news_returns_the_score_order_and_falls_back_to_ids(monkeypatch):
     assert ai.run_news(lambda *_: None, lambda *_: None, NOW, log=lambda *_: None) == ["a", "b", "c"]
     monkeypatch.setattr(ai.gheymat_news, "publish", lambda *a, **k: {"ids": ["a"], "skipped": True})
     assert ai.run_news(lambda *_: None, lambda *_: None, NOW, log=lambda *_: None) == ["a"]
+
+
+RECORD = [100, 101, 102, 150]
+SHARP_UP = [200, 100, 100, 100, 100, 100, 100, 100, 104]
+FLAT = [200, 100, 100, 100, 100, 100, 100, 100, 101]
+
+
+def test_brief_adds_record_sentences_for_gram_and_emami():
+    brief = brief_of({"gram": series_ending(RECORD)})
+    assert brief["en"].startswith("Gold (18k, per gram) closed at a record high. Next-week")
+    assert brief["fa"].startswith("طلای ۱۸ عیار در بالاترین قیمت پایانی خود بسته شد. ")
+    brief = brief_of({"emami": series_ending(RECORD)})
+    assert brief["en"].startswith("The Emami coin closed at a record high. Next-week")
+    assert brief["fa"].startswith("سکه امامی در بالاترین قیمت پایانی خود بسته شد. ")
+
+
+@pytest.mark.parametrize("code,prices,en,fa", [
+    ("gram", SHARP_UP, "Gold (18k, per gram) rose sharply this week.", "طلای ۱۸ عیار این هفته به‌شدت بالا رفت."),
+    ("gram", [50, 100, 100, 100, 100, 100, 100, 100, 96], "Gold (18k, per gram) fell sharply this week.", "طلای ۱۸ عیار این هفته به‌شدت پایین آمد."),
+    ("emami", SHARP_UP, "The Emami coin rose sharply this week.", "سکه امامی این هفته به‌شدت بالا رفت."),
+    ("emami", [50, 100, 100, 100, 100, 100, 100, 100, 96], "The Emami coin fell sharply this week.", "سکه امامی این هفته به‌شدت پایین آمد."),
+])
+def test_brief_adds_weekly_move_sentences_for_gram_and_emami(code, prices, en, fa):
+    brief = brief_of({code: series_ending(prices)})
+    assert brief["en"].startswith(en + " Next-week") and brief["fa"].startswith(fa + " ")
+
+
+def test_brief_keeps_at_most_two_sentences_in_usd_gram_emami_order():
+    brief = brief_of({c: series_ending(RECORD) for c in ("usd", "gram", "emami")})
+    assert brief["en"].startswith(
+        "The dollar closed at a record high. Gold (18k, per gram) closed at a record high. Next-week")
+    assert "Emami" not in brief["en"] and "امامی" not in brief["fa"]
+    brief = brief_of({"gram": series_ending(RECORD), "emami": series_ending(SHARP_UP)})
+    assert brief["en"].startswith(
+        "Gold (18k, per gram) closed at a record high. The Emami coin rose sharply this week. Next-week")
+    brief = brief_of({"usd": series_ending(FLAT), "emami": series_ending(RECORD)})
+    assert brief["en"].startswith("The Emami coin closed at a record high. Next-week")
+
+
+def test_gram_and_emami_sentences_are_number_free_and_keys_unchanged():
+    brief = brief_of({c: series_ending(RECORD) for c in ("gram", "emami")})
+    lead = brief["fa"].split(" برآورد")[0]
+    assert not any(ch in "0123456789" for ch in brief["en"].split(" Next-week")[0] + lead)
+    assert set(brief) == {"generatedAt", "en", "fa", "cards", "forecastCodes"}
+
+
+def test_no_sentence_for_gram_or_emami_without_a_record_or_sharp_week():
+    brief = brief_of({"gram": series_ending(FLAT), "emami": series_ending([200, 100, 101])})
+    assert brief["en"] == "Next-week estimates are ready for 2 currencies."
