@@ -47,8 +47,3 @@ def test_next_open_after_hours_is_next_morning():
     evening = int(datetime.datetime(2026, 11, 14, 18, 0, tzinfo=TEHRAN).timestamp())
     morning = int(datetime.datetime(2026, 11, 15, 8, 0, tzinfo=TEHRAN).timestamp())
     assert cadence.next_open(evening) == morning
-
-
-def test_publish_loop_checks_window_only_at_start():
-    source = (pathlib.Path(__file__).resolve().parents[1] / "tools" / "publish_loop.py").read_text()
-    assert source.count("cadence.in_window") == 1

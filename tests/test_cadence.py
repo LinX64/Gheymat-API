@@ -168,7 +168,7 @@ def test_next_day_open_ignores_night_slots():
 
 
 def test_next_night_start():
-    assert c.next_night_start(epoch("friday", "10:00")) == epoch("friday", "20:30")
+    assert c.next_night_start(epoch("friday", "13:00")) == epoch("friday", "20:30")
     assert c.next_night_start(epoch("friday", "20:30")) == epoch("friday", "23:30")
     assert c.next_night_start(epoch("friday", "23:40")) == epoch("friday", "20:30") + 86400
 
@@ -176,3 +176,34 @@ def test_next_night_start():
 def test_night_slot_tier_is_night_or_mid_as_before():
     assert c.tier(epoch("friday", "20:30")) == c.NIGHT
     assert c.tier(epoch("saturday", "23:30")) == c.NIGHT
+
+
+@pytest.mark.parametrize("day", SAT_TO_WED + ["thursday"])
+def test_noon_slot_is_friday_only(day):
+    assert c.in_night_slot(epoch(day, "12:00")) is False
+
+
+@pytest.mark.parametrize("clock,expected", [
+    ("11:59", False), ("12:00", True), ("12:04", True), ("12:05", False),
+])
+def test_friday_noon_slot_edges(clock, expected):
+    assert c.in_window(epoch("friday", clock)) is expected
+    assert c.in_night_slot(epoch("friday", clock)) is expected
+
+
+def test_friday_noon_slot_has_night_slot_length():
+    assert c.FRIDAY_SLOTS == ((12, 0),)
+    start = epoch("friday", "12:00")
+    assert c.in_night_slot(start + c.NIGHT_SLOT_MINUTES * 60 - 1) is True
+    assert c.in_night_slot(start + c.NIGHT_SLOT_MINUTES * 60) is False
+
+
+def test_next_night_start_includes_friday_noon():
+    assert c.next_night_start(epoch("friday", "08:00")) == epoch("friday", "12:00")
+    assert c.next_night_start(epoch("friday", "12:00")) == epoch("friday", "20:30")
+    assert c.next_night_start(epoch("thursday", "23:40")) == epoch("friday", "12:00")
+    assert c.next_night_start(epoch("saturday", "10:00")) == epoch("saturday", "20:30")
+
+
+def test_saturday_evening_slot_is_mid_tier():
+    assert c.tier(epoch("saturday", "20:30")) == c.MID

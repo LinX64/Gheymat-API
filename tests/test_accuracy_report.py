@@ -16,7 +16,7 @@ import accuracy_report as ar
 import forecast_track
 import night_export
 
-CLOSED = datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc).timestamp()
+CLOSED = datetime(2026, 11, 20, 10, 30, tzinfo=timezone.utc).timestamp()
 NEAR_OPEN = datetime(2026, 11, 21, 4, 26, tzinfo=timezone.utc).timestamp()
 KEY = base64.b64encode(bytes(range(32))).decode()
 
@@ -41,10 +41,29 @@ def series(prices, start=datetime(2026, 1, 1)):
     return {(start + timedelta(days=i)).date().isoformat(): [p, p] for i, p in enumerate(prices)}
 
 
-def test_artifact_name_uses_tehran_date():
+def test_artifact_name_uses_trading_day_that_just_ended():
     assert ar.artifact_name(CLOSED) == "report-2026-11-20"
-    late = datetime(2026, 11, 20, 21, 0, tzinfo=timezone.utc).timestamp()
-    assert ar.artifact_name(late) == "report-2026-11-21"
+    early = datetime(2026, 11, 20, 21, 30, tzinfo=timezone.utc).timestamp()
+    assert ar.artifact_name(early) == "report-2026-11-20"
+
+
+@pytest.mark.parametrize("tehran_clock,expected", [
+    ((2026, 11, 21, 1, 0), "report-2026-11-20"),
+    ((2026, 11, 21, 2, 0), "report-2026-11-20"),
+    ((2026, 11, 20, 18, 0), "report-2026-11-20"),
+    ((2026, 11, 20, 7, 59), "report-2026-11-19"),
+    ((2026, 11, 20, 8, 0), "report-2026-11-20"),
+    ((2026, 11, 21, 7, 59), "report-2026-11-20"),
+])
+def test_artifact_name_trading_day_cases(tehran_clock, expected):
+    moment = datetime(*tehran_clock, tzinfo=timezone(timedelta(hours=3, minutes=30)))
+    assert ar.artifact_name(moment.timestamp()) == expected
+
+
+def test_report_dispatches_share_one_name():
+    one = datetime(2026, 11, 21, 1, 0, tzinfo=timezone(timedelta(hours=3, minutes=30))).timestamp()
+    two = datetime(2026, 11, 21, 2, 0, tzinfo=timezone(timedelta(hours=3, minutes=30))).timestamp()
+    assert ar.artifact_name(one) == ar.artifact_name(two)
 
 
 def test_check_skips_when_artifact_exists(tmp_path):
@@ -512,15 +531,31 @@ NIGHT_SLOT_AT = datetime(2026, 11, 20, 17, 0, tzinfo=timezone.utc).timestamp()
 
 def test_report_skips_inside_and_just_before_night_slot(tmp_path):
     env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": str(tmp_path / "o")}
-    assert ar.check(env, NIGHT_SLOT_AT - 299, lambda *_: None, runner("0")) is True
+    assert ar.check(env, NIGHT_SLOT_AT - 899, lambda *_: None, runner("0")) is True
     assert ar.check(env, NIGHT_SLOT_AT, lambda *_: None, runner("0")) is True
     assert ar.check(env, NIGHT_SLOT_AT + 299, lambda *_: None, runner("0")) is True
 
 
 def test_report_runs_outside_night_slot_gap(tmp_path):
     env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": str(tmp_path / "o")}
-    assert ar.check(env, NIGHT_SLOT_AT - 301, lambda *_: None, runner("0")) is False
+    assert ar.check(env, NIGHT_SLOT_AT - 901, lambda *_: None, runner("0")) is False
     assert ar.check(env, NIGHT_SLOT_AT + 300, lambda *_: None, runner("0")) is False
+
+
+def test_night_gap_is_larger_than_day_gap():
+    assert ar.NIGHT_GAP == 900
+    assert ar.NIGHT_GAP > ar.MIN_OPEN_GAP
+
+
+FRIDAY_NOON_AT = datetime(2026, 11, 20, 8, 30, tzinfo=timezone.utc).timestamp()
+
+
+def test_report_skips_around_friday_noon_slot():
+    assert ar.window_too_close(FRIDAY_NOON_AT - 899) is True
+    assert ar.window_too_close(FRIDAY_NOON_AT) is True
+    assert ar.window_too_close(FRIDAY_NOON_AT + 299) is True
+    assert ar.window_too_close(FRIDAY_NOON_AT - 901) is False
+    assert ar.window_too_close(FRIDAY_NOON_AT + 300) is False
 
 
 def test_report_judges_day_window_only_for_day_gap():

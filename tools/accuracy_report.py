@@ -22,6 +22,8 @@ REPORT_INFO = b"night-report"
 KEY_LEN = 32
 NONCE_LEN = 12
 MIN_OPEN_GAP = 300
+NIGHT_GAP = 900
+TRADING_DAY_SHIFT = 8 * 3600
 TOTAL_SECONDS = 150
 CLONE_SECONDS = 60
 GAP_DAYS = 7
@@ -74,7 +76,7 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 def tehran_date(now: float) -> str:
-    return cadence.local_time(now).date().isoformat()
+    return cadence.local_time(now - TRADING_DAY_SHIFT).date().isoformat()
 
 
 def artifact_name(now: float) -> str:
@@ -100,7 +102,7 @@ def artifact_exists(env, name: str, runner=subprocess.run) -> bool | None:
 def window_too_close(now: float) -> bool:
     if cadence.in_day_window(now) or cadence.next_day_open(now) - now < MIN_OPEN_GAP:
         return True
-    return cadence.in_night_slot(now) or cadence.next_night_start(now) - now < MIN_OPEN_GAP
+    return cadence.in_night_slot(now) or cadence.next_night_start(now) - now < NIGHT_GAP
 
 
 def check(env, now: float, log, runner=subprocess.run) -> bool:

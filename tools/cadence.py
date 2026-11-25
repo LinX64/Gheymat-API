@@ -20,6 +20,7 @@ WINDOW_START = 8
 WINDOW_END = 17
 WINDOW_DAYS = (5, 6, 0, 1, 2, 3)
 NIGHT_SLOTS = ((20, 30), (23, 30))
+FRIDAY_SLOTS = ((12, 0),)
 NIGHT_SLOT_MINUTES = 5
 
 
@@ -61,9 +62,13 @@ def in_day_window(epoch):
     return WINDOW_START <= local.hour < end
 
 
+def slots_for(weekday):
+    return NIGHT_SLOTS + FRIDAY_SLOTS if weekday == FRIDAY else NIGHT_SLOTS
+
+
 def in_night_slot(epoch):
     local = local_time(epoch)
-    for hour, minute in NIGHT_SLOTS:
+    for hour, minute in slots_for(local.weekday()):
         if local.hour == hour and minute <= local.minute < minute + NIGHT_SLOT_MINUTES:
             return True
     return False
@@ -91,7 +96,8 @@ def next_night_start(epoch):
     offset = int(TEHRAN_OFFSET.total_seconds())
     midnight = epoch - (epoch + offset) % 86400
     starts = []
+    weekday = local_time(midnight).weekday()
     for day in range(2):
-        for hour, minute in NIGHT_SLOTS:
+        for hour, minute in slots_for((weekday + day) % 7):
             starts.append(midnight + day * 86400 + hour * 3600 + minute * 60)
     return min(t for t in starts if t > epoch)

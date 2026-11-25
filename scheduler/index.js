@@ -4,7 +4,9 @@ const WINDOW_END = 17;
 const THURSDAY_END = 13;
 const OPEN_DAYS = [5, 6, 0, 1, 2, 3];
 const THURSDAY = 3;
+const FRIDAY = 4;
 const NIGHT_SLOTS = [[20, 30], [23, 30]];
+const FRIDAY_SLOTS = [[12, 0]];
 const NIGHT_SLOT_MINUTES = 5;
 const REPORT_HOURS = [1, 2];
 const ACTIVE_WITHIN = 600;
@@ -25,11 +27,14 @@ export function inDayWindow(epochSeconds) {
   return hour >= WINDOW_START && hour < end;
 }
 
+const slotsFor = (day) => (day === FRIDAY ? NIGHT_SLOTS.concat(FRIDAY_SLOTS) : NIGHT_SLOTS);
+
 export function inNightSlot(epochSeconds) {
   const local = localOf(epochSeconds);
+  const day = (local.getUTCDay() + 6) % 7;
   const hour = local.getUTCHours();
   const minute = local.getUTCMinutes();
-  return NIGHT_SLOTS.some(([h, m]) => hour === h && minute >= m && minute < m + NIGHT_SLOT_MINUTES);
+  return slotsFor(day).some(([h, m]) => hour === h && minute >= m && minute < m + NIGHT_SLOT_MINUTES);
 }
 
 export function inWindow(epochSeconds) {

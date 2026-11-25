@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import worker, { inWindow, hasActiveRun, shouldBackOff, tick } from "../index.js";
+import worker, { inWindow, inNightSlot, hasActiveRun, shouldBackOff, tick } from "../index.js";
 
 const tehran = (y, m, d, h, mi) => Date.UTC(y, m - 1, d, h, mi) / 1000 - 12600;
 
@@ -233,4 +233,30 @@ test("report dispatch errors surface", async () => {
   assert.equal(await tick(env, tehran(2026, 11, 20, 1, 0), makeFetch([new Error("x")])), "error:network");
   const { GH_DISPATCH_TOKEN, ...noToken } = env;
   assert.equal(await tick(noToken, tehran(2026, 11, 20, 1, 0), makeFetch([])), "error:config");
+});
+
+test("friday noon slot edges", () => {
+  assert.equal(inWindow(tehran(2026, 11, 20, 11, 59) + 59), false);
+  assert.equal(inWindow(tehran(2026, 11, 20, 12, 0)), true);
+  assert.equal(inWindow(tehran(2026, 11, 20, 12, 4) + 59), true);
+  assert.equal(inWindow(tehran(2026, 11, 20, 12, 5)), false);
+});
+
+test("noon slot is friday only", () => {
+  assert.equal(inNightSlot(tehran(2026, 11, 20, 12, 0)), true);
+  for (const day of [14, 15, 16, 17, 18, 19]) {
+    assert.equal(inNightSlot(tehran(2026, 11, 14 + (day - 14), 12, 0)), false);
+  }
+});
+
+test("publish dispatches inside the friday noon slot", async () => {
+  const f = makeFetch([{ status: 200, body: { workflow_runs: [] } }, { status: 204 }]);
+  assert.equal(await tick(env, tehran(2026, 11, 20, 12, 2), f), "dispatched");
+});
+
+test("closed just outside the friday noon slot", async () => {
+  const f = makeFetch([]);
+  assert.equal(await tick(env, tehran(2026, 11, 20, 12, 5), f), "closed");
+  assert.equal(await tick(env, tehran(2026, 11, 20, 11, 59), f), "closed");
+  assert.equal(f.calls.length, 0);
 });
