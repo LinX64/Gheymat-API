@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.1 (2026-11-26)
+
+Feed patch for the 1.8 wave. Clients: iOS 1.8.1 (build assigned by App Store Connect), Android 1.8.0 (build 8). No document shape changes.
+
+### Added
+- Short publish runs at 20:30 and 23:30 Tehran every night and at 12:00 on Fridays, started by the scheduler; the day window is unchanged (#67).
+- The scheduler starts the daily report at 01:00 Tehran with a retry at 02:00; the report is named after the trading day that just ended (#67).
+- One daily line in the run log with how many news sources failed every fetch, by index number only (#68).
+- Brief sentences for a record close or a sharp weekly move of 18k gold and the Emami coin; a record needs at least 250 closes (#69).
+
+### Changed
+- Headlines with a topic word always rank ahead of headlines without one (#68).
+- A run that is red only because of a channel alarm now ends green, so the other channels keep publishing; the slow-lane and build alarms open an alert issue (#66).
+
 ## 1.8.0 (2026-11-25)
 
 Feed for the 1.8 wave. Clients: iOS 1.8.1 (build assigned by App Store Connect), Android 1.8.0 (build 8). Wire shapes only gain documents and optional fields that both clients already decode.
