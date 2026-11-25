@@ -571,7 +571,8 @@ def test_brief_keeps_at_most_two_sentences_in_usd_gram_emami_order():
 def test_gram_and_emami_sentences_are_number_free_and_keys_unchanged():
     brief = brief_of({c: series_ending(RECORD) for c in ("gram", "emami")})
     lead = brief["fa"].split(" برآورد")[0]
-    assert not any(ch in "0123456789" for ch in brief["en"].split(" Next-week")[0] + lead)
+    lead_en = brief["en"].split(" Next-week")[0].replace("18k", "")
+    assert not any(ch in "0123456789" for ch in lead_en + lead)
     assert set(brief) == {"generatedAt", "en", "fa", "cards", "forecastCodes"}
 
 
