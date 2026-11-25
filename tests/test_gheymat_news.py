@@ -1034,11 +1034,18 @@ def test_unusable_output_is_not_retried_for_six_hours_and_is_persisted_without_t
     files = list(tmp_path.iterdir())
     assert [f.name for f in files] == [news.MEMO_FILE]
     text = files[0].read_text(encoding="utf-8")
-    assert "Alpha" not in text and news.item_id(news.canonical_url("https://a.example/1")) in text
+    raw_id = news.item_id(news.canonical_url("https://a.example/1"))
+    assert "Alpha" not in text and raw_id not in text and news.memo_key("test-key", raw_id) in text
     store, http, _, _ = run([entry("Alpha story headline", "1")], env=env, store=store, now=NOW + timedelta(minutes=31))
     assert http.posts == [] and items(store) == []
     store, http, _, _ = run([entry("Alpha story headline", "1")], env=env, store=store, now=NOW + timedelta(hours=6, minutes=1))
     assert len(http.posts) == 1 and len(items(store)) == 1
+
+
+def test_failure_memo_is_not_persisted_without_a_key(tmp_path):
+    env = {"GHEYMAT_STATE_DIR": str(tmp_path)}
+    news.save_memo(env, {"abc": NOW}, None)
+    assert list(tmp_path.iterdir()) == [] and news.load_memo(env, NOW, None) == {}
 
 
 def test_failure_memo_works_without_a_state_directory_and_ignores_a_broken_file(tmp_path):

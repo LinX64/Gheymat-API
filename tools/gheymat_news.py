@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import json
 import os
@@ -668,9 +669,13 @@ def choose(fresh: list[dict], kept: list[dict]) -> list[dict]:
     return picked
 
 
-def load_memo(env, now: datetime) -> dict:
+def memo_key(key: str, item_id: str) -> str:
+    return hmac.new(key.encode("utf-8"), b"news-memo:" + item_id.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+def load_memo(env, now: datetime, key: str | None = None) -> dict:
     directory = env.get("GHEYMAT_STATE_DIR")
-    if not directory:
+    if not directory or not key:
         return {}
     try:
         with open(os.path.join(directory, MEMO_FILE), encoding="utf-8") as handle:
@@ -685,9 +690,9 @@ def load_memo(env, now: datetime) -> dict:
         return {}
 
 
-def save_memo(env, memo: dict) -> None:
+def save_memo(env, memo: dict, key: str | None = None) -> None:
     directory = env.get("GHEYMAT_STATE_DIR")
-    if not directory:
+    if not directory or not key:
         return
     try:
         os.makedirs(directory, exist_ok=True)
@@ -791,14 +796,14 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
         return sealed(write_doc, previous, kept, categories, now)
     for item in kept:
         item["score"] = item_score(item, categories, now)
-    failed = load_memo(env, now)
+    failed = load_memo(env, now, key)
     memo_before = dict(failed)
     seen = {i["id"] for i in kept}
     titles = [i["tokens"] for i in kept]
     fresh = []
     best = sorted(candidates, key=rank_key)[:MAX_CANDIDATES]
     for cand in sorted(best, key=lambda c: c["published"]):
-        if cand["id"] in seen or cand["id"] in failed or any(near_identical(cand["tokens"], t) for t in titles):
+        if cand["id"] in seen or memo_key(key, cand["id"]) in failed or any(near_identical(cand["tokens"], t) for t in titles):
             continue
         seen.add(cand["id"])
         titles.append(cand["tokens"])
@@ -840,7 +845,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
             stats["out"] += used_out
             if result is None:
                 stats["dropped"] += 1
-                failed[cand["id"]] = now
+                failed[memo_key(key, cand["id"])] = now
                 continue
             kept.append({**cand, **result})
             stats["new"] += 1
@@ -850,7 +855,7 @@ def publish(write_doc, load_doc, now: datetime | None = None, env=None, http=Non
     finally:
         halt.set()
     if failed != memo_before:
-        save_memo(env, failed)
+        save_memo(env, failed, key)
     headline_log.collect(list(capture), env, now, log)
     complete = not incomplete or stats["new"] > 0
     generated = now if complete else parse_date(previous.get("generatedAt") if isinstance(previous, dict) else None)
