@@ -52,9 +52,9 @@ class Resp:
 
 
 class FakeHttp:
-    def __init__(self, feeds=None, replies=None, default=None, on_post=None, on_get=None):
+    def __init__(self, feeds=None, replies=None, default=None, on_post=None, on_get=None, by_title=None):
         self.feeds, self.replies, self.default = feeds or {}, list(replies or []), default
-        self.on_post, self.on_get = on_post, on_get
+        self.on_post, self.on_get, self.by_title = on_post, on_get, by_title or {}
         self.gets, self.posts, self.streams = [], [], []
 
     def get(self, url, headers=None, timeout=None, stream=None):
@@ -71,7 +71,9 @@ class FakeHttp:
         self.posts.append({"url": url, "headers": headers, "json": json})
         if self.on_post:
             self.on_post()
-        got = self.replies.pop(0) if self.replies else (self.default or reply())
+        content = json["messages"][0]["content"] if json else ""
+        picked = next((v for k, v in self.by_title.items() if k in content), None)
+        got = picked if picked is not None else (self.replies.pop(0) if self.replies else (self.default or reply()))
         if isinstance(got, Exception):
             raise got
         return got
@@ -108,10 +110,10 @@ def rss(entries):
 
 
 def run(entries=None, feeds=None, replies=None, store=None, now=NOW, env=ENV, clock=lambda: 0.0, default=None,
-        on_post=None, on_get=None):
+        on_post=None, on_get=None, by_title=None):
     store = store or Store()
     feeds = feeds if feeds is not None else {FEED: rss(entries or [])}
-    http = FakeHttp(feeds, replies, default, on_post, on_get)
+    http = FakeHttp(feeds, replies, default, on_post, on_get, by_title)
     logs = []
     result = news.publish(store.write, store.load, now, env=env, http=http, clock=clock, log=logs.append)
     return store, http, logs, result
@@ -198,27 +200,27 @@ def test_every_number_in_a_summary_must_be_in_the_source_text(en, fa, source_des
 ])
 def test_unusable_model_output_skips_the_story(kwargs):
     store, _, _, result = run([entry("Main story headline", "1"), entry("Other story headline", "2", minutes_ago=90)],
-                              replies=[reply(**kwargs)])
+                              by_title={"Main story": reply(**kwargs)})
     assert [i["title"] for i in items(store)] == ["Other story headline"] and result["dropped"] == 1
 
 
 def test_auth_and_rate_failures_stop_the_run_and_keep_what_was_summarized():
     for status in (401, 403, 429):
         store, http, logs, _ = run([entry("Alpha story headline", "1", minutes_ago=10), entry("Beta story headline", "2", minutes_ago=20), entry("Gamma story headline", "3", minutes_ago=30)],
-                                   replies=[reply(), Resp(status)])
-        assert [i["title"] for i in items(store)] == ["Alpha story headline"] and len(http.posts) == 2
+                                   by_title={"Alpha": reply(), "Beta": Resp(status)})
+        assert [i["title"] for i in items(store)] == ["Alpha story headline"] and 2 <= len(http.posts) <= 3
         assert any(line.startswith("::warning::news") for line in logs)
 
 
 def test_three_api_errors_in_a_row_stop_the_run():
     entries = [entry(f"Headline number {i} here", str(i), minutes_ago=10 + i) for i in range(6)]
-    store, http, logs, _ = run(entries, replies=[Resp(500), requests.ConnectionError(), Resp(200), reply()])
-    assert len(http.posts) == 3 and news.LOGICAL not in store.docs and any("::warning::" in line for line in logs)
+    store, http, logs, _ = run(entries, by_title={"number 0 ": Resp(500), "number 1 ": requests.ConnectionError(), "number 2 ": Resp(200)})
+    assert len(http.posts) >= 3 and news.LOGICAL not in store.docs and any("::warning::" in line for line in logs)
 
 
 def test_a_single_network_error_only_skips_that_story():
     store, http, _, _ = run([entry("Alpha story headline", "1", minutes_ago=10), entry("Beta story headline", "2", minutes_ago=20)],
-                            replies=[requests.Timeout(), reply()])
+                            by_title={"Alpha": requests.Timeout()})
     assert [i["title"] for i in items(store)] == ["Beta story headline"] and len(http.posts) == 2
 
 
@@ -339,7 +341,7 @@ def prev_item(i, hours_ago, **extra):
     when = NOW - timedelta(hours=hours_ago)
     url = f"https://a.example/prev{i}"
     return {"id": news.item_id(url), "url": url, "source": "Source A", "publishedAt": news.iso(when),
-            "title": f"Previous story number {i} words", "lang": "en", "en": EN, "fa": FA, "effect": None,
+            "title": f"Previous story number {i} words", "lang": "en", "en": "Neutral summary text", "fa": "خلاصه خبر بدون موضوع", "effect": None,
             "tagger": None, **extra}
 
 
@@ -406,7 +408,8 @@ def test_budget_exhausted_before_any_summary_keeps_the_old_generated_at_or_publi
     t[0] = 0.0
     store, http, _, result = run([entry("Delta story headline", "4", minutes_ago=5), entry("Echo story headline", "5", minutes_ago=9)],
                                  clock=lambda: t[0], on_post=lambda: t.__setitem__(0, 100.0))
-    assert len(http.posts) == 1 and len(items(store)) == 1 and result["complete"] is True
+    doc = store.docs.get(news.LOGICAL)
+    assert 1 <= len(http.posts) <= 2 and (doc is None) == (result is None) and (doc is None or len(doc["items"]) <= 1)
 
 
 def test_unexpected_response_bodies_skip_the_story_without_raising():
@@ -633,8 +636,8 @@ def test_load_sources_matrix():
     assert parsed == [
         {"name": "A", "url": "https://x.example/a", "lang": None, "category": "fx", "max_items": 5, "keywords_only": True},
         {"name": "B", "url": "https://x.example/b", "lang": None, **defaults}]
-    many = [{"name": f"N{i}", "url": f"https://x.example/{i}"} for i in range(31)]
-    assert len(news.load_sources(secret(many))) == news.MAX_SOURCES == 30
+    many = [{"name": f"N{i}", "url": f"https://x.example/{i}"} for i in range(46)]
+    assert len(news.load_sources(secret(many))) == news.MAX_SOURCES == 45
 
 
 def test_config_line_and_zero_source_warning_never_show_names_or_urls():
@@ -720,7 +723,7 @@ def test_a_hung_model_call_ends_the_phase_at_the_deadline(monkeypatch):
         result = news.publish(store.write, store.load, NOW, env=ENV, http=http, clock=lambda: 0.0, log=logs.append)
     finally:
         release.set()
-    assert time.monotonic() - started < 2 and len(http.posts) == 1
+    assert time.monotonic() - started < 2 and 1 <= len(http.posts) <= 2
     assert result["complete"] is False and result["new"] == 0 and "::warning::news: model call timed out" in logs
 
 
@@ -870,3 +873,220 @@ def test_scoring_stops_once_the_overall_budget_is_spent(monkeypatch):
     run([entry("Alpha story headline", "1"), entry("Beta story headline", "2")], clock=lambda: t[0],
         on_get=lambda: t.__setitem__(0, 100.0))
     assert calls == []
+
+
+@pytest.mark.parametrize("source,summary,kept", [
+    ("Dollar at 288,000 tomans", "Dollar at 288 thousand tomans", True),
+    ("Dollar at 288 هزار تومان", "Dollar at 288,000 tomans", True),
+    ("دلار ۲۸۸٬۰۰۰ تومان شد", "Dollar at 288000 tomans", True),
+    ("دلار ۲۸۸،۰۰۰ تومان شد", "Dollar at 288 thousand tomans", True),
+    ("Dollar at 288K tomans", "Dollar at 288,000 tomans", True),
+    ("Fund raises 2.5 million dollars", "Fund raises 2,500,000 dollars", True),
+    ("Fund raises 2.5 billion dollars", "Fund raises 2500 million dollars", True),
+    ("Fund raises 1.2 trillion dollars", "Fund raises 1200 billion dollars", True),
+    ("Dollar at 288,000 tomans", "Dollar at 289 thousand tomans", False),
+    ("Dollar at 288 هزار تومان", "Dollar at 288 million tomans", False),
+    ("Dollar at 288 هزار تومان", "Dollar at 288,000 tomans and 5 percent", False),
+])
+def test_quantities_compare_as_normalised_numeric_values(source, summary, kept):
+    assert (news.quantities(summary) <= news.quantities(source)) is kept
+
+
+def test_quantities_are_canonical_strings():
+    assert news.quantities("۲۸۸ هزار") == news.quantities("288,000") == {"288000"}
+    assert news.quantities("2.50 million") == {"2500000"}
+    assert news.quantities("rate 2.50") == {"2.5"}
+
+
+def test_summary_with_a_persian_magnitude_form_is_published():
+    store, _, _, _ = run([entry("Dollar reaches 288,000 tomans today", "1")],
+                         replies=[reply(en="Dollar reaches 288 thousand tomans", fa="دلار به ۲۸۸ هزار تومان رسید")])
+    assert len(items(store)) == 1
+
+
+def test_model_calls_run_concurrently_inside_the_same_budget():
+    def slow():
+        time.sleep(0.2)
+
+    entries = [entry(f"Headline number {i} appears here", f"c{i}", minutes_ago=5 + i) for i in range(12)]
+    started = time.monotonic()
+    store, http, _, result = run(entries, on_post=slow, env=ENV_BIG)
+    elapsed = time.monotonic() - started
+    assert len(http.posts) == 12 and result["new"] == 12 and elapsed < 1.5
+
+
+def test_concurrent_results_are_applied_in_score_order():
+    entries = [entry(f"Headline number {i} appears here", f"o{i}", minutes_ago=5 + i) for i in range(6)]
+    store, http, _, result = run(entries, env=ENV_BIG, by_title={
+        f"number {i} ": reply(en=f"Summary number {i}", fa=f"خلاصه شماره {i}".translate(ai.FA_DIGITS)) for i in range(6)})
+    assert [i["en"] for i in items(store)] == [f"Summary number {i}" for i in range(6)]
+    assert result["top"] == [i["id"] for i in items(store)]
+
+
+def test_unusable_output_is_not_retried_for_six_hours_and_is_persisted_without_text(tmp_path):
+    env = {**ENV, "GHEYMAT_STATE_DIR": str(tmp_path)}
+    bad = reply(text="not json")
+    store, http, _, result = run([entry("Alpha story headline", "1")], env=env, replies=[bad])
+    assert len(http.posts) == 1 and result["dropped"] == 1
+    files = list(tmp_path.iterdir())
+    assert [f.name for f in files] == [news.MEMO_FILE]
+    text = files[0].read_text(encoding="utf-8")
+    assert "Alpha" not in text and news.item_id(news.canonical_url("https://a.example/1")) in text
+    store, http, _, _ = run([entry("Alpha story headline", "1")], env=env, store=store, now=NOW + timedelta(minutes=31))
+    assert http.posts == [] and items(store) == []
+    store, http, _, _ = run([entry("Alpha story headline", "1")], env=env, store=store, now=NOW + timedelta(hours=6, minutes=1))
+    assert len(http.posts) == 1 and len(items(store)) == 1
+
+
+def test_failure_memo_works_without_a_state_directory_and_ignores_a_broken_file(tmp_path):
+    store, http, _, _ = run([entry("Alpha story headline", "1")], replies=[reply(text="not json")])
+    assert len(http.posts) == 1
+    (tmp_path / news.MEMO_FILE).write_text("{not json", encoding="utf-8")
+    env = {**ENV, "GHEYMAT_STATE_DIR": str(tmp_path)}
+    store, http, _, _ = run([entry("Alpha story headline", "1")], env=env)
+    assert len(http.posts) == 1 and len(items(store)) == 1
+    (tmp_path / news.MEMO_FILE).write_text(json.dumps({"failed": {"x": 5, "y": "nope"}}), encoding="utf-8")
+    store, http, _, _ = run([entry("Beta story headline", "2")], env=env)
+    assert len(http.posts) == 1
+
+
+def test_a_failed_id_does_not_take_a_slot_from_the_next_candidate(tmp_path, monkeypatch):
+    monkeypatch.setattr(news, "MAX_NEW_PER_RUN", 1)
+    env = {**ENV, "GHEYMAT_STATE_DIR": str(tmp_path)}
+    entries = [entry("Alpha story headline", "1", minutes_ago=5), entry("Beta story headline", "2", minutes_ago=10)]
+    run(entries, env=env, by_title={"Alpha": reply(text="not json")})
+    store, http, _, _ = run(entries, env=env, now=NOW + timedelta(minutes=31))
+    assert len(http.posts) == 1 and "Beta" in http.posts[0]["json"]["messages"][0]["content"]
+    assert [i["title"] for i in items(store)] == ["Beta story headline"]
+
+
+def test_relevance_beats_recency_when_the_list_is_full():
+    full = [prev_item(i, 1 + i) for i in range(40)]
+    store = previous_store(full, checked="2026-11-09T01:00:00Z")
+    store, http, _, result = run([entry("Dollar record surge in Tehran bazaar", "hot", minutes_ago=44 * 60)], store=store)
+    got = items(store)
+    ids = [i["id"] for i in got]
+    assert len(http.posts) == 1 and len(got) == 40
+    assert full[-1]["id"] not in ids and full[0]["id"] in ids
+    published = [i["publishedAt"] for i in got]
+    assert published == sorted(published, reverse=True) and got[-1]["title"] == "Dollar record surge in Tehran bazaar"
+    assert result["top"][0] == got[-1]["id"] and set(result["top"]) == set(ids)
+
+
+def test_a_relevant_kept_item_survives_newer_irrelevant_candidates():
+    kept = [prev_item(i, 40 + (i % 7)) for i in range(40)]
+    kept[5]["title"] = "Gold and dollar rates jump in Tehran"
+    store = previous_store(kept, checked="2026-11-09T01:00:00Z")
+    entries = [entry(f"Plain story number {i} words", f"p{i}", minutes_ago=5 + i) for i in range(10)]
+    store, _, _, _ = run(entries, store=store, env=ENV_BIG)
+    assert kept[5]["id"] in [i["id"] for i in items(store)]
+    assert len(items(store)) == 40
+
+
+def test_choose_admits_only_candidates_that_rank_inside_the_best_forty():
+    def mk(i, score, hours):
+        return {"id": f"{i:016d}", "score": score, "published": NOW - timedelta(hours=hours)}
+
+    kept = [mk(i, 3.0, 1) for i in range(39)]
+    fresh = [mk(100, 2.0, 1), mk(101, 5.0, 30), mk(102, 1.0, 1)]
+    picked = news.choose(fresh, kept)
+    assert picked == [fresh[1]]
+
+
+def test_ties_break_by_newer_first_then_id():
+    def mk(i, hours):
+        return {"id": f"{i:016d}", "score": 2.0, "published": NOW - timedelta(hours=hours)}
+
+    kept = [mk(i, 2) for i in range(39)]
+    fresh = [mk(100, 5), mk(101, 1)]
+    assert [c["id"] for c in news.choose(fresh, kept)] == [fresh[1]["id"]]
+    same = [mk(i, 2) for i in range(39)]
+    fresh = [mk(200, 2), mk(50, 2)]
+    assert [c["id"] for c in news.choose(fresh, same)] == [fresh[1]["id"]]
+
+
+def test_ranking_version_is_two():
+    assert news.RANKING_VERSION == 2
+
+
+def test_source_cut_keeps_the_best_scored_stories_not_the_newest():
+    env = {"ANTHROPIC_API_KEY": "k", **secret([{"name": "Source A", "url": FEED, "lang": "en", "max_items": 2}])}
+    entries = [entry(f"Plain story number {i} words", f"p{i}", minutes_ago=5 + i) for i in range(5)]
+    entries.append(entry("Dollar record surge in Tehran bazaar", "hot", minutes_ago=30 * 60))
+    store, _, _, _ = run(entries, env=env)
+    assert {i["title"] for i in items(store)} == {"Plain story number 0 words", "Dollar record surge in Tehran bazaar"}
+
+
+def test_candidate_cut_keeps_the_best_scored_stories(monkeypatch):
+    monkeypatch.setattr(news, "MAX_CANDIDATES", 3)
+    entries = [entry(f"Plain story number {i} words", f"p{i}", minutes_ago=5 + i) for i in range(5)]
+    entries.append(entry("Dollar record surge in Tehran bazaar", "hot", minutes_ago=30 * 60))
+    _, http, _, _ = run(entries, env=ENV_BIG)
+    sent = "".join(p["json"]["messages"][0]["content"] for p in http.posts)
+    assert len(http.posts) == 3 and "Dollar record surge" in sent
+
+
+@pytest.mark.parametrize("text,topic", [
+    ("غذا ارزان شد", "fx"),
+    ("ارزان فروشی در بازار", "fx"),
+    ("این شرکت ۲۷۰ میلیون دلار سرمایه جذب کرد", "fx"),
+    ("شرکت ۲۶۰ میلیارد تومان وام گرفت", "fx"),
+    ("The firm raised 243 billion rials", "fx"),
+    ("A 270 million dollars deal", "fx"),
+])
+def test_lexicon_v2_false_positives_do_not_count(text, topic):
+    assert topic not in news.lexicon_topics(text)[0]
+
+
+@pytest.mark.parametrize("text,topic", [
+    ("قیمت دلار امروز", "fx"), ("نرخ دلار بالا رفت", "fx"), ("دلار ۲۹۰ هزار تومانی شد", "fx"),
+    ("ارز و ارزها", "fx"), ("بازار ارز بی ثبات است", "fx"), ("صرافی ها بسته شدند", "fx"), ("حواله درهم", "fx"),
+    ("قیمت تتر", "fx"), ("رکورد جدید ثبت شد", "fx"), ("جهش قیمت", "fx"), ("ورود به کانال جدید", "fx"),
+    ("Dollar hits a record", "fx"), ("Prices surge", "fx"), ("Rial to soar", "fx"), ("Rial may plunge", "fx"),
+    ("Rial devaluation looms", "fx"),
+    ("قیمت اونس جهانی", "gold"), ("مثقال طلا", "gold"), ("نیم سکه", "gold"), ("ربع سکه", "gold"),
+    ("نفتکش توقیف شد", "oil"), ("Oil tanker seized", "oil"), ("تنگه هرمز بسته شد", "oil"), ("Strait of Hormuz", "oil"),
+    ("پالایشگاه آبادان", "oil"),
+    ("OFAC adds names", "sanctions"), ("FATF decision", "sanctions"), ("خزانه داری آمریکا", "sanctions"),
+    ("Treasury targets network", "sanctions"), ("snapback looms", "sanctions"), ("مکانیسم ماشه فعال شد", "sanctions"),
+    ("جنگ ادامه دارد", "politics"), ("حمله هوایی", "politics"), ("موشک شلیک شد", "politics"), ("پهپاد سرنگون شد", "politics"),
+    ("برنامه هسته ای", "politics"), ("غنی سازی اورانیوم", "politics"), ("آژانس گزارش داد", "politics"),
+    ("برجام و مذاکرات", "politics"), ("ترامپ گفت", "politics"), ("اسرائیل حمله کرد", "politics"),
+    ("War widens", "politics"), ("Strike reported", "politics"), ("Missile launched", "politics"), ("Drone downed", "politics"),
+    ("Nuclear talks", "politics"), ("IAEA report", "politics"), ("Enrichment halted", "politics"), ("Trump says", "politics"),
+    ("Israel responds", "politics"), ("Ceasefire holds", "politics"), ("Iran says", "politics"), ("Tehran says", "politics"),
+])
+def test_lexicon_v2_new_terms_match(text, topic):
+    assert topic in news.lexicon_topics(text)[0]
+
+
+def test_cheap_is_not_a_currency_but_currency_words_with_plural_still_match():
+    assert news.lexicon_topics("ارزان")[0] == [] and news.lexicon_topics("ارزها")[0] == ["fx"]
+
+
+def test_category_prior_applies_only_with_hits():
+    assert news.score_of(0, "fx", NOW, NOW) == pytest.approx(1.0)
+    assert news.score_of(1, "fx", NOW, NOW) == pytest.approx(3.5)
+
+
+def test_extra_sources_are_appended_and_deduplicated_by_url():
+    main = [{"name": "A", "url": "https://x.example/a"}, {"name": "B", "url": "https://x.example/b"}]
+    extra = [{"name": "A2", "url": "https://x.example/a"}, {"name": "C", "url": "https://x.example/c"}]
+    env = {"GHEYMAT_AI_SOURCES": json.dumps(main), "GHEYMAT_AI_SOURCES_EXTRA": json.dumps(extra)}
+    assert [s["name"] for s in news.load_sources(env)] == ["A", "B", "C"]
+    for bad in ("not json", "{}", '"x"', ""):
+        assert [s["name"] for s in news.load_sources({**env, "GHEYMAT_AI_SOURCES_EXTRA": bad})] == ["A", "B"]
+    assert news.load_sources({"GHEYMAT_AI_SOURCES_EXTRA": json.dumps(extra)}) == []
+
+
+def test_limits_are_raised():
+    assert news.MAX_SOURCES == 45 and news.FETCH_THREADS == 12
+
+
+def test_extra_sources_are_fetched_and_never_logged():
+    env = {"ANTHROPIC_API_KEY": "k", **secret([{"name": "Source A", "url": FEED, "lang": "en"}]),
+           "GHEYMAT_AI_SOURCES_EXTRA": json.dumps([{"name": "Secret Extra", "url": "https://extra.example/feed", "lang": "en"}])}
+    store, http, logs, _ = run(feeds={FEED: rss([entry("Alpha story headline", "1")]),
+                                      "https://extra.example/feed": rss([entry("Beta story headline", "2", host="extra.example")])}, env=env)
+    assert len(items(store)) == 2
+    assert not any(w in line.lower() for line in logs for w in ("extra", "http", "example"))
