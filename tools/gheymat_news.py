@@ -721,7 +721,8 @@ def track_health(env, fetched: list, total: int, now: datetime, log=print) -> No
         pair = health["sources"].setdefault(f"{number:02d}", [0, 0])
         pair[0 if got is not None else 1] += 1
     if not health["logged"] and local.hour >= HEALTH_HOUR:
-        down = sorted(n for n, (ok, bad) in health["sources"].items() if ok == 0 and bad > 0)
+        down = sorted(n for n, (ok, bad) in health["sources"].items()
+                      if ok == 0 and bad > 0 and n.isdigit() and 1 <= int(n) <= total)
         line = f"news: source health: {len(down)} of {total} sources failed every fetch today"
         if down:
             line = "::warning::" + line + " " + " ".join(f"#{n}" for n in down)
