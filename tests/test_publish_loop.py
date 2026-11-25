@@ -612,10 +612,12 @@ def test_failed_project_create_is_ignored():
     assert loop.mirror is True
 
 
-def test_run_returns_one_when_red():
+def test_run_returns_zero_when_only_an_alarm_is_red():
     loop, env = make(120)
     env.script["slow"] = 5
-    assert loop.run() == 1
+    assert loop.run() == 0
+    assert loop.red
+    assert sum("slow lane has not succeeded for 90 minutes" in line for line in env.lines) == 1
     assert env.counts.get("gh", 0) == 0
 
 
@@ -909,7 +911,7 @@ def test_cloudflare_failing_across_runs_alarms_once():
         codes.append(loop.run())
     errors = [line for line in env.lines if "Cloudflare deploy failed 5 times in a row" in line]
     assert len(errors) == 1
-    assert codes.count(1) == 1
+    assert set(codes) == {0}
     assert env.counts.get("gh", 0) == 0
 
 

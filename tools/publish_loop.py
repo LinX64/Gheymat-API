@@ -926,7 +926,7 @@ class Loop:
         if not self.start():
             return 1
         code = self.serve()
-        return 1 if code else 0
+        return 1 if code == 2 else 0
 
 
 def main():
